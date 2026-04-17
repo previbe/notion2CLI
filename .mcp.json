@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "notion2cli_bridge": {
+      "command": "node",
+      "args": [
+        "./server/channel-server.mjs"
+      ],
+      "cwd": "."
+    }
+  }
+}

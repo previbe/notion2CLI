@@ -1,0 +1,17 @@
+{
+  "name": "notion2cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local-first MVP that lets a Notion browser button send work into the active Claude Code session.",
+  "scripts": {
+    "check": "node --check ./server/channel-server.mjs && node --check ./extension/background.js && node --check ./extension/content-script.js && node --check ./extension/popup.js",
+    "dev:standalone": "NOTION2CLI_STANDALONE=1 node ./server/channel-server.mjs",
+    "pair": "./bin/notion2cli-connect",
+    "status": "./bin/notion2cli-status"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.3.6"
+  }
+}

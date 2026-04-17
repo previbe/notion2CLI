@@ -1,0 +1,13 @@
+{
+  "name": "notion2cli",
+  "version": "0.1.0",
+  "description": "Pair a Notion browser action with the active Claude Code session.",
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json",
+  "keywords": [
+    "notion",
+    "chrome",
+    "channel",
+    "local-first"
+  ]
+}

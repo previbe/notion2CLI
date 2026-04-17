@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>notion2CLI</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <section class="hero">
+        <div class="eyebrow">Notion to Claude</div>
+        <h1>把当前浏览器和 Claude 会话连起来</h1>
+        <p class="lede">
+          先在 Claude Code 里运行 <code>/notion2cli-connect</code>，拿到 6 位配对码后再回到这里。
+        </p>
+      </section>
+
+      <section class="status-card">
+        <div class="status-row">
+          <span class="status-dot" data-status-dot></span>
+          <div>
+            <div class="status-label">当前状态</div>
+            <div class="status-value" data-status-value>检查中…</div>
+          </div>
+        </div>
+        <p class="status-hint" data-status-hint>正在读取本地 bridge 状态。</p>
+      </section>
+
+      <section class="pair-card">
+        <label class="field">
+          <span>配对码</span>
+          <input data-code-input type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位数字" />
+        </label>
+        <button class="primary" data-connect-button type="button">连接当前 Claude 会话</button>
+        <button class="ghost" data-clear-button type="button">清除本地配对</button>
+      </section>
+
+      <section class="notes">
+        <div class="note-title">使用顺序</div>
+        <ol>
+          <li>在项目目录里启动 Claude Code</li>
+          <li>在 Claude 里运行 <code>/notion2cli-connect</code></li>
+          <li>把配对码贴到这里</li>
+          <li>回到 Notion 页面点击右下角按钮</li>
+        </ol>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

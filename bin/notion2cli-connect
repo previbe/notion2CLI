@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+status="$(curl -sSf http://127.0.0.1:43821/api/status)"
+
+if node -e '
+const data = JSON.parse(process.argv[1]);
+process.exit(data.standalone ? 0 : 1);
+' "$status"; then
+  echo "检测到当前 127.0.0.1:43821 上运行的是 standalone 调试 bridge。"
+  echo "它只会模拟 Claude 回复，不会把消息送进你当前打开的 Claude 会话。"
+  echo "请先关闭 notion2CLI 的 dev:standalone 进程，再重新启动 Claude 会话后重试 /notion2cli-connect。"
+  exit 1
+fi
+
+response="$(curl -sSf -X POST http://127.0.0.1:43821/api/pair/create)"
+
+node -e '
+const data = JSON.parse(process.argv[1]);
+console.log(`配对码：${data.code}`);
+console.log(`有效期至：${data.expiresAt}`);
+console.log("下一步：打开浏览器工具栏中的 notion2CLI，输入这个配对码并点击连接。");
+' "$response"

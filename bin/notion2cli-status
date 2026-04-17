@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+response="$(curl -sSf http://127.0.0.1:43821/api/status)" || {
+  echo "notion2CLI bridge 不可达：127.0.0.1:43821 无响应。" >&2
+  exit 1
+}
+
+node -e '
+const chunks = [];
+process.stdin.on("data", chunk => chunks.push(chunk));
+process.stdin.on("end", () => {
+  const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  console.log(JSON.stringify(data, null, 2));
+  if (data.standalone) {
+    console.log("\\n提示：当前连到的是 standalone 调试 bridge。浏览器里的结果来自本地模拟回复，不会注入当前 Claude 会话。");
+  }
+});
+' <<<"$response"
