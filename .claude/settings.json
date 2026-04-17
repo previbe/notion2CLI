@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(notion2cli-connect *)",
+      "Bash(notion2cli-status *)",
+      "Bash(/Users/morrow/coding/notion2CLI/bin/notion2cli-connect *)",
+      "Bash(/Users/morrow/coding/notion2CLI/bin/notion2cli-status *)",
+      "Bash(claude mcp *)",
+      "WebFetch(domain:developers.notion.com)",
+      "mcp__notion2cli_bridge__reply",
+      "mcp__notion"
+    ]
+  }
+}

@@ -1,8 +1,12 @@
 # notion2CLI
 
-`notion2CLI` 是一个本地优先的 MVP：你在浏览器版 Notion 中点一下按钮，把“选中的内容”或“整页内容”送进 Claude Code，并让当前 Claude 会话直接回答。
+`notion2CLI` 是一个本地优先的 MVP：你在浏览器版 Notion 中点一下按钮，把“选中的内容”或“当前整页”送进 Claude Code，并让当前 Claude 会话直接回答。
 
-它不是云服务，也不是 Notion 官方插件。这个版本只验证一件事：**Notion 里的内容能否被可靠地送到 Claude，并拿回回复。**
+它不是云服务，也不是 Notion 官方插件。当前版本采用混合架构：
+
+- 浏览器扩展负责捕获当前页面 URL 和用户当前选区
+- Notion 官方 MCP 负责读取整页正文和把结果写回文档
+- 本地 bridge 负责把浏览器动作送进当前 Claude Code 会话，并把回复回传到页面面板
 
 它由三部分组成：
 
@@ -13,7 +17,9 @@
 ## 这个版本能做什么
 
 - 在 `notion.so` 页面注入一个悬浮按钮
-- 把选中文本或整页内容发给 Claude
+- 把选中文本直接发给 Claude
+- 未选中文本时，通过 Notion MCP 读取当前整页内容再交给 Claude 处理
+- 把 Claude 的最新结果通过 Notion MCP 追加写回当前 Notion 页面
 - 把 Claude 的回复回传到浏览器中的结果卡片
 
 ## 系统架构
@@ -75,6 +81,14 @@ claude mcp add --transport http notion https://mcp.notion.com/mcp
 
 之后在 Claude Code 里用 `/mcp` 完成 OAuth。
 
+如果你希望把这个配置共享给当前项目，也可以按照 Notion 官方文档使用 `--scope project` 写入项目级配置。无论采用哪种 scope，都需要完成一次 OAuth 才能读写页面。
+
+如果你已经把浏览器扩展和当前 Claude 会话配对好了，也可以直接在 Notion 页面右下角结果面板里点击“安装”。扩展会把下面这句原样送进当前 Claude 会话，请 Claude 按官方文档完成配置：
+
+```text
+按照以下 notion 官方文档完成 notion MCP 的安装与授权：https://developers.notion.com/guides/mcp/get-started-with-mcp
+```
+
 ### 4. 通过开发者模式加载 Chrome 扩展
 
 1. 打开 `chrome://extensions`
@@ -99,9 +113,17 @@ claude mcp add --transport http notion https://mcp.notion.com/mcp
 1. 在浏览器里打开一个 Notion 页面
 2. 可选：先选中一段文字
 3. 点击右下角悬浮按钮
-4. 点击“发送到 Claude”
-5. Claude Code 当前会话会把这段内容当作输入并开始回答
+4. 如果有选区，点击“发送选中内容”；如果没有选区，点击“发送整页（MCP）”
+5. Claude Code 当前会话会开始回答
 6. 结果会出现在页面右下角的结果卡片里
+7. 如果要把结果写回当前 Notion 页面，点击“写回 Notion”
+
+### 读取与写回规则
+
+- 选中文本：仍然来自浏览器当前选区，因为这是瞬时 UI 状态，不属于 Notion MCP 的持久数据模型
+- 整页正文：默认通过 Notion 官方 MCP 读取，不再依赖浏览器 DOM 抓整页 `innerText`
+- 写回文档：默认通过 Notion 官方 MCP 追加一个新的 Markdown section，不覆盖原文
+- 结果面板：继续由本地 bridge 回传并展示，不直接写进 Notion
 
 ## 调试
 
@@ -162,6 +184,7 @@ notion2CLI/
 - 只支持浏览器版 Notion
 - 只支持单机、本地 Claude Code 会话
 - 配对状态按 Claude 会话生命周期管理；重启会话后需要重新配对
-- 默认只把结果显示在浏览器卡片里，不自动写回 Notion
-- 当前版本会把选中内容或整页内容当作当前 Claude 会话输入来回答，但还没有把回复写回 Notion 文档
+- 整页读取和写回依赖当前 Claude 会话中已连接并已授权的 Notion 官方 MCP
+- 选中内容仍然来自浏览器选区，不通过 MCP 获取当前高亮范围
+- 写回默认采用追加 section 的安全路径，不做原地覆盖或 DOM 回填
 - 依赖 Claude Code `Channels` 研究预览能力，因此启动时仍需 development channels 标志

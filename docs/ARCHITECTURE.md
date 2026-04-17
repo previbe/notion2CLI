@@ -8,15 +8,17 @@
 - **Chrome 扩展**：负责把点击动作和当前页面信息收集起来
 - **本地 bridge**：像一个门卫，只在你电脑本地监听
 - **Claude Code 会话**：真正执行任务的地方
+- **Notion 官方 MCP**：负责读取整页和写回页面的权威通道
 
 流程如下：
 
 1. 你在 Notion 页面点按钮
-2. 扩展把“当前页面是什么、你选中了什么”发给本地 bridge
+2. 扩展把“当前页面 URL 是什么、你选中了什么、你是要处理还是要写回”发给本地 bridge
 3. bridge 把这个事件推进当前 Claude Code 会话
-4. Claude 确认自己收到了这段原文
-5. Claude 用 `reply tool` 把结果送回 bridge
-6. 扩展轮询 bridge，把结果显示在 Notion 页面右下角
+4. 如果你选中了文字，Claude 直接处理选区；如果你没选区，Claude 通过 Notion 官方 MCP 读取整页
+5. 如果你点击“写回 Notion”，Claude 通过 Notion 官方 MCP 把结果追加回当前页面
+6. Claude 用 `reply tool` 把结果或写回确认送回 bridge
+7. 扩展轮询 bridge，把结果显示在 Notion 页面右下角
 
 ## 架构图
 
@@ -33,6 +35,8 @@ sequenceDiagram
   Notion->>Ext: 当前页面 + 选中文本
   Ext->>Bridge: POST /api/jobs
   Bridge->>Claude: Channel event
+  Claude->>MCP: notion-fetch / notion-update-page
+  MCP->>Notion: 读写页面
   Claude->>Bridge: reply tool
   Bridge-->>Ext: Job 状态变为 completed
   Ext-->>User: 在页面里显示结果
@@ -59,21 +63,33 @@ sequenceDiagram
 因为你当前真正要验证的不是“Claude 处理得好不好”，而是：
 
 - 能不能在 Notion 中点一下
-- 能不能拿到选中或整页原文
+- 能不能拿到用户当前选区
+- 能不能稳定读取整页权威内容
 - 能不能把它送到 Claude
 - 能不能拿回一个明确回执
 
 先把这条链路证明，再加“总结、改写、任务提炼”才合理。
 
-### 为什么先不自动写回 Notion
+### 为什么选区不改成 MCP
+
+因为选区是浏览器里的瞬时状态，不是 Notion 后端的持久对象。MCP 很适合读取页面和写回页面，但不负责“你此刻框选了哪几个字符”。
+
+所以这里采用混合做法：
+
+- 选区：浏览器扩展负责
+- 整页读取：Notion MCP 负责
+- 写回页面：Notion MCP 负责
+- 临时结果展示：浏览器面板负责
+
+### 为什么写回默认只做追加
 
 自动写回牵涉到：
 
 - 权限
 - 覆盖原内容的风险
-- UI 上的确认机制
+- 结果是否需要人工确认
 
-第一版先把结果安全地显示给用户，再决定是否写回。
+因此默认策略不是“原地替换”，而是“追加一个新的 Markdown section”。这样更符合安全优先和官方 MCP/Markdown 更新接口的使用方式，也更容易审计。
 
 ## MVP 技术边界
 
@@ -82,4 +98,6 @@ sequenceDiagram
 - 配对码有效期 5 分钟
 - 每个 Claude 会话都有自己的本地 bridge 状态
 - 未配对时，扩展只能提示连接，不能发任务
+- 整页读取与写回要求当前 Claude 会话已连接并授权 Notion 官方 MCP
+- 默认写回路径是追加，不做破坏性替换
 - 预览期的 Channels 仍要求启动时显式放行 development channel

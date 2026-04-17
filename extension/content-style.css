@@ -133,6 +133,13 @@
   box-shadow: 0 14px 24px rgba(92, 122, 74, 0.22);
 }
 
+.n2c-send:disabled {
+  background: rgba(92, 122, 74, 0.38);
+  cursor: default;
+  box-shadow: none;
+  transform: none;
+}
+
 .n2c-send-hint {
   margin-top: 10px;
   font-size: 11px;
@@ -184,8 +191,7 @@
 }
 
 .n2c-copy {
-  margin-top: 14px;
-  width: 100%;
+  flex: 1;
   padding: 11px 12px;
   border: 0;
   border-radius: 14px;
@@ -198,6 +204,80 @@
 
 .n2c-copy:disabled {
   background: rgba(92, 122, 74, 0.38);
+  cursor: default;
+}
+
+.n2c-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.n2c-write {
+  flex: 1;
+  padding: 11px 12px;
+  border: 1px solid rgba(68, 84, 63, 0.18);
+  border-radius: 14px;
+  background: rgba(247, 243, 234, 0.92);
+  color: #32422b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-write:disabled {
+  color: rgba(50, 66, 43, 0.45);
+  border-color: rgba(68, 84, 63, 0.1);
+  background: rgba(247, 243, 234, 0.55);
+  cursor: default;
+}
+
+.n2c-write-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(37, 48, 31, 0.66);
+}
+
+.n2c-install-card {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(233, 226, 213, 0.48);
+  border: 1px solid rgba(68, 84, 63, 0.12);
+}
+
+.n2c-install-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #243020;
+}
+
+.n2c-install-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #48653b;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.n2c-install {
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(68, 84, 63, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 252, 247, 0.92);
+  color: #32422b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-install:disabled {
+  color: rgba(50, 66, 43, 0.45);
+  border-color: rgba(68, 84, 63, 0.1);
+  background: rgba(247, 243, 234, 0.55);
   cursor: default;
 }
 

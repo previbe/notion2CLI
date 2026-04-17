@@ -30,16 +30,23 @@ function logToStderr(message, extra = null) {
   process.stderr.write(`[notion2cli] ${message}${suffix}\n`);
 }
 
+const ACTION_FORWARD_SELECTION = 'forward_selection_text';
+const ACTION_FORWARD_FULL_PAGE = 'forward_full_page_via_mcp';
+const ACTION_WRITE_REPLY = 'write_reply_to_notion';
+const ACTION_INSTALL_NOTION_MCP = 'install_notion_mcp';
+
 const instructions = [
   'Events from notion2cli arrive as <channel source="notion2cli_bridge" chat_id="..." ...>JSON</channel>.',
   'Treat each event as a browser user action that originated from a Notion page on the local machine.',
-  'The JSON body includes page metadata, optional selected text, and a rough DOM snapshot.',
-  'Treat selectionText as the user input when it is non-empty. Otherwise treat snapshotText as the user input.',
-  'Use the Notion page metadata only as context. Do not ignore the actual text payload.',
-  'Answer the selected text or page text directly in Chinese as if the user had typed that content into the current Claude Code session.',
-  'If the payload is a question, answer it directly. If it is an instruction, execute it within the limits of the current session. If it is reference material without a direct question, give a short helpful response that acknowledges what was received and what you can do next.',
-  'After producing the answer for the current Claude Code conversation, call the reply tool exactly once with the same chat_id so the browser panel receives the result too.',
-  'The reply text should be the same substantive answer the user would want to read in Claude Code, not a transport receipt.',
+  'Always inspect the JSON action field before deciding what to do.',
+  `If action is "${ACTION_FORWARD_SELECTION}", treat selectionText as the authoritative user input. Use page metadata only as context, and do not fetch the whole page unless the request truly requires extra context.`,
+  `If action is "${ACTION_FORWARD_FULL_PAGE}", use Notion MCP to fetch the current page from pageUrl before answering. Prefer the Notion MCP content as the source of truth for the full document, not browser DOM text. If Notion MCP is unavailable, unauthenticated, or lacks access to the page, say that clearly and do not pretend you read the document.`,
+  `For "${ACTION_FORWARD_FULL_PAGE}", prefer official Notion MCP tools such as notion-fetch. When the fetched page is partial or truncated, mention that limitation briefly in the answer.`,
+  `If action is "${ACTION_WRITE_REPLY}", first resolve the target page from pageUrl using Notion MCP, then write replyTextToWrite back to that same page using a non-destructive append/update flow. Prefer appending a new markdown section to the end of the page instead of replacing existing page content.`,
+  `For "${ACTION_WRITE_REPLY}", use writeSectionTitle when provided. Unless the payload explicitly says otherwise, do not overwrite existing Notion content and do not use destructive replace modes.`,
+  `If action is "${ACTION_INSTALL_NOTION_MCP}", treat installPrompt as a direct user instruction for the current Claude Code session. Use officialDocUrl as the canonical Notion documentation link. Help the user install and authorize the official Notion MCP for Claude Code according to that guide. If OAuth still requires the user to complete a step manually, say exactly what remains.`,
+  'Answer in Chinese by default. For content-forwarding actions, the reply text should be the same substantive answer the user would want to read in Claude Code. For write-back actions, the reply should be a short confirmation describing what was appended or a clear error if the write failed.',
+  'After handling the current action, call the reply tool exactly once with the same chat_id so the browser panel receives the result too.',
   'Keep the reply compact and readable in a small browser panel unless the request clearly needs more detail.',
 ].join(' ');
 
@@ -265,11 +272,28 @@ async function handleCreateJob(res, token, body) {
   const pageUrl = String(body?.pageUrl || '').trim();
   const pageTitle = String(body?.pageTitle || 'Untitled Notion Page').trim();
   const selectionText = String(body?.selectionText || '').trim();
-  const snapshotText = String(body?.snapshotText || '').trim();
+  const replyTextToWrite = String(body?.replyTextToWrite || '').trim();
+  const writeMode = normalizeWriteMode(body?.writeMode);
+  const writeSectionTitle = String(body?.writeSectionTitle || 'Claude Code').trim() || 'Claude Code';
+  const sourceReplyJobId = String(body?.sourceReplyJobId || '').trim();
+  const installPrompt = String(body?.installPrompt || '').trim();
+  const officialDocUrl = String(body?.officialDocUrl || '').trim();
   const source = String(body?.source || 'browser-extension').trim();
 
   if (!pageUrl) {
     throw httpError(400, 'pageUrl is required');
+  }
+
+  if (action === ACTION_FORWARD_SELECTION && !selectionText) {
+    throw httpError(400, 'selectionText is required for selection actions');
+  }
+
+  if (action === ACTION_WRITE_REPLY && !replyTextToWrite) {
+    throw httpError(400, 'replyTextToWrite is required for write-back actions');
+  }
+
+  if (action === ACTION_INSTALL_NOTION_MCP && !installPrompt) {
+    throw httpError(400, 'installPrompt is required for install actions');
   }
 
   const jobId = randomUUID();
@@ -282,7 +306,12 @@ async function handleCreateJob(res, token, body) {
     pageUrl,
     pageTitle,
     selectionText,
-    snapshotText,
+    replyTextToWrite,
+    writeMode,
+    writeSectionTitle,
+    sourceReplyJobId,
+    installPrompt,
+    officialDocUrl,
     source,
     replyText: '',
     error: null,
@@ -300,7 +329,9 @@ async function handleCreateJob(res, token, body) {
     action,
     standalone,
     selectionChars: selectionText.length,
-    snapshotChars: snapshotText.length,
+    writeChars: replyTextToWrite.length,
+    writeMode,
+    installPromptChars: installPrompt.length,
     pageTitle: safeMetaValue(pageTitle, 80),
   });
 
@@ -313,7 +344,12 @@ async function handleCreateJob(res, token, body) {
         pageUrl,
         pageTitle,
         selectionText,
-        snapshotText,
+        replyTextToWrite,
+        writeMode,
+        writeSectionTitle,
+        sourceReplyJobId,
+        installPrompt,
+        officialDocUrl,
         source,
         requestedAt: job.createdAt,
       },
@@ -329,6 +365,8 @@ async function handleCreateJob(res, token, body) {
           chat_id: jobId,
           action,
           has_selection: selectionText ? 'true' : 'false',
+          write_mode: writeMode,
+          official_doc_url: safeMetaValue(officialDocUrl, 240),
           page_title: safeMetaValue(pageTitle, 80),
           page_url: safeMetaValue(pageUrl, 240),
         },
@@ -372,6 +410,7 @@ function handleReadJob(res, token, jobId) {
       replyText: job.replyText,
       error: job.error,
       selectionPreview: truncate(job.selectionText, 320),
+      writeMode: job.writeMode,
       history: job.history,
     },
   });
@@ -386,14 +425,9 @@ function simulateStandaloneReply(job) {
   });
 
   setTimeout(() => {
-    const prompt = job.selectionText || job.snapshotText || '(空文本)';
     job.status = 'completed';
     job.updatedAt = nowIso();
-    job.replyText = [
-      '当前是 standalone 本地调试模式，下面是模拟回复。',
-      '',
-      `我收到的内容是：${prompt}`,
-    ].join('\n');
+    job.replyText = buildStandaloneReply(job);
     job.history.push({
       at: job.updatedAt,
       type: 'standalone_reply',
@@ -404,8 +438,47 @@ function simulateStandaloneReply(job) {
 
 function normalizeAction(value) {
   const action = String(value || '').trim();
-  const allowed = new Set(['forward_raw_text']);
-  return allowed.has(action) ? action : 'forward_raw_text';
+  const allowed = new Set([ACTION_FORWARD_SELECTION, ACTION_FORWARD_FULL_PAGE, ACTION_WRITE_REPLY, ACTION_INSTALL_NOTION_MCP]);
+  return allowed.has(action) ? action : ACTION_FORWARD_FULL_PAGE;
+}
+
+function normalizeWriteMode(value) {
+  const mode = String(value || '').trim();
+  return mode === 'append_markdown_section' ? mode : 'append_markdown_section';
+}
+
+function buildStandaloneReply(job) {
+  if (job.action === ACTION_WRITE_REPLY) {
+    return [
+      '当前是 standalone 本地调试模式，下面是模拟写回结果。',
+      '',
+      `会向页面《${job.pageTitle}》追加一个标题为“${job.writeSectionTitle}”的新 section。`,
+      '',
+      truncate(job.replyTextToWrite, 600),
+    ].join('\n');
+  }
+
+  if (job.action === ACTION_FORWARD_SELECTION) {
+    return [
+      '当前是 standalone 本地调试模式，下面是模拟回复。',
+      '',
+      `我收到的选中文本是：${job.selectionText || '(空文本)'}`,
+    ].join('\n');
+  }
+
+  if (job.action === ACTION_INSTALL_NOTION_MCP) {
+    return [
+      '当前是 standalone 本地调试模式，下面是模拟安装提示。',
+      '',
+      job.installPrompt || '请按官方文档完成 Notion MCP 的安装与授权。',
+    ].join('\n');
+  }
+
+  return [
+    '当前是 standalone 本地调试模式，下面是模拟回复。',
+    '',
+    `我会在真实模式下通过 Notion MCP 读取页面《${job.pageTitle}》的全文并处理它。`,
+  ].join('\n');
 }
 
 function safeMetaValue(value, maxLength) {
