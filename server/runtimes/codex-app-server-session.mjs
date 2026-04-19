@@ -11,7 +11,7 @@ export class CodexAppServerSession {
   constructor({
     jobId,
     cwd,
-    prompt,
+    inputItems,
     model,
     profile,
     extraArgs,
@@ -24,7 +24,7 @@ export class CodexAppServerSession {
   }) {
     this.jobId = jobId;
     this.cwd = cwd;
-    this.prompt = prompt;
+    this.inputItems = Array.isArray(inputItems) ? inputItems : [];
     this.model = model || null;
     this.profile = profile || '';
     this.extraArgs = Array.isArray(extraArgs) ? extraArgs : [];
@@ -112,13 +112,7 @@ export class CodexAppServerSession {
 
       const turnResponse = await this.sendRequest('turn/start', {
         threadId: this.threadId,
-        input: [
-          {
-            type: 'text',
-            text: this.prompt,
-            text_elements: [],
-          },
-        ],
+        input: this.inputItems,
         approvalPolicy: 'on-request',
       });
       this.turnId = turnResponse?.turn?.id || null;
@@ -322,6 +316,29 @@ export class CodexAppServerSession {
     this.onFailed?.(message, meta);
     this.shutdown();
   }
+}
+
+export function buildCodexInputItems({ prompt, images = [] }) {
+  const items = [];
+
+  for (const image of images) {
+    if (!image?.cachePath) {
+      continue;
+    }
+
+    items.push({
+      type: 'localImage',
+      path: image.cachePath,
+    });
+  }
+
+  items.push({
+    type: 'text',
+    text: prompt,
+    text_elements: [],
+  });
+
+  return items;
 }
 
 export function buildCodexAppServerArgs({ profile, extraArgs }) {

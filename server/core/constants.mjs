@@ -15,7 +15,17 @@ export const ACTIONS = new Set([
   ACTION_INSTALL_NOTION_MCP,
 ]);
 
-export const DEFAULT_WRITE_MODE = 'append_markdown_section';
+export const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
+export const WRITE_MODE_UPDATE_CONTENT = 'update_content';
+export const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
+
+export const WRITE_MODES = new Set([
+  WRITE_MODE_APPEND_SECTION,
+  WRITE_MODE_UPDATE_CONTENT,
+  WRITE_MODE_REPLACE_CONTENT,
+]);
+
+export const DEFAULT_WRITE_MODE = WRITE_MODE_APPEND_SECTION;
 export const DEFAULT_WRITE_SECTION_TITLE = 'notion2CLI';
 
 export const JOB_STATUS_QUEUED = 'queued';
@@ -36,13 +46,6 @@ export function nowIso() {
 
 export function truncate(text, maxLength) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
-}
-
-export function safeMetaValue(value, maxLength) {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLength);
 }
 
 export function readBearer(req) {

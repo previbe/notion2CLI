@@ -294,6 +294,32 @@
   color: rgba(37, 48, 31, 0.66);
 }
 
+.n2c-write-config {
+  margin-top: 14px;
+}
+
+.n2c-write-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(37, 48, 31, 0.72);
+}
+
+.n2c-write-select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(68, 84, 63, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 252, 247, 0.92);
+  color: #243020;
+  font-size: 12px;
+}
+
+.n2c-write-hint-danger {
+  color: #8a402f;
+}
+
 .n2c-install-card {
   margin-top: 14px;
   padding: 14px;

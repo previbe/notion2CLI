@@ -2,6 +2,8 @@ import {
   ACTION_FORWARD_SELECTION,
   ACTION_INSTALL_NOTION_MCP,
   ACTION_WRITE_REPLY,
+  WRITE_MODE_REPLACE_CONTENT,
+  WRITE_MODE_UPDATE_CONTENT,
 } from '../core/constants.mjs';
 
 export class StandaloneRuntime {
@@ -46,17 +48,9 @@ export class StandaloneRuntime {
         launchMode: 'simulator',
         ready: true,
         standalone: true,
-        sessionAttached: false,
         pairingCommand: 'notion2cli pair',
         launchCommand: 'notion2cli daemon start --runtime standalone',
         statusMessage: 'standalone 本地调试模式已就绪。',
-      },
-      capabilities: {
-        supportsInteractiveSessionAttach: false,
-        supportsStandaloneDispatch: true,
-        supportsNotionRead: false,
-        supportsNotionWrite: false,
-        supportsInstallGuidance: false,
       },
       notionMcp: {
         status: 'unavailable',
@@ -68,6 +62,28 @@ export class StandaloneRuntime {
 
 function buildStandaloneReply(job) {
   if (job.action === ACTION_WRITE_REPLY) {
+    if (job.writeMode === WRITE_MODE_UPDATE_CONTENT) {
+      return [
+        '当前是 standalone 本地调试模式，下面是模拟写回结果。',
+        '',
+        `会在页面《${job.pageTitle}》里把当前选中的原文替换为新的内容。`,
+        '',
+        `原文：${job.selectionText || '(空选区)'}`,
+        '',
+        job.replyTextToWrite.slice(0, 600),
+      ].join('\n');
+    }
+
+    if (job.writeMode === WRITE_MODE_REPLACE_CONTENT) {
+      return [
+        '当前是 standalone 本地调试模式，下面是模拟写回结果。',
+        '',
+        `会用新的 Markdown 内容覆盖页面《${job.pageTitle}》的正文。`,
+        '',
+        job.replyTextToWrite.slice(0, 600),
+      ].join('\n');
+    }
+
     return [
       '当前是 standalone 本地调试模式，下面是模拟写回结果。',
       '',
@@ -82,6 +98,9 @@ function buildStandaloneReply(job) {
       '当前是 standalone 本地调试模式，下面是模拟回复。',
       '',
       `我收到的选中文本是：${job.selectionText || '(空文本)'}`,
+      Array.isArray(job.inputBundle?.images) && job.inputBundle.images.length
+        ? `同时还附带了 ${job.inputBundle.images.length} 张页面图片工件。`
+        : null,
     ].join('\n');
   }
 
@@ -96,6 +115,11 @@ function buildStandaloneReply(job) {
   return [
     '当前是 standalone 本地调试模式，下面是模拟回复。',
     '',
-    `我会在真实模式下通过 Notion MCP 读取页面《${job.pageTitle}》的全文并处理它。`,
+    job.inputBundle?.pageBundle
+      ? `bridge 已经预取页面《${job.pageTitle}》的全文 bundle，真实 runtime 会优先消费这份 bundle。`
+      : `我会在真实模式下通过 Notion MCP 读取页面《${job.pageTitle}》的全文并处理它。`,
+    Array.isArray(job.inputBundle?.images) && job.inputBundle.images.length
+      ? `当前还检测到了 ${job.inputBundle.images.length} 张页面图片，真实 runtime 会把它们一并交给 CLI。`
+      : null,
   ].join('\n');
 }

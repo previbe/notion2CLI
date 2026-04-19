@@ -1,6 +1,7 @@
 import { buildCodexPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
-import { CodexAppServerSession, buildCodexAppServerArgs } from './codex-app-server-session.mjs';
+import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
+import { CodexAppServerSession, buildCodexAppServerArgs, buildCodexInputItems } from './codex-app-server-session.mjs';
 import { runCommand } from './exec-utils.mjs';
 
 const MCP_PROBE_TTL_MS = 15000;
@@ -19,6 +20,7 @@ export class CodexRuntime {
     this.ready = false;
     this.statusMessage = '等待检查 Codex CLI。';
     this.runningJobs = new Map();
+    this.auxiliarySessions = new Set();
     this.cachedMcpStatus = null;
   }
 
@@ -41,12 +43,39 @@ export class CodexRuntime {
       session.shutdown();
     }
     this.runningJobs.clear();
+    for (const session of this.auxiliarySessions.values()) {
+      session.shutdown();
+    }
+    this.auxiliarySessions.clear();
   }
 
   async startPairing() {
     if (!this.ready) {
       throw new Error(this.statusMessage || 'Codex CLI is not ready');
     }
+  }
+
+  async fetchPageBundle({ pageUrl, pageTitle }) {
+    if (!this.ready) {
+      throw new Error(this.statusMessage || 'Codex CLI is not ready');
+    }
+
+    const prompt = buildRuntimePageBundleFetchPrompt({
+      pageUrl,
+      pageTitle,
+      runtimeLabel: 'the local Codex CLI runtime',
+    });
+    this.log('codex page bundle fetch requested', {
+      pageUrl,
+      pageTitle,
+    });
+    const replyText = await this.runEphemeralPrompt(prompt);
+    this.log('codex page bundle fetch completed', {
+      pageUrl,
+      pageTitle,
+      replyChars: replyText.length,
+    });
+    return replyText;
   }
 
   async dispatchJob(job) {
@@ -62,6 +91,10 @@ export class CodexRuntime {
     const prompt = buildCodexPrompt(job, {
       notionMcpHint: 'Use the configured Notion MCP tools when the action requires full-page reading or write-back.',
     });
+    const inputItems = buildCodexInputItems({
+      prompt,
+      images: job.inputBundle?.images || [],
+    });
 
     this.context.markJobDispatched(job.id, {
       type: 'sent_to_codex_app_server',
@@ -74,7 +107,7 @@ export class CodexRuntime {
     const session = new CodexAppServerSession({
       jobId: job.id,
       cwd: this.cwd,
-      prompt,
+      inputItems,
       model: this.model,
       profile: this.profile,
       extraArgs: this.extraArgs,
@@ -172,17 +205,9 @@ export class CodexRuntime {
         launchMode: 'app-server',
         ready: this.ready,
         standalone: false,
-        sessionAttached: false,
         pairingCommand: 'notion2cli pair',
         launchCommand: 'notion2cli daemon start --runtime codex',
         statusMessage: this.statusMessage,
-      },
-      capabilities: {
-        supportsInteractiveSessionAttach: false,
-        supportsStandaloneDispatch: true,
-        supportsNotionRead: true,
-        supportsNotionWrite: true,
-        supportsInstallGuidance: true,
       },
       notionMcp: await this.getNotionMcpStatus(),
     };
@@ -304,6 +329,67 @@ export class CodexRuntime {
     ].filter(Boolean).join('\n\n'), {
       type: 'codex_mcp_install_incomplete',
       runtimeMeta: { runtime: 'codex' },
+    });
+  }
+
+  async runEphemeralPrompt(prompt) {
+    const inputItems = buildCodexInputItems({
+      prompt,
+      images: [],
+    });
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const session = new CodexAppServerSession({
+        jobId: `prefetch-${Date.now()}`,
+        cwd: this.cwd,
+        inputItems,
+        model: this.model,
+        profile: this.profile,
+        extraArgs: this.extraArgs,
+        log: this.log,
+        onRunning: ({ threadId, turnId }) => {
+          this.log('codex auxiliary session running', {
+            threadId,
+            turnId,
+          });
+        },
+        onApprovalRequested: ({ pendingApproval }) => {
+          rejectOnce(new Error(`Page bundle fetch unexpectedly requested approval: ${pendingApproval.message}`));
+        },
+        onCompleted: (replyText) => {
+          resolveOnce(replyText);
+        },
+        onFailed: (errorText) => {
+          rejectOnce(new Error(errorText || 'Codex auxiliary session failed'));
+        },
+        onClosed: () => {
+          this.auxiliarySessions.delete(session);
+        },
+      });
+
+      const resolveOnce = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.auxiliarySessions.delete(session);
+        resolve(value);
+      };
+
+      const rejectOnce = (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.auxiliarySessions.delete(session);
+        reject(error);
+      };
+
+      this.auxiliarySessions.add(session);
+      session.start().catch((error) => {
+        rejectOnce(error);
+      });
     });
   }
 }

@@ -7,6 +7,8 @@ import {
   ACTION_WRITE_REPLY,
   DEFAULT_WRITE_MODE,
   DEFAULT_WRITE_SECTION_TITLE,
+  WRITE_MODE_UPDATE_CONTENT,
+  WRITE_MODES,
   createHttpError,
 } from './constants.mjs';
 
@@ -45,7 +47,8 @@ function normalizeAction(action) {
 }
 
 function normalizeWriteMode(mode) {
-  return String(mode || '').trim() === DEFAULT_WRITE_MODE ? DEFAULT_WRITE_MODE : DEFAULT_WRITE_MODE;
+  const candidate = String(mode || '').trim();
+  return WRITE_MODES.has(candidate) ? candidate : DEFAULT_WRITE_MODE;
 }
 
 function trimOrDefault(value, fallback = '') {
@@ -82,6 +85,10 @@ export function parseJobRequest(body) {
 
   if (payload.action === ACTION_WRITE_REPLY && !payload.replyTextToWrite) {
     throw invalidPayload('replyTextToWrite is required for write-back actions');
+  }
+
+  if (payload.action === ACTION_WRITE_REPLY && payload.writeMode === WRITE_MODE_UPDATE_CONTENT && !payload.selectionText) {
+    throw invalidPayload('selectionText is required for update_content write-back actions');
   }
 
   if (payload.action === ACTION_INSTALL_NOTION_MCP && !payload.installPrompt) {

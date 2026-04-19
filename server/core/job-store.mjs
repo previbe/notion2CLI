@@ -6,6 +6,7 @@ import {
   nowIso,
   truncate,
 } from './constants.mjs';
+import { summarizePageBundle } from './mcp-page-bundle.mjs';
 
 export class JobStore {
   constructor() {
@@ -18,6 +19,7 @@ export class JobStore {
     const job = {
       id,
       ...payload,
+      inputBundle: null,
       status: JOB_STATUS_QUEUED,
       createdAt,
       updatedAt: createdAt,
@@ -74,6 +76,10 @@ export class JobStore {
         };
       }
 
+      if (Object.hasOwn(event, 'inputBundle')) {
+        job.inputBundle = event.inputBundle;
+      }
+
       job.updatedAt = at;
       job.history.push({
         at,
@@ -116,10 +122,12 @@ export class JobStore {
       replyText: job.replyText,
       error: job.error,
       selectionPreview: truncate(job.selectionText, 320),
+      attachedImageCount: Array.isArray(job.inputBundle?.images) ? job.inputBundle.images.length : 0,
+      pageBundle: summarizePageBundle(job.inputBundle?.pageBundle || null),
+      artifactSource: job.inputBundle?.artifactSource || '',
       writeMode: job.writeMode,
       runtimeMeta: job.runtimeMeta,
       history: job.history,
     };
   }
 }
-

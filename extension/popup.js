@@ -23,9 +23,7 @@ async function refreshStatus() {
     statusValue.textContent = connected
       ? runtime.standalone
         ? `已连接 ${runtimeLabel}（调试）`
-        : runtime.sessionAttached
-          ? `已连接 ${runtimeLabel} 当前会话`
-          : `已连接 ${runtimeLabel} bridge`
+        : `已连接 ${runtimeLabel} bridge`
       : status.awaitingPairCode
         ? '等待输入配对码'
         : runtimeReady
@@ -35,9 +33,7 @@ async function refreshStatus() {
     statusHint.textContent = connected
       ? runtime.standalone
         ? '当前连到的是 standalone 模拟器。浏览器会收到模拟结果，不会调用真实 Claude/Codex 运行时。'
-        : runtime.sessionAttached
-          ? 'bridge 已就绪，可回到 Notion 页面直接点击按钮。'
-          : `bridge 已就绪，后续动作会通过 ${runtimeLabel} 的后台任务模式处理。`
+        : `bridge 已就绪，后续动作会通过 ${runtimeLabel} 的后台任务模式处理。`
       : status.awaitingPairCode
         ? 'bridge 已生成配对码。请把 6 位数字贴到下面。'
         : runtimeReady

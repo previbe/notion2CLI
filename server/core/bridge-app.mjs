@@ -1,4 +1,5 @@
 import {
+  ACTION_FORWARD_FULL_PAGE,
   JOB_STATUS_COMPLETED,
   JOB_STATUS_DISPATCHED,
   JOB_STATUS_FAILED,
@@ -9,6 +10,10 @@ import {
 } from './constants.mjs';
 import { JobStore } from './job-store.mjs';
 import { PairingStore } from './pairing-store.mjs';
+import { ArtifactStore } from './artifact-store.mjs';
+import { createInputBundle } from './input-bundle.mjs';
+import { RuntimeBackedNotionPageBundleProvider } from './page-bundle-provider.mjs';
+import { summarizePageBundle } from './mcp-page-bundle.mjs';
 import { parseApprovalResolution, parseJobRequest, parsePairConfirm } from './schemas.mjs';
 
 export class BridgeApp {
@@ -18,6 +23,8 @@ export class BridgeApp {
     this.startedAt = new Date().toISOString();
     this.jobStore = new JobStore();
     this.pairingStore = new PairingStore();
+    this.artifactStore = new ArtifactStore({ log });
+    this.pageBundleProvider = new RuntimeBackedNotionPageBundleProvider({ runtime, log });
     this.runtimeContext = this.createRuntimeContext();
   }
 
@@ -44,7 +51,6 @@ export class BridgeApp {
       bridgeRunning: true,
       startedAt: this.startedAt,
       runtime: runtimeStatus.runtime,
-      capabilities: runtimeStatus.capabilities,
       notionMcp: runtimeStatus.notionMcp,
       ...this.pairingStore.getPublicSnapshot(authenticated),
       pendingJobs: this.jobStore.pendingCount(),
@@ -88,6 +94,75 @@ export class BridgeApp {
     });
 
     try {
+      let pageBundle = null;
+      let pageBundleWarnings = [];
+      if (job.action === ACTION_FORWARD_FULL_PAGE) {
+        const pageBundleResult = await this.pageBundleProvider.fetchPageBundle(job);
+        pageBundle = pageBundleResult.bundle;
+        pageBundleWarnings = Array.isArray(pageBundleResult.warnings) ? pageBundleResult.warnings : [];
+        if (!pageBundle) {
+          const message = pageBundleWarnings[0] || 'bridge 无法为当前整页请求准备 page bundle。';
+          throw new Error(message);
+        }
+
+        this.log('page bundle prepared', {
+          jobId: job.id,
+          action: job.action,
+          summary: summarizePageBundle(pageBundle),
+          warnings: pageBundleWarnings,
+        });
+
+        this.recordJobEvent(job.id, {
+          type: 'page_bundle_prepared',
+          note: 'bridge 已通过 runtime-backed MCP 预取当前页面内容。',
+          extra: {
+            warnings: pageBundleWarnings,
+            summary: summarizePageBundle(pageBundle),
+          },
+          runtimeMeta: {
+            pageBundle: summarizePageBundle(pageBundle),
+          },
+        });
+      }
+
+      const inputBundle = await createInputBundle(job, {
+        artifactStore: this.artifactStore,
+        pageBundle,
+        log: this.log,
+      });
+      if (pageBundleWarnings.length) {
+        inputBundle.warnings = [...pageBundleWarnings, ...inputBundle.warnings];
+      }
+      this.log('input bundle prepared', {
+        jobId: job.id,
+        artifactSource: inputBundle.artifactSource,
+        pageBundle: summarizePageBundle(pageBundle),
+        imageCount: inputBundle.images.length,
+        warnings: inputBundle.warnings,
+        images: inputBundle.images.map((image) => ({
+          sourceUrl: image.sourceUrl,
+          mimeType: image.mimeType,
+          cachePath: image.cachePath,
+          width: image.width,
+          height: image.height,
+        })),
+      });
+      this.recordJobEvent(job.id, {
+        type: 'input_bundle_prepared',
+        note: inputBundle.images.length
+          ? `已准备 ${inputBundle.images.length} 个本地图片工件。`
+          : null,
+        extra: inputBundle.warnings.length ? { warnings: inputBundle.warnings } : null,
+        inputBundle,
+        runtimeMeta: {
+          inputBundle: {
+            artifactSource: inputBundle.artifactSource,
+            imageCount: inputBundle.images.length,
+            warnings: inputBundle.warnings,
+            pageBundle: summarizePageBundle(pageBundle),
+          },
+        },
+      });
       await this.runtime.dispatchJob(job);
     } catch (error) {
       const message = error?.message || 'Failed to dispatch job';

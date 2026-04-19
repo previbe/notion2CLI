@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { parseArgv } from '../cli/argv.mjs';
 import { inspectDaemon, runManagedDaemon, startDaemon, stopDaemon } from '../cli/daemon.mjs';
 import { createPairCode, fetchBridgeStatus } from '../cli/http-client.mjs';
-import { formatDoctorReport, parseClaudeMcpList, runDoctor } from '../cli/doctor.mjs';
-import { ensureClaudeMcpConfig, getAppPaths } from '../cli/paths.mjs';
+import { formatDoctorReport, runDoctor } from '../cli/doctor.mjs';
 import { DEFAULT_PORT, HOST } from '../server/core/constants.mjs';
+import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { runCommand } from '../server/runtimes/exec-utils.mjs';
 
@@ -47,9 +46,6 @@ async function main(argv) {
       return;
     case 'mcp':
       await handleMcp(rest);
-      return;
-    case 'claude':
-      await handleClaude(rest);
       return;
     default:
       throw new Error(`未知命令：${command}\n\n${buildUsageHint()}`);
@@ -193,6 +189,7 @@ async function handleDaemon(argv) {
     default:
       throw new Error([
         '用法：',
+        '  notion2cli daemon start --runtime claude',
         '  notion2cli daemon start --runtime codex',
         '  notion2cli daemon start --runtime standalone --foreground',
         '  notion2cli daemon stop',
@@ -228,56 +225,6 @@ async function handleMcp(argv) {
   }
 
   process.stdout.write(`${report.summary}\n`);
-}
-
-async function handleClaude(argv) {
-  const [subcommand, ...rest] = argv;
-  const options = parseArgv(rest);
-
-  switch (subcommand) {
-    case 'launch': {
-      const configPath = await ensureClaudeMcpConfig();
-      const cwd = options.cwd || process.cwd();
-      const passthrough = options['--'] || [];
-      const command = [
-        'claude',
-        '--mcp-config',
-        configPath,
-        '--dangerously-load-development-channels',
-        'server:notion2cli_bridge',
-        ...passthrough,
-      ];
-
-      if (options.print) {
-        process.stdout.write(`${command.join(' ')}\n`);
-        return;
-      }
-
-      const child = spawn(command[0], command.slice(1), {
-        cwd,
-        stdio: 'inherit',
-      });
-
-      const exitCode = await new Promise((resolve, reject) => {
-        child.on('error', reject);
-        child.on('close', (code) => resolve(code ?? 0));
-      });
-      process.exit(exitCode);
-      return;
-    }
-    case 'config-path': {
-      const configPath = await ensureClaudeMcpConfig();
-      process.stdout.write(`${configPath}\n`);
-      return;
-    }
-    default:
-      throw new Error([
-        '用法：',
-        '  notion2cli claude launch',
-        '  notion2cli claude launch -- --continue',
-        '  notion2cli claude config-path',
-      ].join('\n'));
-  }
 }
 
 async function installCodexNotionMcp() {
@@ -470,6 +417,7 @@ function printHelp() {
     'notion2cli',
     '',
     '命令：',
+    '  notion2cli daemon start --runtime claude',
     '  notion2cli daemon start --runtime codex',
     '  notion2cli daemon start --runtime standalone --foreground',
     '  notion2cli daemon stop',
@@ -479,11 +427,9 @@ function printHelp() {
     '  notion2cli doctor',
     '  notion2cli mcp install notion --runtime codex',
     '  notion2cli mcp install notion --runtime claude',
-    '  notion2cli claude launch',
     '',
     '说明：',
-    '  - `codex` 和 `standalone` 支持真正的本地 daemon。',
-    '  - `claude` 仍然依赖当前 Claude Code 会话，所以用 `notion2cli claude launch` 启动。',
+    '  - `claude`、`codex` 和 `standalone` 都支持本地 daemon。',
   ].join('\n') + '\n');
 }
 

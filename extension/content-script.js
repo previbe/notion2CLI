@@ -8,12 +8,12 @@ const state = {
   pendingApproval: null,
   latestReply: '',
   latestReplyJobId: null,
+  writeMode: 'append_markdown_section',
   runtime: {
     id: 'unknown',
     label: 'Agent Runtime',
     ready: false,
     standalone: false,
-    sessionAttached: false,
     pairingCommand: 'notion2cli pair',
     launchCommand: '',
     statusMessage: '',
@@ -25,6 +25,10 @@ const state = {
 };
 
 const NOTION_MCP_DOC_URL = 'https://developers.notion.com/guides/mcp/get-started-with-mcp';
+const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
+const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
+const WRITE_MODE_UPDATE_CONTENT = 'update_content';
+const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
 
 const root = document.createElement('div');
 root.id = 'n2c-root';
@@ -81,7 +85,15 @@ root.innerHTML = `
           <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
           <button class="n2c-write" type="button" data-write disabled>写回 Notion</button>
         </div>
-        <div class="n2c-write-hint">写回会通过 Notion MCP 追加一个新的 Markdown section，默认不覆盖页面原文。</div>
+        <div class="n2c-write-config">
+          <label class="n2c-write-label" for="n2c-write-mode">写回模式</label>
+          <select class="n2c-write-select" id="n2c-write-mode" data-write-mode>
+            <option value="append_markdown_section">追加为新 section</option>
+            <option value="update_content">替换当前选中文本</option>
+            <option value="replace_content">覆盖整页正文</option>
+          </select>
+        </div>
+        <div class="n2c-write-hint" data-write-hint>写回会通过 Notion MCP 追加一个新的 Markdown section，默认不覆盖页面原文。</div>
         <div class="n2c-install-card">
           <div class="n2c-install-title" data-install-title>Notion MCP</div>
           <a class="n2c-install-link" data-install-link href="${NOTION_MCP_DOC_URL}" target="_blank" rel="noreferrer">官方安装文档</a>
@@ -111,12 +123,15 @@ const approveButton = root.querySelector('[data-approve]');
 const declineButton = root.querySelector('[data-decline]');
 const copyButton = root.querySelector('[data-copy]');
 const writeButton = root.querySelector('[data-write]');
+const writeModeSelect = root.querySelector('[data-write-mode]');
+const writeHintNode = root.querySelector('[data-write-hint]');
 const installTitleNode = root.querySelector('[data-install-title]');
 const installLinkNode = root.querySelector('[data-install-link]');
 const installDetailNode = root.querySelector('[data-install-detail]');
 const installButton = root.querySelector('[data-install]');
 
 bindEvents();
+loadWriteModePreference();
 updateControls();
 refreshBridgeStatus();
 setInterval(refreshBridgeStatus, 15000);
@@ -133,8 +148,13 @@ function bindEvents() {
   installButton.addEventListener('click', () => sendInstallRequest());
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
+  writeModeSelect.addEventListener('change', handleWriteModeChange);
 
-  document.addEventListener('selectionchange', updateContextText);
+  document.addEventListener('selectionchange', () => {
+    updateContextText();
+    updateWriteModeUi();
+    updateControls();
+  });
 
   copyButton.addEventListener('click', async () => {
     if (!state.latestReply) {
@@ -172,6 +192,7 @@ async function refreshBridgeStatus() {
   installLinkNode.href = NOTION_MCP_DOC_URL;
   updateInstallCard();
   updateContextText();
+  updateWriteModeUi();
   updateControls();
 }
 
@@ -212,7 +233,7 @@ function updateContextText() {
 
   contextNode.textContent = '未选中文本，将通过 Notion MCP 读取整页。';
   sendButton.textContent = '发送整页（MCP）';
-  sendHintNode.textContent = `整页内容不再通过 DOM 抓取，而是由本地 runtime 使用 Notion MCP 读取当前页面。${mcpHint}`;
+  sendHintNode.textContent = `整页内容不再通过 DOM 抓取，而是由 bridge 借当前 runtime 的 Notion MCP 预取统一的页面 bundle。${mcpHint}`;
 }
 
 async function startAction() {
@@ -272,13 +293,27 @@ async function writeLatestReply() {
     return;
   }
 
+  const writeMode = normalizeWriteMode(state.writeMode);
+  const selectionText = getSelectionText();
+  if (writeMode === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
+    renderJobState({
+      status: 'failed',
+      text: '“替换当前选中文本”模式需要你先在页面里选中要替换的原文。',
+      jobId: '',
+      action: 'write_reply_to_notion',
+    });
+    updateWriteModeUi();
+    updateControls();
+    return;
+  }
+
   const runtimeLabel = state.runtime.label || '本地 runtime';
   panel.classList.remove('n2c-hidden');
   state.busy = true;
   updateControls();
   renderJobState({
     status: 'sending',
-    text: `正在请求 ${runtimeLabel} 通过 Notion MCP 把结果写回当前页面…`,
+    text: buildWritePendingText(writeMode, runtimeLabel),
     jobId: '',
     action: 'write_reply_to_notion',
   });
@@ -290,8 +325,9 @@ async function writeLatestReply() {
         action: 'write_reply_to_notion',
         pageUrl: window.location.href,
         pageTitle: getPageTitle(),
+        selectionText,
         replyTextToWrite: state.latestReply,
-        writeMode: 'append_markdown_section',
+        writeMode,
         writeSectionTitle: 'notion2CLI',
         sourceReplyJobId: state.latestReplyJobId,
         source: 'chrome-extension',
@@ -301,7 +337,7 @@ async function writeLatestReply() {
     state.currentJobId = response.jobId;
     renderJobState({
       status: response.status,
-      text: `写回请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成追加…`,
+      text: buildWriteWaitingText(writeMode, runtimeLabel),
       jobId: response.jobId,
       action: 'write_reply_to_notion',
     });
@@ -463,9 +499,14 @@ function getPageTitle() {
 }
 
 function updateControls() {
+  const requiresSelectionForWrite = state.writeMode === WRITE_MODE_UPDATE_CONTENT;
+  const hasSelectionForWrite = Boolean(getSelectionText());
   sendButton.disabled = state.busy || !state.bridgeReady;
   copyButton.disabled = !state.latestReply;
-  writeButton.disabled = state.busy || !state.latestReply || !state.bridgeReady;
+  writeButton.disabled = state.busy
+    || !state.latestReply
+    || !state.bridgeReady
+    || (requiresSelectionForWrite && !hasSelectionForWrite);
   installButton.disabled = state.busy || !state.bridgeReady || isInstallSatisfied();
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
@@ -484,9 +525,7 @@ function formatBridgeMessage(response) {
       return '已连接 standalone 调试 runtime';
     }
 
-    return runtime.sessionAttached
-      ? `已连接 ${runtimeLabel} 当前会话`
-      : `已连接 ${runtimeLabel} bridge`;
+    return `已连接 ${runtimeLabel} bridge`;
   }
 
   if (response.awaitingPairCode) {
@@ -528,10 +567,10 @@ function getInstallCopy() {
   if (state.runtime.id === 'claude') {
     return {
       title: '安装到 Claude Code',
-      detail: '点击后会把安装指令发送到当前 Claude 会话，由 Claude 按官方文档完成配置与授权。',
-      button: '发送到 Claude 会话',
-      pendingText: '正在把 Notion MCP 安装请求发送到当前 Claude 会话…',
-      waitText: '安装请求已发出，等待 Claude 会话处理…',
+      detail: '点击后 bridge 会直接检查并执行 Claude Code 所需的 Notion MCP 配置与授权步骤。',
+      button: '安装到 Claude Code',
+      pendingText: '正在为 Claude Code 配置 Notion MCP…',
+      waitText: '安装请求已发出，等待 Claude Code 完成配置…',
     };
   }
 
@@ -669,4 +708,92 @@ function buildApprovalMessage(pendingApproval) {
   }
 
   return base;
+}
+
+async function loadWriteModePreference() {
+  try {
+    const data = await chrome.storage.local.get([WRITE_MODE_STORAGE_KEY]);
+    state.writeMode = normalizeWriteMode(data[WRITE_MODE_STORAGE_KEY]);
+  } catch {
+    state.writeMode = WRITE_MODE_APPEND_SECTION;
+  }
+
+  updateWriteModeUi();
+  updateControls();
+}
+
+async function handleWriteModeChange() {
+  state.writeMode = normalizeWriteMode(writeModeSelect.value);
+  updateWriteModeUi();
+  updateControls();
+
+  try {
+    await chrome.storage.local.set({
+      [WRITE_MODE_STORAGE_KEY]: state.writeMode,
+    });
+  } catch {}
+}
+
+function normalizeWriteMode(mode) {
+  switch (mode) {
+    case WRITE_MODE_UPDATE_CONTENT:
+    case WRITE_MODE_REPLACE_CONTENT:
+      return mode;
+    default:
+      return WRITE_MODE_APPEND_SECTION;
+  }
+}
+
+function updateWriteModeUi() {
+  state.writeMode = normalizeWriteMode(state.writeMode);
+  writeModeSelect.value = state.writeMode;
+  const selectionText = getSelectionText();
+  const copy = getWriteModeCopy(state.writeMode, selectionText);
+  writeHintNode.textContent = copy.hint;
+  writeHintNode.classList.toggle('n2c-write-hint-danger', copy.tone === 'danger');
+}
+
+function getWriteModeCopy(mode, selectionText) {
+  if (mode === WRITE_MODE_UPDATE_CONTENT) {
+    return {
+      tone: selectionText ? 'default' : 'warning',
+      hint: selectionText
+        ? `会通过 Notion MCP 把你当前选中的原文替换为新的结果。当前已选中 ${selectionText.length} 个字符。`
+        : '会通过 Notion MCP 精确替换你当前选中的原文。请先在页面里选中要替换的文本。',
+    };
+  }
+
+  if (mode === WRITE_MODE_REPLACE_CONTENT) {
+    return {
+      tone: 'danger',
+      hint: '会通过 Notion MCP 覆盖整页正文内容。这是破坏性操作，请确认你真的想整页重写。',
+    };
+  }
+
+  return {
+    tone: 'default',
+    hint: '会通过 Notion MCP 在当前页面末尾追加一个新的 Markdown section，默认不覆盖页面原文。',
+  };
+}
+
+function buildWritePendingText(writeMode, runtimeLabel) {
+  switch (writeMode) {
+    case WRITE_MODE_UPDATE_CONTENT:
+      return `正在请求 ${runtimeLabel} 通过 Notion MCP 替换当前选中的原文…`;
+    case WRITE_MODE_REPLACE_CONTENT:
+      return `正在请求 ${runtimeLabel} 通过 Notion MCP 覆盖当前页面正文…`;
+    default:
+      return `正在请求 ${runtimeLabel} 通过 Notion MCP 把结果追加回当前页面…`;
+  }
+}
+
+function buildWriteWaitingText(writeMode, runtimeLabel) {
+  switch (writeMode) {
+    case WRITE_MODE_UPDATE_CONTENT:
+      return `替换请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成精确替换…`;
+    case WRITE_MODE_REPLACE_CONTENT:
+      return `整页替换请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成覆盖…`;
+    default:
+      return `写回请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成追加…`;
+  }
 }

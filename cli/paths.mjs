@@ -18,10 +18,6 @@ export function getBridgeServerPath() {
   return path.join(PACKAGE_ROOT, 'server', 'bridge-server.mjs');
 }
 
-export function getClaudeChannelServerPath() {
-  return path.join(PACKAGE_ROOT, 'server', 'channel-server.mjs');
-}
-
 export function getNotion2cliHome() {
   return process.env.NOTION2CLI_HOME || path.join(os.homedir(), '.notion2cli');
 }
@@ -33,7 +29,6 @@ export function getAppPaths() {
     stateDir: path.join(root, 'state'),
     logsDir: path.join(root, 'logs'),
     daemonFile: path.join(root, 'state', 'daemon.json'),
-    claudeMcpConfigFile: path.join(root, 'claude.mcp.json'),
     daemonOutLog: path.join(root, 'logs', 'daemon.log'),
     daemonErrLog: path.join(root, 'logs', 'daemon.err.log'),
   };
@@ -79,19 +74,4 @@ export function clearFileIfOwnedSync(filePath, pid) {
       fs.rmSync(filePath, { force: true });
     }
   } catch {}
-}
-
-export async function ensureClaudeMcpConfig() {
-  const paths = await ensureAppDirs();
-  const config = {
-    mcpServers: {
-      notion2cli_bridge: {
-        command: process.execPath,
-        args: [getClaudeChannelServerPath()],
-      },
-    },
-  };
-
-  await writeJsonFile(paths.claudeMcpConfigFile, config);
-  return paths.claudeMcpConfigFile;
 }

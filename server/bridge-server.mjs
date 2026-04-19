@@ -58,7 +58,7 @@ export async function startBridgeServer(options = {}) {
 function createRuntime(id, logger, options = {}) {
   switch (id) {
     case 'claude':
-      return new ClaudeRuntime(logger);
+      return new ClaudeRuntime(logger, { cwd: options.cwd });
     case 'codex':
       return new CodexRuntime(logger, { cwd: options.cwd });
     case 'standalone':

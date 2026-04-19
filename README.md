@@ -1,41 +1,32 @@
 # notion2CLI
 
-`notion2CLI` 是一个面向 `Claude Code` / `Codex CLI` 用户的本地 companion：你在浏览器版 Notion 里点一下按钮，把选中的内容或当前整页送进本地 agent runtime，并把结果回显到页面面板里。
+`notion2CLI` 是一个面向 `Claude Code` / `Codex CLI` 用户的本地 companion：
 
-当前产品由 3 部分组成：
+- 浏览器扩展负责 Notion 页面入口
+- 本地 daemon 负责配对、状态、任务分发
+- `Claude Code` / `Codex CLI` 负责真正执行内容理解和写回
 
-- `CLI`：全局命令 `notion2cli`
-- `daemon`：本地 bridge，负责配对、状态和后台任务
-- `Chrome 扩展`：负责 Notion 页面入口和结果展示
+当前实现只保留 3 条运行路径：
 
-支持两种运行时：
+- `Claude Code` dedicated daemon
+- `Codex CLI` dedicated daemon
+- `standalone` 调试模拟器
 
-- `Claude Code`：当前会话模式
-- `Codex CLI`：后台任务模式，由 daemon 调起 `codex app-server`
+当前版本已经移除了旧的 `Claude legacy channel` 路径，也不再保留 browser-only 图片主路径或 `pageImages` fallback。
 
-## 当前状态
+## 当前实现
 
-现在已经实机验证通过的链路：
+### 纯文本和整页的处理方式
 
-- 全局 CLI 安装
-- `Codex` daemon 启动、配对、bridge 到 `app-server` 的真实分发
-- `Codex` 在 bridge 内能正确透传 `running -> failed`
-- `Claude` 启动命令和用户级配置生成
+- 选中文本：浏览器直接把选区发给 bridge
+- 整页：bridge 会先借当前 runtime 的 Notion MCP 预取统一的 `McpPageBundle`
+- 图片：bridge 只使用 `McpPageBundle` 里解析出的附件链接来落地本地图片工件，再把这些本地工件注入 `Claude` / `Codex`
 
-当前已知限制：
+这意味着：
 
-- `Codex` 的内容动作现在统一走 `app-server`
-- 某些 `Codex` 写回会在浏览器面板里进入“等待确认”，需要你点“允许继续”后才会真正写回 Notion
-- 如果当前 `Codex` 账号 hit 了 usage limit，bridge 会把底层 `app-server` 错误原样显示出来
-
-## 你能做什么
-
-- 在 `notion.so` 页面注入一个悬浮按钮
-- 把选中文本直接发给本地 runtime
-- 未选中文本时，通过 Notion MCP 读取当前整页内容再交给 runtime 处理
-- 把运行结果显示在 Notion 页面右下角结果卡片中
-- 在支持的运行时里，把结果写回当前 Notion 页面
-- 用 `standalone` 模式模拟整条链路，方便调浏览器交互
+- 整页内容不会再走浏览器 DOM 抓取
+- 图片也不会再靠浏览器侧发现的 `img[src]` 旁路传输
+- 浏览器不做 OCR
 
 ## 前置要求
 
@@ -56,8 +47,6 @@ claude --version
 codex --version
 ```
 
-如果你只打算用其中一个 runtime，那么另一个没有安装也没关系。
-
 ## 安装
 
 ### 1. 安装仓库依赖
@@ -73,13 +62,11 @@ npm install
 npm install -g .
 ```
 
-安装完成后，在任意目录验证：
+验证：
 
 ```bash
 notion2cli --help
 ```
-
-如果命令能执行，说明全局 CLI 已经装好。
 
 ### 3. 加载 Chrome 扩展
 
@@ -88,26 +75,24 @@ notion2cli --help
 3. 点击“加载已解压的扩展程序”
 4. 选择目录：`/Users/morrow/coding/notion2CLI/extension`
 
-扩展加载后，浏览器工具栏里会出现 `notion2CLI` 图标。
-
 ## 本地状态目录
 
-CLI 会把自己的状态和日志写到：
+`notion2cli` 会把状态和日志写到：
 
 ```text
 ~/.notion2cli/
 ```
 
-常见文件：
+常见目录：
 
 - `~/.notion2cli/state/daemon.json`
+- `~/.notion2cli/state/artifacts/`
 - `~/.notion2cli/logs/daemon.log`
 - `~/.notion2cli/logs/daemon.err.log`
-- `~/.notion2cli/claude.mcp.json`
 
 ## 快速开始
 
-### 最短 Codex 流程
+### Codex
 
 ```bash
 notion2cli mcp install notion --runtime codex
@@ -121,392 +106,180 @@ notion2cli pair
 2. 粘贴 6 位配对码
 3. 打开一个 Notion 页面
 4. 选中文字后点击“发送选中内容”，或者不选中文字时点击“发送整页（MCP）”
-5. 如果你在 `Codex` 模式下执行“写回 Notion”，并且 MCP 要求人工确认，结果卡片里会出现“允许继续 / 拒绝”
-
-### 最短 Claude 流程
-
-```bash
-notion2cli mcp install notion --runtime claude
-notion2cli claude launch
-```
-
-再开一个终端：
-
-```bash
-notion2cli pair
-```
-
-然后和上面一样，在扩展里贴入配对码即可。
-
-## 详细安装与使用
-
-### 方案 A：使用 Codex CLI
-
-### 第一步：给 Codex 安装 Notion MCP
-
-```bash
-notion2cli mcp install notion --runtime codex
-```
-
-这条命令会按需要执行：
-
-- `codex mcp add notion --url https://mcp.notion.com/mcp`
-- `codex mcp login notion`
-
-如果浏览器弹出 OAuth 授权页，按流程授权即可。
-
-### 第二步：启动 notion2CLI daemon
-
-```bash
-notion2cli daemon start --runtime codex
-```
-
-查看 daemon 是否起来：
-
-```bash
-notion2cli daemon status
-```
-
-正常情况下会看到类似：
-
-```text
-notion2cli daemon 正在运行。
-地址：http://127.0.0.1:43821
-运行时：Codex CLI
-```
-
-### 第三步：生成配对码
-
-```bash
-notion2cli pair
-```
-
-你会拿到一个 6 位数字，例如：
-
-```text
-运行时：Codex CLI
-配对码：123456
-有效期至：2026-04-19T09:01:41.995Z
-```
-
-### 第四步：在扩展里完成配对
-
-1. 点击 Chrome 工具栏中的 `notion2CLI`
-2. 在输入框里粘贴 6 位配对码
-3. 点击连接
-
-连接成功后，扩展会显示当前 bridge 已连接。
-
-### 第五步：在 Notion 页面里使用
-
-进入一个 `https://www.notion.so/...` 页面后：
-
-- 如果你先选中了一段文字，按钮会走“发送选中内容”
-- 如果你没有选中文本，按钮会走“发送整页（MCP）”
-
-结果会显示在页面右下角结果卡片里。
-
-### 第六步：结束 daemon
-
-不用时可以关闭：
-
-```bash
-notion2cli daemon stop
-```
-
-### 关于 Codex 进程的关闭
-
-这里要区分两种进程：
-
-- 你自己手动打开的 `codex` 交互 TUI
-- `notion2cli daemon start --runtime codex` 启动的后台 daemon
-
-它们不是同一个东西。
-
-如果你手动运行了：
-
-```bash
-codex
-```
-
-那就是一个普通交互会话。关闭方式是：
-
-- 在终端里按 `Ctrl+C`
-- 或输入 `exit`
-- 或直接关闭那个终端窗口
-
-如果你运行的是：
-
-```bash
-notion2cli daemon start --runtime codex
-```
-
-那启动的是 `notion2cli` 的后台 bridge。它会在后台持续运行，直到你主动停止。
-
-正确关闭命令是：
-
-```bash
-notion2cli daemon stop
-```
-
-如果你不手动关闭，它会一直在后台监听本地端口 `127.0.0.1:43821`，等待浏览器扩展发来新任务。
-
-你可以随时查看它是否还在运行：
-
-```bash
-notion2cli daemon status
-```
-
-### 方案 B：使用 Claude Code
-
-### 第一步：给 Claude 安装 Notion MCP
-
-```bash
-notion2cli mcp install notion --runtime claude
-```
-
-这条命令会执行：
-
-```bash
-claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp
-```
-
-如果后续需要授权，按 Claude 会话里的提示完成。
-
-### 第二步：启动 Claude 会话
-
-```bash
-notion2cli claude launch
-```
-
-这条命令会自动生成用户级配置文件：
-
-```text
-~/.notion2cli/claude.mcp.json
-```
-
-然后用下面这套参数启动 Claude：
-
-- `--mcp-config ~/.notion2cli/claude.mcp.json`
-- `--dangerously-load-development-channels server:notion2cli_bridge`
-
-如果你只想看它会执行什么命令，可以先跑：
-
-```bash
-notion2cli claude launch --print
-```
-
-### 第三步：生成配对码
-
-另开一个终端执行：
-
-```bash
-notion2cli pair
-```
-
-然后像 Codex 流程一样，在浏览器扩展里输入 6 位配对码。
-
-### 第四步：在 Notion 页面里使用
-
-用法和 Codex 完全相同：
-
-- 选中文字后点“发送选中内容”
-- 不选中文字时点“发送整页（MCP）”
-- 如果当前运行时支持写回，也可以点“写回 Notion”
-- 如果是 `Codex` 写回，并且 Notion MCP 请求确认，结果卡片里会出现“允许继续 / 拒绝”
-
-### 方案 C：只做本地联调
-
-如果你只是想调扩展和 bridge，不想连真实 Claude/Codex：
-
-```bash
-notion2cli daemon start --runtime standalone
-notion2cli pair
-```
-
-这个模式下：
-
-- 选区和页面按钮仍然可用
-- 会返回模拟结果
-- 不会调用真实 Claude/Codex
-- 不会调用真实 Notion MCP
-
-## 日常使用流程
-
-### Codex
-
-1. `notion2cli daemon start --runtime codex`
-2. `notion2cli pair`
-3. 在扩展里输入 6 位配对码
-4. 打开 Notion 页面
-5. 选中文字后点“发送选中内容”，或不选中文字时点“发送整页（MCP）”
-6. 如果执行“写回 Notion”后进入等待确认，在结果卡片里点“允许继续”或“拒绝”
-7. 查看右下角结果卡片
-8. 用完后执行 `notion2cli daemon stop`
 
 ### Claude
 
-1. `notion2cli claude launch`
-2. `notion2cli pair`
-3. 在扩展里输入 6 位配对码
-4. 打开 Notion 页面并触发动作
+```bash
+notion2cli mcp install notion --runtime claude
+notion2cli daemon start --runtime claude
+notion2cli pair
+```
+
+后续浏览器操作和 `Codex` 相同。
+
+### Standalone
+
+```bash
+notion2cli daemon start --runtime standalone --foreground
+notion2cli pair
+```
+
+这个模式只用于调浏览器交互，不会调用真实的 `Claude` / `Codex` / Notion MCP。
 
 ## 常用命令
 
 ```bash
-notion2cli --help
-notion2cli doctor
-notion2cli status
-notion2cli pair
+notion2cli daemon start --runtime claude
 notion2cli daemon start --runtime codex
 notion2cli daemon start --runtime standalone --foreground
-notion2cli daemon status
 notion2cli daemon stop
-notion2cli claude launch
-notion2cli claude launch --print
-notion2cli claude config-path
-notion2cli mcp install notion --runtime codex
-notion2cli mcp install notion --runtime claude
-```
-
-兼容包装命令仍然保留：
-
-- `notion2cli-bridge`
-- `notion2cli-connect`
-- `notion2cli-status`
-
-仓库内开发脚本也还保留：
-
-- `npm run bridge:codex`
-- `npm run dev:standalone`
-- `npm run pair`
-- `npm run status`
-- `npm run doctor`
-
-## 诊断与排错
-
-### 看 bridge 当前状态
-
-```bash
+notion2cli daemon status
+notion2cli pair
 notion2cli status
-```
-
-### 看 daemon 当前状态
-
-```bash
-notion2cli daemon status
-```
-
-### 做一次全链路体检
-
-```bash
 notion2cli doctor
+notion2cli mcp install notion --runtime claude
+notion2cli mcp install notion --runtime codex
 ```
 
-它会检查：
+## 使用说明
 
-- `notion2cli` home 目录
-- daemon 是否在运行
-- `claude` / `codex` 是否可执行
-- Claude / Codex 的 Notion MCP 状态
-- Claude launch 配置是否已经生成
+### 发送选中内容
 
-### 如果提示 “bridge 不可达”
+当页面里有选区时，扩展会发送：
 
-先看：
+- `selectionText`
+- `pageUrl`
+- `pageTitle`
+
+如果当前页 bundle 里已经有图片工件，也会一并注入 runtime。
+
+### 发送整页（MCP）
+
+当页面里没有选区时，bridge 会：
+
+1. 借当前 runtime 的 Notion MCP 预取整页内容
+2. 规范化为 `McpPageBundle`
+3. 从 bundle 中解析附件链接
+4. 下载并缓存图片工件
+5. 把 `page bundle + 本地图片工件` 一起交给 runtime
+
+如果 bridge 无法预取 page bundle，这次整页请求会直接失败，不再回退到旧的浏览器抓取路径。
+
+### 写回 Notion
+
+结果面板支持 3 种写回模式：
+
+- `追加为新 section`
+- `替换当前选中文本`
+- `覆盖整页正文`
+
+`Codex` 写回时如果 MCP 需要人工确认，面板会进入“等待确认”，你需要点击“允许继续”。
+
+## 如何测试
+
+### 1. 运行自动化测试
 
 ```bash
-notion2cli daemon status
+npm test
+npm run check
 ```
 
-如果是 `Codex`：
+### 2. 真机验证整页 + 图片
+
+建议先准备一个简单的 Notion 测试页：
+
+- 一行文本，例如：`请读出图片中的单词`
+- 一张只有一个明显英文单词的图片，例如：`RED-ALPHA`
+
+然后分别测试 `Codex` 和 `Claude`：
+
+```bash
+notion2cli daemon stop
+notion2cli daemon start --runtime codex --foreground
+notion2cli pair
+```
+
+在扩展里完成配对后：
+
+1. 不选中文字
+2. 点击“发送整页（MCP）”
+3. 确认返回结果能准确读出图片里的词
+
+再切到 `Claude` 重复同样流程：
+
+```bash
+notion2cli daemon stop
+notion2cli daemon start --runtime claude --foreground
+notion2cli pair
+```
+
+### 3. 真机验证写回
+
+在已经得到回复后，点击“写回 Notion”，再分别验证：
+
+- 追加模式
+- 替换选区模式
+- 覆盖整页模式
+
+## 排错
+
+### `notion2cli daemon start --runtime codex` 后不需要再单独开一个 Codex TUI 吗？
+
+对当前 dedicated 模式来说，不需要。
+
+`notion2cli` 会自己在后台调用 `Codex` / `Claude`。你手动打开一个独立 CLI 会话也可以，但它不会和插件请求共享上下文。
+
+### daemon 会一直运行吗？
+
+会。只要你执行了：
 
 ```bash
 notion2cli daemon start --runtime codex
 ```
 
-如果是 `Claude`：
+或：
 
 ```bash
-notion2cli claude launch
+notion2cli daemon start --runtime claude
 ```
 
-### 如果提示 “浏览器还没有和 bridge 连接”
-
-重新生成配对码：
-
-```bash
-notion2cli pair
-```
-
-再去扩展弹窗里输入新的 6 位数字。
-
-### 如果 Codex 整页读取失败
-
-先确认 MCP：
-
-```bash
-notion2cli mcp install notion --runtime codex
-notion2cli doctor
-```
-
-### 如果 Codex 写回失败
-
-先看结果卡片里的具体错误文案。
-
-常见情况：
-
-- 面板进入“等待确认”：这是正常行为，点“允许继续”即可
-- 返回 `object_not_found`：当前页面没有共享给正确的 Notion workspace / integration
-- 返回 `usage limit`：是当前 Codex 账号额度问题，不是 notion2cli bridge 配对问题
-
-### 如果你想确认 Codex 后台进程有没有关掉
-
-先看：
-
-```bash
-notion2cli daemon status
-```
-
-如果显示 daemon 仍在运行，执行：
+它就会一直在后台监听，直到你主动停止：
 
 ```bash
 notion2cli daemon stop
 ```
 
-注意：
+### 整页请求失败，提示 page bundle 无法准备
 
-- `notion2cli daemon stop` 只会停止 notion2CLI 的后台 daemon
-- 它不会替你关闭一个你手动打开的 `codex` 交互窗口
+这说明 bridge 没能借当前 runtime 的 Notion MCP 预取到整页内容。优先检查：
 
-### 如果全局命令找不到
+- 当前 runtime 的 Notion MCP 是否已安装
+- 是否已登录到正确 workspace
+- 当前页面是否对该 MCP 上下文可读
 
-重新安装：
+先运行：
 
 ```bash
-cd /Users/morrow/coding/notion2CLI
-npm install -g .
+notion2cli doctor
 ```
 
-如果你本地改了代码，也需要重新执行一次这条命令，让全局 CLI 指向最新版本。
+### 图片仍然读不到
 
-## 架构
+先区分两种情况：
 
-详细说明见 [docs/ARCHITECTURE.md](/Users/morrow/coding/notion2CLI/docs/ARCHITECTURE.md)。
+1. `Notion MCP` 能读正文，但 bundle 没有任何图片工件  
+   这通常说明页面里的图片块没有出现在当前 page bundle 里，或者预签名链接已经失效
 
-当前核心结构是：
+2. bundle 有图片，但本地工件下载失败  
+   这通常会在结果里看到明确警告
 
-- `server/core/*`：runtime-neutral 的协议、状态机和 HTTP API
-- `server/runtimes/*`：Claude / Codex / Standalone 三个适配层
-- `cli/*`：全局 CLI、daemon 生命周期、doctor、用户目录管理
-- `extension/*`：浏览器入口和结果展示
+当前版本已经移除了浏览器 DOM 图片旁路，所以不要再按“扩展是否抓到了页面图片”来排查。
 
-## 边界
+## 当前边界
 
-- 只支持浏览器版 Notion
-- 只支持单机、本地 runtime
-- Claude 模式依赖 `Channels` 研究预览能力
-- Codex 模式当前不复用已打开的交互 TUI
-- 整页读取和写回依赖当前 runtime 中已配置并已授权的 Notion 官方 MCP
-- 选中内容仍然来自浏览器选区，不通过 MCP 获取当前高亮范围
-- `Codex` 写回可能需要额外 approval；如果当前账号 hit 了 usage limit，bridge 会原样显示底层错误
+- 当前主路径都是 `dedicated daemon`
+- 插件请求不会和你手动打开的 `Claude` / `Codex` 会话共享上下文
+- 整页能力依赖当前 runtime 的 Notion MCP
+- 页面图片能力依赖 `McpPageBundle` 中能否拿到有效附件链接
+
+如果后续要做“会话附着”，应该建立在当前这条 bundle-first 主路径之上，而不是重新引入旧的旁路兼容层。

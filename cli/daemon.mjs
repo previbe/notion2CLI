@@ -54,11 +54,11 @@ export async function inspectDaemon(options = {}) {
 export async function startDaemon(options = {}) {
   const runtime = String(options.runtime || '').trim();
   if (!runtime) {
-    throw new Error('缺少 `--runtime`。可选值：codex、standalone。');
+    throw new Error('缺少 `--runtime`。可选值：claude、codex、standalone。');
   }
 
-  if (!['codex', 'standalone'].includes(runtime)) {
-    throw new Error('daemon 当前只支持 `codex` 或 `standalone`。Claude 请使用 `notion2cli claude launch`。');
+  if (!['claude', 'codex', 'standalone'].includes(runtime)) {
+    throw new Error('daemon 当前只支持 `claude`、`codex` 或 `standalone`。');
   }
 
   const host = options.host || HOST;
