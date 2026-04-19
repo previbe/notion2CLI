@@ -3,12 +3,13 @@ import {
   JOB_STATUS_DISPATCHED,
   JOB_STATUS_FAILED,
   JOB_STATUS_RUNNING,
+  JOB_STATUS_WAITING_FOR_APPROVAL,
   createHttpError,
   readBearer,
 } from './constants.mjs';
 import { JobStore } from './job-store.mjs';
 import { PairingStore } from './pairing-store.mjs';
-import { parseJobRequest, parsePairConfirm } from './schemas.mjs';
+import { parseApprovalResolution, parseJobRequest, parsePairConfirm } from './schemas.mjs';
 
 export class BridgeApp {
   constructor({ runtime, log }) {
@@ -117,6 +118,31 @@ export class BridgeApp {
     };
   }
 
+  async resolveJobApproval(token, jobId, body) {
+    this.assertToken(token);
+    const job = this.jobStore.get(jobId);
+
+    if (!job) {
+      throw createHttpError(404, 'Unknown job id');
+    }
+
+    if (job.status !== JOB_STATUS_WAITING_FOR_APPROVAL) {
+      throw createHttpError(409, 'This job is not waiting for approval');
+    }
+
+    if (typeof this.runtime.respondToApproval !== 'function') {
+      throw createHttpError(501, 'Current runtime does not support approval callbacks');
+    }
+
+    const resolution = parseApprovalResolution(body);
+    await this.runtime.respondToApproval(jobId, resolution);
+
+    return {
+      ok: true,
+      job: this.jobStore.toPublic(this.jobStore.get(jobId)),
+    };
+  }
+
   assertToken(token) {
     if (!token) {
       throw createHttpError(401, 'Missing bearer token');
@@ -141,6 +167,13 @@ export class BridgeApp {
       markJobRunning: (jobId, meta = {}) => this.recordJobEvent(jobId, {
         type: meta.type || 'running',
         status: JOB_STATUS_RUNNING,
+        note: meta.note || null,
+        extra: meta.extra || null,
+        runtimeMeta: meta.runtimeMeta || null,
+      }),
+      markJobWaitingForApproval: (jobId, meta = {}) => this.recordJobEvent(jobId, {
+        type: meta.type || 'waiting_for_approval',
+        status: JOB_STATUS_WAITING_FOR_APPROVAL,
         note: meta.note || null,
         extra: meta.extra || null,
         runtimeMeta: meta.runtimeMeta || null,

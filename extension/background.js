@@ -22,6 +22,8 @@ async function handleMessage(message) {
       return submitNotionAction(message.payload);
     case 'getJobStatus':
       return getJobStatus(message.jobId);
+    case 'resolveJobApproval':
+      return resolveJobApproval(message.jobId, message.resolution);
     default:
       throw new Error(`Unknown message type: ${message?.type || 'undefined'}`);
   }
@@ -96,6 +98,22 @@ async function getJobStatus(jobId) {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+async function resolveJobApproval(jobId, resolution) {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson(`/api/jobs/${jobId}/approval`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(resolution || {}),
   });
 }
 

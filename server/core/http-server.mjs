@@ -30,6 +30,11 @@ export function createBridgeHttpServer(app, log, options = {}) {
         return sendJson(res, 200, await app.createJob(readBearer(req), await readJson(req)));
       }
 
+      if (req.method === 'POST' && url.pathname.startsWith('/api/jobs/') && url.pathname.endsWith('/approval')) {
+        const jobId = url.pathname.replace('/api/jobs/', '').replace('/approval', '').trim();
+        return sendJson(res, 200, await app.resolveJobApproval(readBearer(req), jobId, await readJson(req)));
+      }
+
       if (req.method === 'GET' && url.pathname.startsWith('/api/jobs/')) {
         const jobId = url.pathname.replace('/api/jobs/', '').trim();
         return sendJson(res, 200, app.readJob(readBearer(req), jobId));

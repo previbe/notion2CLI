@@ -1,32 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCodexExecArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
+import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
 import { parseClaudeMcpList } from '../cli/doctor.mjs';
 
-test('codex exec args stay read-only for normal content actions', () => {
-  const args = buildCodexExecArgs({
-    cwd: '/tmp/notion2cli',
-    outputFile: '/tmp/notion2cli/result.md',
-    model: 'gpt-5.4',
+test('codex app-server args keep stdio transport and optional profile overrides', () => {
+  const args = buildCodexAppServerArgs({
     profile: 'default',
-    extraArgs: ['--progress-cursor'],
+    extraArgs: ['--enable', 'foo'],
   });
 
   assert.deepEqual(args, [
-    'exec',
-    '--ephemeral',
-    '-C',
-    '/tmp/notion2cli',
-    '-o',
-    '/tmp/notion2cli/result.md',
-    '-p',
-    'default',
-    '-m',
-    'gpt-5.4',
-    '-s',
-    'read-only',
-    '--progress-cursor',
+    'app-server',
+    '--listen',
+    'stdio://',
+    '-c',
+    'profile="default"',
+    '--enable',
+    'foo',
   ]);
 });
 

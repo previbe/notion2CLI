@@ -213,6 +213,61 @@
   margin-top: 14px;
 }
 
+.n2c-approval {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(127, 88, 30, 0.18);
+  background: rgba(255, 243, 219, 0.92);
+}
+
+.n2c-approval-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5e4318;
+}
+
+.n2c-approval-message {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(73, 51, 18, 0.82);
+}
+
+.n2c-approval-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.n2c-approve,
+.n2c-decline {
+  flex: 1;
+  padding: 11px 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-approve {
+  border: 0;
+  background: #6f5e30;
+  color: #f7f3ea;
+}
+
+.n2c-decline {
+  border: 1px solid rgba(127, 88, 30, 0.18);
+  background: rgba(255, 252, 247, 0.92);
+  color: #5b4720;
+}
+
+.n2c-approve:disabled,
+.n2c-decline:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
 .n2c-write {
   flex: 1;
   padding: 11px 12px;

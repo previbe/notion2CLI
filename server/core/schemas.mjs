@@ -29,6 +29,12 @@ const pairConfirmShape = z.object({
   clientLabel: z.string().optional(),
 }).passthrough();
 
+const approvalResolutionShape = z.object({
+  action: z.enum(['accept', 'decline', 'cancel']).optional(),
+  content: z.unknown().optional(),
+  _meta: z.unknown().optional(),
+}).passthrough();
+
 function invalidPayload(message) {
   return createHttpError(400, message);
 }
@@ -97,3 +103,17 @@ export function parsePairConfirm(body) {
   return { code, clientLabel };
 }
 
+export function parseApprovalResolution(body) {
+  const raw = approvalResolutionShape.parse(body ?? {});
+  const action = trimOrDefault(raw.action);
+
+  if (!action || !['accept', 'decline', 'cancel'].includes(action)) {
+    throw invalidPayload('approval action must be accept, decline, or cancel');
+  }
+
+  return {
+    action,
+    content: Object.hasOwn(raw, 'content') ? raw.content : undefined,
+    _meta: Object.hasOwn(raw, '_meta') ? raw._meta : undefined,
+  };
+}

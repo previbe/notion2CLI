@@ -119,7 +119,7 @@ flowchart LR
 
 这是产品化里最容易自欺欺人的地方，所以需要明确：
 
-- `Codex`：可以由 notion2cli daemon 在后台调起 `codex exec`
+- `Codex`：可以由 notion2cli daemon 在后台调起 `codex app-server`
 - `Standalone`：本来就是本地模拟器
 - `Claude`：依赖**当前 Claude Code 会话内**的 `Channels`
 
@@ -181,11 +181,17 @@ notion2cli daemon start --runtime codex
 
 bridge 会在后台调起：
 
-- `codex exec`
+- `codex app-server`
 - `codex mcp add`
 - `codex mcp login`
 
 Codex 当前仍然是**后台任务分发**，不是“附着当前 TUI 会话”。
+
+当 Notion MCP 对写操作发起 approval 时，bridge 会把状态提升成：
+
+- `waiting_for_approval`
+
+浏览器扩展收到这个状态后，会在结果卡片中展示“允许继续 / 拒绝”，再把用户选择回传给 `app-server`。
 
 ## 浏览器扩展现在只看什么
 

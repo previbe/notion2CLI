@@ -1,9 +1,6 @@
-import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { buildCodexPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
+import { CodexAppServerSession, buildCodexAppServerArgs } from './codex-app-server-session.mjs';
 import { runCommand } from './exec-utils.mjs';
 
 const MCP_PROBE_TTL_MS = 15000;
@@ -40,8 +37,8 @@ export class CodexRuntime {
   }
 
   async stop() {
-    for (const job of this.runningJobs.values()) {
-      job.child.kill('SIGTERM');
+    for (const session of this.runningJobs.values()) {
+      session.shutdown();
     }
     this.runningJobs.clear();
   }
@@ -62,77 +59,108 @@ export class CodexRuntime {
       return;
     }
 
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'notion2cli-codex-'));
-    const outputFile = path.join(tempDir, `${job.id}.md`);
     const prompt = buildCodexPrompt(job, {
       notionMcpHint: 'Use the configured Notion MCP tools when the action requires full-page reading or write-back.',
     });
-    const args = buildCodexExecArgs({
+
+    this.context.markJobDispatched(job.id, {
+      type: 'sent_to_codex_app_server',
+      runtimeMeta: {
+        runtime: 'codex',
+        transport: 'app-server',
+      },
+    });
+
+    const session = new CodexAppServerSession({
+      jobId: job.id,
       cwd: this.cwd,
-      outputFile,
+      prompt,
       model: this.model,
       profile: this.profile,
       extraArgs: this.extraArgs,
-    });
-
-    this.context.markJobDispatched(job.id, {
-      type: 'sent_to_codex_exec',
-      runtimeMeta: {
-        runtime: 'codex',
-        outputFile,
-      },
-    });
-
-    const child = spawnCodexProcess(args, prompt, this.cwd);
-    this.runningJobs.set(job.id, { child, outputFile, tempDir });
-
-    this.context.markJobRunning(job.id, {
-      type: 'codex_exec_started',
-      runtimeMeta: {
-        runtime: 'codex',
-      },
-    });
-
-    let stderr = '';
-    let stdout = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString('utf8');
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString('utf8');
-    });
-
-    child.on('error', (error) => {
-      this.runningJobs.delete(job.id);
-      this.context.failJob(job.id, error.message || 'Codex process error', {
-        type: 'codex_exec_error',
-        runtimeMeta: { runtime: 'codex' },
-      });
-      cleanupTempDir(tempDir);
-    });
-
-    child.on('close', async (code) => {
-      this.runningJobs.delete(job.id);
-
-      const message = await readOutputFile(outputFile);
-      const finalMessage = message || stdout.trim();
-
-      if (code === 0 && finalMessage) {
-        this.context.completeJob(job.id, finalMessage, {
-          type: 'codex_exec_completed',
-          runtimeMeta: { runtime: 'codex' },
+      log: this.log,
+      onRunning: ({ threadId, turnId }) => {
+        this.context.markJobRunning(job.id, {
+          type: 'codex_app_server_running',
+          runtimeMeta: {
+            runtime: 'codex',
+            transport: 'app-server',
+            threadId,
+            turnId,
+            pendingApproval: null,
+          },
         });
-      } else {
-        const errorText = finalMessage || stderr.trim() || `Codex exited with code ${code}`;
+      },
+      onApprovalRequested: ({ threadId, turnId, requestId, pendingApproval }) => {
+        this.context.markJobWaitingForApproval(job.id, {
+          type: 'codex_app_server_waiting_for_approval',
+          note: 'Codex 需要用户确认才能继续。',
+          runtimeMeta: {
+            runtime: 'codex',
+            transport: 'app-server',
+            threadId,
+            turnId,
+            pendingApproval: {
+              ...pendingApproval,
+              requestId: String(requestId),
+            },
+          },
+        });
+      },
+      onCompleted: (replyText, meta = {}) => {
+        this.runningJobs.delete(job.id);
+        this.context.completeJob(job.id, replyText, {
+          type: 'codex_app_server_completed',
+          runtimeMeta: {
+            runtime: 'codex',
+            transport: 'app-server',
+            threadId: meta.threadId || null,
+            turnId: meta.turnId || null,
+            pendingApproval: null,
+          },
+        });
+      },
+      onFailed: (errorText, meta = {}) => {
+        this.runningJobs.delete(job.id);
         this.context.failJob(job.id, errorText, {
-          type: 'codex_exec_failed',
-          runtimeMeta: { runtime: 'codex', exitCode: code ?? 'unknown' },
+          type: 'codex_app_server_failed',
+          runtimeMeta: {
+            runtime: 'codex',
+            transport: 'app-server',
+            threadId: meta.threadId || null,
+            turnId: meta.turnId || null,
+            turnStatus: meta.turnStatus || null,
+            exitCode: meta.exitCode ?? null,
+            signal: meta.signal ?? null,
+            pendingApproval: null,
+          },
         });
-      }
+      },
+      onClosed: () => {
+        this.runningJobs.delete(job.id);
+      },
+    });
 
-      cleanupTempDir(tempDir);
+    this.runningJobs.set(job.id, session);
+    await session.start();
+  }
+
+  async respondToApproval(jobId, resolution) {
+    const session = this.runningJobs.get(jobId);
+    if (!session) {
+      throw new Error('No active Codex app-server session for this job');
+    }
+
+    await session.respondToApproval(resolution);
+    this.context.markJobRunning(jobId, {
+      type: 'codex_app_server_approval_resolved',
+      note: resolution.action === 'accept' ? '已允许 Codex 继续执行。' : '已拒绝当前请求，等待 Codex 结束本次 turn。',
+      runtimeMeta: {
+        runtime: 'codex',
+        transport: 'app-server',
+        pendingApproval: null,
+        approvalResponse: resolution.action,
+      },
     });
   }
 
@@ -141,7 +169,7 @@ export class CodexRuntime {
       runtime: {
         id: this.id,
         label: this.label,
-        launchMode: 'subprocess',
+        launchMode: 'app-server',
         ready: this.ready,
         standalone: false,
         sessionAttached: false,
@@ -280,49 +308,7 @@ export class CodexRuntime {
   }
 }
 
-export function buildCodexExecArgs({ cwd, outputFile, model, profile, extraArgs }) {
-  const args = ['exec', '--ephemeral', '-C', cwd, '-o', outputFile];
-
-  if (profile) {
-    args.push('-p', profile);
-  }
-
-  if (model) {
-    args.push('-m', model);
-  }
-
-  args.push('-s', 'read-only');
-
-  if (Array.isArray(extraArgs) && extraArgs.length > 0) {
-    args.push(...extraArgs);
-  }
-
-  return args;
-}
-
-function spawnCodexProcess(args, prompt, cwd) {
-  const child = spawn('codex', args, {
-    cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  child.stdin.write(prompt);
-  child.stdin.end();
-  return child;
-}
-
-async function readOutputFile(filePath) {
-  try {
-    return (await readFile(filePath, 'utf8')).trim();
-  } catch {
-    return '';
-  }
-}
-
-async function cleanupTempDir(tempDir) {
-  try {
-    await rm(tempDir, { recursive: true, force: true });
-  } catch {}
-}
+export { buildCodexAppServerArgs };
 
 function parseArgs(raw) {
   if (!raw.trim()) {

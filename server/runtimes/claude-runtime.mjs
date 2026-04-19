@@ -149,6 +149,10 @@ export class ClaudeRuntime {
     this.log('job sent to claude', { jobId: job.id });
   }
 
+  async respondToApproval() {
+    throw new Error('Claude runtime does not use bridge-managed approval callbacks');
+  }
+
   async getStatus() {
     return {
       runtime: {

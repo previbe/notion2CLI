@@ -21,6 +21,7 @@ export const DEFAULT_WRITE_SECTION_TITLE = 'notion2CLI';
 export const JOB_STATUS_QUEUED = 'queued';
 export const JOB_STATUS_DISPATCHED = 'dispatched';
 export const JOB_STATUS_RUNNING = 'running';
+export const JOB_STATUS_WAITING_FOR_APPROVAL = 'waiting_for_approval';
 export const JOB_STATUS_COMPLETED = 'completed';
 export const JOB_STATUS_FAILED = 'failed';
 
@@ -58,4 +59,3 @@ export function createHttpError(statusCode, message) {
   error.statusCode = statusCode;
   return error;
 }
-

@@ -21,10 +21,42 @@ class FakeRuntime {
 
   async dispatchJob(job) {
     this.context.markJobDispatched(job.id, { type: 'fake_dispatched' });
+    if (job.action === 'write_reply_to_notion') {
+      this.context.markJobWaitingForApproval(job.id, {
+        type: 'fake_waiting_for_approval',
+        runtimeMeta: {
+          pendingApproval: {
+            requestId: 'fake-approval',
+            kind: 'mcp_elicitation',
+            serverName: 'notion',
+            mode: 'form',
+            message: 'Allow Notion write?',
+          },
+        },
+      });
+      return;
+    }
+
     this.context.markJobRunning(job.id, { type: 'fake_running' });
     setTimeout(() => {
       this.context.completeJob(job.id, `Echo: ${job.selectionText || job.pageTitle}`, {
         type: 'fake_completed',
+      });
+    }, 20);
+  }
+
+  async respondToApproval(jobId, resolution) {
+    this.context.markJobRunning(jobId, { type: 'fake_approval_resolved' });
+    setTimeout(() => {
+      if (resolution.action === 'accept') {
+        this.context.completeJob(jobId, 'Write completed', {
+          type: 'fake_write_completed',
+        });
+        return;
+      }
+
+      this.context.failJob(jobId, 'Write declined', {
+        type: 'fake_write_declined',
       });
     }, 20);
   }
@@ -118,6 +150,71 @@ test('bridge app pairs and completes a browser job through the runtime contract'
   }
 });
 
+test('bridge app can resolve an approval request through the runtime contract', async () => {
+  const app = new BridgeApp({
+    runtime: new FakeRuntime(),
+    log: () => {},
+  });
+  const httpServer = createBridgeHttpServer(app, () => {}, { port: 0 });
+
+  await app.start();
+  const address = await httpServer.listen();
+  const baseUrl = `http://${address.host}:${address.port}`;
+
+  try {
+    const pairResponse = await postJson(`${baseUrl}/api/pair/create`, {});
+    const confirmResponse = await postJson(`${baseUrl}/api/pair/confirm`, {
+      code: pairResponse.code,
+      clientLabel: 'Approval Browser',
+    });
+
+    const jobResponse = await postJson(`${baseUrl}/api/jobs`, {
+      action: 'write_reply_to_notion',
+      pageUrl: 'https://www.notion.so/example',
+      pageTitle: 'Example Page',
+      replyTextToWrite: 'hello write-back',
+      source: 'test',
+    }, confirmResponse.token);
+
+    let job = null;
+    for (let index = 0; index < 20; index += 1) {
+      const snapshot = await getJson(`${baseUrl}/api/jobs/${jobResponse.jobId}`, confirmResponse.token);
+      job = snapshot.job;
+      if (job.status === 'waiting_for_approval') {
+        break;
+      }
+
+      await sleep(20);
+    }
+
+    assert.equal(job.status, 'waiting_for_approval');
+    assert.equal(job.runtimeMeta.pendingApproval.message, 'Allow Notion write?');
+
+    const approvalResponse = await postJson(`${baseUrl}/api/jobs/${jobResponse.jobId}/approval`, {
+      action: 'accept',
+    }, confirmResponse.token);
+    assert.equal(approvalResponse.ok, true);
+
+    for (let index = 0; index < 20; index += 1) {
+      const snapshot = await getJson(`${baseUrl}/api/jobs/${jobResponse.jobId}`, confirmResponse.token);
+      job = snapshot.job;
+      if (job.status === 'completed') {
+        break;
+      }
+
+      await sleep(20);
+    }
+
+    assert.equal(job.status, 'completed');
+    assert.equal(job.replyText, 'Write completed');
+    assert.equal(job.history.some((entry) => entry.type === 'fake_waiting_for_approval'), true);
+    assert.equal(job.history.some((entry) => entry.type === 'fake_approval_resolved'), true);
+  } finally {
+    await httpServer.close();
+    await app.stop();
+  }
+});
+
 async function getJson(url, token = '') {
   const response = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -137,4 +234,3 @@ async function postJson(url, body, token = '') {
 
   return response.json();
 }
-

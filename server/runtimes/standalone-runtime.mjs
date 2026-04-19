@@ -34,6 +34,10 @@ export class StandaloneRuntime {
     }, 1200);
   }
 
+  async respondToApproval() {
+    throw new Error('Standalone runtime does not support approval callbacks');
+  }
+
   async getStatus() {
     return {
       runtime: {

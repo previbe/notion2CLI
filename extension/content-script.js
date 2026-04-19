@@ -4,6 +4,8 @@ const state = {
   currentJobId: null,
   pollTimer: null,
   busy: false,
+  approvalBusy: false,
+  pendingApproval: null,
   latestReply: '',
   latestReplyJobId: null,
   runtime: {
@@ -67,6 +69,14 @@ root.innerHTML = `
           <span data-job-id></span>
         </div>
         <div class="n2c-output n2c-empty" data-output>点击上面的动作后，本地 runtime 的结果会显示在这里。</div>
+        <div class="n2c-approval n2c-hidden" data-approval>
+          <div class="n2c-approval-title">需要你的确认</div>
+          <div class="n2c-approval-message" data-approval-message>Codex 需要确认后才能继续。</div>
+          <div class="n2c-approval-actions">
+            <button class="n2c-approve" type="button" data-approve>允许继续</button>
+            <button class="n2c-decline" type="button" data-decline>拒绝</button>
+          </div>
+        </div>
         <div class="n2c-actions">
           <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
           <button class="n2c-write" type="button" data-write disabled>写回 Notion</button>
@@ -95,6 +105,10 @@ const sendHintNode = root.querySelector('[data-send-hint]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
 const outputNode = root.querySelector('[data-output]');
+const approvalNode = root.querySelector('[data-approval]');
+const approvalMessageNode = root.querySelector('[data-approval-message]');
+const approveButton = root.querySelector('[data-approve]');
+const declineButton = root.querySelector('[data-decline]');
 const copyButton = root.querySelector('[data-copy]');
 const writeButton = root.querySelector('[data-write]');
 const installTitleNode = root.querySelector('[data-install-title]');
@@ -117,6 +131,8 @@ function bindEvents() {
   sendButton.addEventListener('click', () => startAction());
   writeButton.addEventListener('click', () => writeLatestReply());
   installButton.addEventListener('click', () => sendInstallRequest());
+  approveButton.addEventListener('click', () => submitApproval('accept'));
+  declineButton.addEventListener('click', () => submitApproval('decline'));
 
   document.addEventListener('selectionchange', updateContextText);
 
@@ -364,14 +380,16 @@ function pollJob(jobId) {
       const statusText = statusLabel(job.status);
       renderJobState({
         status: job.status,
-        text: job.replyText || job.error || statusText,
+        text: job.replyText || job.error || job.runtimeMeta?.pendingApproval?.message || statusText,
         jobId: job.id,
         action: job.action,
+        runtimeMeta: job.runtimeMeta || {},
       });
 
       if (job.status === 'completed' || job.status === 'failed') {
         clearInterval(state.pollTimer);
         state.busy = false;
+        state.approvalBusy = false;
         updateControls();
       }
     } catch (error) {
@@ -380,26 +398,32 @@ function pollJob(jobId) {
         text: error.message || '读取任务状态失败',
         jobId,
         action: 'forward_full_page_via_mcp',
+        runtimeMeta: {},
       });
       clearInterval(state.pollTimer);
       state.busy = false;
+      state.approvalBusy = false;
       updateControls();
     }
   }, 1800);
 }
 
-function renderJobState({ status, text, jobId, action }) {
+function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
   jobIdNode.textContent = jobId ? `#${jobId.slice(0, 8)}` : '';
 
   const isTerminal = status === 'completed' || status === 'failed';
   const isFailure = status === 'failed';
+  const isWaitingForApproval = status === 'waiting_for_approval';
   const statusMarkup = isTerminal
     ? `<span>${isFailure ? '执行失败' : '执行完成'}</span>`
-    : `<span class="n2c-spinner"></span><span>${statusLabel(status)}</span>`;
+    : isWaitingForApproval
+      ? `<span>${statusLabel(status)}</span>`
+      : `<span class="n2c-spinner"></span><span>${statusLabel(status)}</span>`;
   runStatusNode.innerHTML = statusMarkup;
 
   outputNode.textContent = text;
   outputNode.classList.toggle('n2c-empty', !text);
+  syncApprovalState(status, runtimeMeta.pendingApproval || null);
 
   if (status === 'completed' && !isFailure && isReplyAction(action)) {
     state.latestReply = text;
@@ -417,6 +441,8 @@ function statusLabel(status) {
       return '已发出';
     case 'running':
       return '处理中';
+    case 'waiting_for_approval':
+      return '等待确认';
     case 'sending':
       return '发送中';
     case 'completed':
@@ -441,6 +467,8 @@ function updateControls() {
   copyButton.disabled = !state.latestReply;
   writeButton.disabled = state.busy || !state.latestReply || !state.bridgeReady;
   installButton.disabled = state.busy || !state.bridgeReady || isInstallSatisfied();
+  approveButton.disabled = !state.pendingApproval || state.approvalBusy;
+  declineButton.disabled = !state.pendingApproval || state.approvalBusy;
 }
 
 function isReplyAction(action) {
@@ -577,4 +605,68 @@ function sendMessage(message) {
       resolve(response.result);
     });
   });
+}
+
+async function submitApproval(action) {
+  if (!state.pendingApproval || !state.currentJobId || state.approvalBusy) {
+    return;
+  }
+
+  state.approvalBusy = true;
+  updateControls();
+
+  try {
+    await sendMessage({
+      type: 'resolveJobApproval',
+      jobId: state.currentJobId,
+      resolution: {
+        action,
+      },
+    });
+
+    state.pendingApproval = null;
+    state.approvalBusy = false;
+    renderJobState({
+      status: 'running',
+      text: action === 'accept'
+        ? '已允许 Codex 继续执行，等待最终结果…'
+        : '已拒绝当前请求，等待 Codex 结束本次执行…',
+      jobId: state.currentJobId,
+      action: 'write_reply_to_notion',
+      runtimeMeta: {},
+    });
+  } catch (error) {
+    state.approvalBusy = false;
+    renderJobState({
+      status: 'failed',
+      text: error.message || '提交确认失败',
+      jobId: state.currentJobId,
+      action: 'write_reply_to_notion',
+      runtimeMeta: {},
+    });
+  }
+}
+
+function syncApprovalState(status, pendingApproval) {
+  if (status === 'waiting_for_approval' && pendingApproval) {
+    state.pendingApproval = pendingApproval;
+    approvalNode.classList.remove('n2c-hidden');
+    approvalMessageNode.textContent = buildApprovalMessage(pendingApproval);
+    updateControls();
+    return;
+  }
+
+  state.pendingApproval = null;
+  approvalNode.classList.add('n2c-hidden');
+  approvalMessageNode.textContent = 'Codex 需要确认后才能继续。';
+  updateControls();
+}
+
+function buildApprovalMessage(pendingApproval) {
+  const base = pendingApproval.message || 'Codex 需要你的确认才能继续。';
+  if (pendingApproval.mode === 'url' && pendingApproval.url) {
+    return `${base} 如有需要，请在新标签页打开：${pendingApproval.url}`;
+  }
+
+  return base;
 }

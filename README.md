@@ -11,23 +11,22 @@
 支持两种运行时：
 
 - `Claude Code`：当前会话模式
-- `Codex CLI`：后台任务模式，由 daemon 调起 `codex exec`
+- `Codex CLI`：后台任务模式，由 daemon 调起 `codex app-server`
 
 ## 当前状态
 
 现在已经实机验证通过的链路：
 
 - 全局 CLI 安装
-- `Codex` daemon 启动、配对、选中文本处理
-- `Codex` 通过 Notion MCP 读取整页
+- `Codex` daemon 启动、配对、bridge 到 `app-server` 的真实分发
+- `Codex` 在 bridge 内能正确透传 `running -> failed`
 - `Claude` 启动命令和用户级配置生成
 
 当前已知限制：
 
-- `Codex` 的 **整页读取** 可用
-- `Codex` 的 **写回 Notion** 当前可能失败  
-原因是某些 Notion 写操作会在 `codex exec` 模式下触发交互确认，而 `exec` 模式不支持 `request_user_input`
-- 如果你现在需要更稳定的写回能力，优先使用 `Claude Code` 模式
+- `Codex` 的内容动作现在统一走 `app-server`
+- 某些 `Codex` 写回会在浏览器面板里进入“等待确认”，需要你点“允许继续”后才会真正写回 Notion
+- 如果当前 `Codex` 账号 hit 了 usage limit，bridge 会把底层 `app-server` 错误原样显示出来
 
 ## 你能做什么
 
@@ -122,6 +121,7 @@ notion2cli pair
 2. 粘贴 6 位配对码
 3. 打开一个 Notion 页面
 4. 选中文字后点击“发送选中内容”，或者不选中文字时点击“发送整页（MCP）”
+5. 如果你在 `Codex` 模式下执行“写回 Notion”，并且 MCP 要求人工确认，结果卡片里会出现“允许继续 / 拒绝”
 
 ### 最短 Claude 流程
 
@@ -312,8 +312,8 @@ notion2cli pair
 
 - 选中文字后点“发送选中内容”
 - 不选中文字时点“发送整页（MCP）”
-
-如果当前运行时支持写回，也可以点“写回 Notion”。
+- 如果当前运行时支持写回，也可以点“写回 Notion”
+- 如果是 `Codex` 写回，并且 Notion MCP 请求确认，结果卡片里会出现“允许继续 / 拒绝”
 
 ### 方案 C：只做本地联调
 
@@ -340,8 +340,9 @@ notion2cli pair
 3. 在扩展里输入 6 位配对码
 4. 打开 Notion 页面
 5. 选中文字后点“发送选中内容”，或不选中文字时点“发送整页（MCP）”
-6. 查看右下角结果卡片
-7. 用完后执行 `notion2cli daemon stop`
+6. 如果执行“写回 Notion”后进入等待确认，在结果卡片里点“允许继续”或“拒绝”
+7. 查看右下角结果卡片
+8. 用完后执行 `notion2cli daemon stop`
 
 ### Claude
 
@@ -451,12 +452,13 @@ notion2cli doctor
 
 ### 如果 Codex 写回失败
 
-这通常不是 bridge 配对问题，而是当前 `codex exec` 模式下的 Notion 写操作触发了交互确认。
+先看结果卡片里的具体错误文案。
 
-这是当前版本的已知限制。建议：
+常见情况：
 
-- 优先用 `Claude Code` 做写回
-- 或者先用 `Codex` 做读取和生成，再手动把结果贴回 Notion
+- 面板进入“等待确认”：这是正常行为，点“允许继续”即可
+- 返回 `object_not_found`：当前页面没有共享给正确的 Notion workspace / integration
+- 返回 `usage limit`：是当前 Codex 账号额度问题，不是 notion2cli bridge 配对问题
 
 ### 如果你想确认 Codex 后台进程有没有关掉
 
@@ -507,4 +509,4 @@ npm install -g .
 - Codex 模式当前不复用已打开的交互 TUI
 - 整页读取和写回依赖当前 runtime 中已配置并已授权的 Notion 官方 MCP
 - 选中内容仍然来自浏览器选区，不通过 MCP 获取当前高亮范围
-- `Codex` 写回当前有已知限制，不应在 README 里假设它稳定可用
+- `Codex` 写回可能需要额外 approval；如果当前账号 hit 了 usage limit，bridge 会原样显示底层错误
