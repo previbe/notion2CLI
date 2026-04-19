@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "notion2CLI",
   "version": "0.1.0",
-  "description": "Trigger the active Claude Code workflow directly from a Notion page.",
+  "description": "Trigger a local Claude Code or Codex workflow directly from a Notion page.",
   "permissions": [
     "storage"
   ],

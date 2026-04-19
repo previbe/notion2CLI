@@ -3,11 +3,12 @@
 请直接运行：
 
 ```bash
-/Users/morrow/coding/notion2CLI/bin/notion2cli-status
+notion2cli status
 ```
 
 然后用中文简短总结：
 
 - bridge 是否可达
+- 当前 runtime 是什么
 - 当前是否已经配对
-- 当前是否处于 standalone 模式
+- `runtime.standalone` 是否为 true

@@ -261,6 +261,13 @@
   text-decoration: underline;
 }
 
+.n2c-install-detail {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(37, 48, 31, 0.66);
+}
+
 .n2c-install {
   width: 100%;
   margin-top: 12px;

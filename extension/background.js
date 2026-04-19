@@ -73,7 +73,7 @@ async function clearPairing() {
 async function submitNotionAction(payload) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和 Claude 会话配对');
+    throw new Error('浏览器尚未和本地 bridge 配对');
   }
 
   return fetchJson('/api/jobs', {
@@ -89,7 +89,7 @@ async function submitNotionAction(payload) {
 async function getJobStatus(jobId) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和 Claude 会话配对');
+    throw new Error('浏览器尚未和本地 bridge 配对');
   }
 
   return fetchJson(`/api/jobs/${jobId}`, {
@@ -110,7 +110,7 @@ async function fetchJson(pathname, options = {}) {
   try {
     response = await fetch(`${BRIDGE_ORIGIN}${pathname}`, options);
   } catch {
-    throw new Error('无法连接本地 bridge。请确认 Claude Code 会话已启动，或本地 bridge 正在运行。');
+    throw new Error('无法连接本地 bridge。请确认 notion2CLI bridge 已启动。');
   }
 
   let payload;

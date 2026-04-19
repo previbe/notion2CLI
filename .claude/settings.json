@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(notion2cli *)",
       "Bash(notion2cli-connect *)",
       "Bash(notion2cli-status *)",
       "Bash(/Users/morrow/coding/notion2CLI/bin/notion2cli-connect *)",

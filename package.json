@@ -3,12 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A local-first MVP that lets a Notion browser button send work into the active Claude Code session.",
+  "description": "A local-first bridge that lets a Notion browser button send work into a local Claude Code or Codex runtime.",
+  "bin": {
+    "notion2cli": "./bin/notion2cli.mjs",
+    "notion2cli-bridge": "./bin/notion2cli-bridge",
+    "notion2cli-connect": "./bin/notion2cli-connect",
+    "notion2cli-status": "./bin/notion2cli-status"
+  },
   "scripts": {
-    "check": "node --check ./server/channel-server.mjs && node --check ./extension/background.js && node --check ./extension/content-script.js && node --check ./extension/popup.js",
-    "dev:standalone": "NOTION2CLI_STANDALONE=1 node ./server/channel-server.mjs",
-    "pair": "./bin/notion2cli-connect",
-    "status": "./bin/notion2cli-status"
+    "check": "node ./scripts/check.mjs",
+    "test": "node --test",
+    "bridge:codex": "node ./bin/notion2cli.mjs daemon start --runtime codex --foreground",
+    "dev:standalone": "node ./bin/notion2cli.mjs daemon start --runtime standalone --foreground",
+    "pair": "node ./bin/notion2cli.mjs pair",
+    "status": "node ./bin/notion2cli.mjs status",
+    "doctor": "node ./bin/notion2cli.mjs doctor"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

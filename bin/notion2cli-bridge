@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime="${1:-standalone}"
+
+case "$runtime" in
+  codex|standalone)
+    ;;
+  *)
+    echo "用法：notion2cli-bridge [codex|standalone]" >&2
+    exit 1
+    ;;
+esac
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "$ROOT_DIR/bin/notion2cli.mjs" daemon start --runtime "$runtime" --foreground

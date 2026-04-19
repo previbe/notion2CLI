@@ -9,10 +9,10 @@
   <body>
     <main class="popup">
       <section class="hero">
-        <div class="eyebrow">Notion to Claude</div>
-        <h1>把当前浏览器和 Claude 会话连起来</h1>
+        <div class="eyebrow">Notion to Local Agent</div>
+        <h1>把当前浏览器和本地 runtime 连起来</h1>
         <p class="lede">
-          先在 Claude Code 里运行 <code>/notion2cli-connect</code>，拿到 6 位配对码后再回到这里。
+          先启动 notion2CLI bridge，再按状态提示运行对应的配对命令，拿到 6 位配对码后回到这里。
         </p>
       </section>
 
@@ -32,15 +32,15 @@
           <span>配对码</span>
           <input data-code-input type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位数字" />
         </label>
-        <button class="primary" data-connect-button type="button">连接当前 Claude 会话</button>
+        <button class="primary" data-connect-button type="button">连接当前 bridge</button>
         <button class="ghost" data-clear-button type="button">清除本地配对</button>
       </section>
 
       <section class="notes">
         <div class="note-title">使用顺序</div>
         <ol>
-          <li>在项目目录里启动 Claude Code</li>
-          <li>在 Claude 里运行 <code>/notion2cli-connect</code></li>
+          <li>启动 notion2CLI bridge</li>
+          <li>运行状态提示里的配对命令</li>
           <li>把配对码贴到这里</li>
           <li>回到 Notion 页面点击右下角按钮</li>
         </ol>

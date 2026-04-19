@@ -1,103 +1,227 @@
 # notion2CLI 架构说明
 
-## 用非程序员能懂的话解释
+## 当前产品形态
 
-这套系统里有四个角色：
+`notion2CLI` 现在不是“仓库脚本 + 开发者模式扩展”的松散组合，而是三层产品：
 
-- **Notion 按钮**：你真正点击的地方
-- **Chrome 扩展**：负责把点击动作和当前页面信息收集起来
-- **本地 bridge**：像一个门卫，只在你电脑本地监听
-- **Claude Code 会话**：真正执行任务的地方
-- **Notion 官方 MCP**：负责读取整页和写回页面的权威通道
+- `CLI`：全局命令 `notion2cli`
+- `daemon`：本地 bridge、配对、任务分发、运行时探测
+- `extension`：Notion 页面入口和结果展示
 
-流程如下：
+它的长期目标不是把 Claude 的实现塞给 Codex，而是把**产品核心**和**运行时接入层**拆开。
 
-1. 你在 Notion 页面点按钮
-2. 扩展把“当前页面 URL 是什么、你选中了什么、你是要处理还是要写回”发给本地 bridge
-3. bridge 把这个事件推进当前 Claude Code 会话
-4. 如果你选中了文字，Claude 直接处理选区；如果你没选区，Claude 通过 Notion 官方 MCP 读取整页
-5. 如果你点击“写回 Notion”，Claude 通过 Notion 官方 MCP 把结果追加回当前页面
-6. Claude 用 `reply tool` 把结果或写回确认送回 bridge
-7. 扩展轮询 bridge，把结果显示在 Notion 页面右下角
+## 第一性原理
 
-## 架构图
+真正稳定的东西只有这条链路：
+
+1. 浏览器拿到页面上下文和选区
+2. 本地 bridge 负责配对、job、状态、回传
+3. runtime 负责执行
+4. Notion MCP 负责整页读取和写回
+
+真正不稳定的是“宿主怎么接进来”：
+
+- Claude 用 `Channels`
+- Codex 用后台任务
+- 未来可能还有第三种 runtime
+
+所以我们把代码收敛成：
+
+- `core`：产品协议和状态机
+- `runtime adapters`：Claude / Codex / Standalone
+- `cli + daemon`：本地产品壳层
+
+## 总体架构
 
 ```mermaid
-sequenceDiagram
-  participant User as 用户
-  participant Notion as Notion 页面
-  participant Ext as Chrome 扩展
-  participant Bridge as 本地 bridge
-  participant Claude as Claude Code 会话
-  participant MCP as Notion 官方 MCP
-
-  User->>Notion: 点击按钮
-  Notion->>Ext: 当前页面 + 选中文本
-  Ext->>Bridge: POST /api/jobs
-  Bridge->>Claude: Channel event
-  Claude->>MCP: notion-fetch / notion-update-page
-  MCP->>Notion: 读写页面
-  Claude->>Bridge: reply tool
-  Bridge-->>Ext: Job 状态变为 completed
-  Ext-->>User: 在页面里显示结果
+flowchart LR
+  A["Notion 页面按钮"] --> B["Chrome 扩展"]
+  B --> C["notion2cli daemon / bridge"]
+  C --> D["Runtime Adapter"]
+  D --> E["Claude Code 当前会话"]
+  D --> F["Codex CLI 后台任务"]
+  E --> G["Notion 官方 MCP"]
+  F --> G
+  G --> H["Notion 工作区"]
+  E --> I["reply tool"]
+  F --> J["final message"]
+  I --> C
+  J --> C
+  C --> B
 ```
 
-## 为什么这样设计
+## 分层
 
-### 不直接控制终端窗口
+### 1. Core
 
-因为“接管一个正在运行的终端”非常脆弱：
+这层只管产品协议，不管底层是 Claude 还是 Codex。
 
-- 会和用户手动输入冲突
-- 很难知道当前终端状态
-- 很难把结果稳定地拿回来
+职责：
 
-所以我们不去“操作终端”，而是把 bridge 设计成当前 Claude 会话的正式事件入口。
+- 配对码
+- 浏览器 token
+- job 生命周期
+- HTTP API
+- action schema
 
-### 不直接依赖 Notion 官方按钮
+代码：
 
-因为第一版只想验证“在 Notion 点一下就能触发 Claude”，最快的做法是浏览器扩展，而不是先做云端服务和 Notion 平台级集成。
+- [server/core/constants.mjs](/Users/morrow/coding/notion2CLI/server/core/constants.mjs)
+- [server/core/schemas.mjs](/Users/morrow/coding/notion2CLI/server/core/schemas.mjs)
+- [server/core/job-store.mjs](/Users/morrow/coding/notion2CLI/server/core/job-store.mjs)
+- [server/core/pairing-store.mjs](/Users/morrow/coding/notion2CLI/server/core/pairing-store.mjs)
+- [server/core/bridge-app.mjs](/Users/morrow/coding/notion2CLI/server/core/bridge-app.mjs)
+- [server/core/http-server.mjs](/Users/morrow/coding/notion2CLI/server/core/http-server.mjs)
 
-### 为什么现在只做原文传输
+这层的关键好处是：浏览器扩展永远只面对一套协议。
 
-因为你当前真正要验证的不是“Claude 处理得好不好”，而是：
+### 2. Runtime adapters
 
-- 能不能在 Notion 中点一下
-- 能不能拿到用户当前选区
-- 能不能稳定读取整页权威内容
-- 能不能把它送到 Claude
-- 能不能拿回一个明确回执
+这层只负责“怎么把 job 送进具体 runtime”。
 
-先把这条链路证明，再加“总结、改写、任务提炼”才合理。
+代码：
 
-### 为什么选区不改成 MCP
+- [server/runtimes/claude-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-runtime.mjs)
+- [server/runtimes/codex-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-runtime.mjs)
+- [server/runtimes/standalone-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/standalone-runtime.mjs)
 
-因为选区是浏览器里的瞬时状态，不是 Notion 后端的持久对象。MCP 很适合读取页面和写回页面，但不负责“你此刻框选了哪几个字符”。
+它们共享同一个最小 contract：
 
-所以这里采用混合做法：
+- `start()`
+- `startPairing()`
+- `dispatchJob()`
+- `getStatus()`
+- `stop()`
 
-- 选区：浏览器扩展负责
-- 整页读取：Notion MCP 负责
-- 写回页面：Notion MCP 负责
-- 临时结果展示：浏览器面板负责
+### 3. CLI + daemon shell
 
-### 为什么写回默认只做追加
+这是产品化新增的一层，负责把 repo 脚本提升成真正的全局命令。
 
-自动写回牵涉到：
+代码：
 
-- 权限
-- 覆盖原内容的风险
-- 结果是否需要人工确认
+- [bin/notion2cli.mjs](/Users/morrow/coding/notion2CLI/bin/notion2cli.mjs)
+- [cli/argv.mjs](/Users/morrow/coding/notion2CLI/cli/argv.mjs)
+- [cli/paths.mjs](/Users/morrow/coding/notion2CLI/cli/paths.mjs)
+- [cli/http-client.mjs](/Users/morrow/coding/notion2CLI/cli/http-client.mjs)
+- [cli/daemon.mjs](/Users/morrow/coding/notion2CLI/cli/daemon.mjs)
+- [cli/doctor.mjs](/Users/morrow/coding/notion2CLI/cli/doctor.mjs)
 
-因此默认策略不是“原地替换”，而是“追加一个新的 Markdown section”。这样更符合安全优先和官方 MCP/Markdown 更新接口的使用方式，也更容易审计。
+职责：
 
-## MVP 技术边界
+- 全局命令入口
+- `~/.notion2cli` 用户目录
+- daemon `start/stop/status`
+- `pair` / `status` / `doctor`
+- Claude launch 配置生成
+- Codex / Claude 的 MCP 安装命令
 
-- 浏览器端通过开发者模式加载，不走 Chrome 商店
+## 为什么 daemon 只管理 Codex / Standalone
+
+这是产品化里最容易自欺欺人的地方，所以需要明确：
+
+- `Codex`：可以由 notion2cli daemon 在后台调起 `codex exec`
+- `Standalone`：本来就是本地模拟器
+- `Claude`：依赖**当前 Claude Code 会话内**的 `Channels`
+
+所以 `Claude` 不能被假装成同一种后台 daemon。
+
+正确设计是：
+
+- `notion2cli daemon start --runtime codex`
+- `notion2cli daemon start --runtime standalone`
+- `notion2cli claude launch`
+
+这是刻意保留下来的不对称，目的是避免概念债。
+
+## 用户级状态目录
+
+产品化后，状态不再放在仓库目录里，而是放到：
+
+```text
+~/.notion2cli/
+```
+
+当前主要内容：
+
+- `state/daemon.json`：当前 daemon 元数据
+- `logs/daemon.log`：后台日志
+- `logs/daemon.err.log`：后台错误日志
+- `claude.mcp.json`：`notion2cli claude launch` 用的用户级 Claude MCP 配置
+
+这一步的目的只有一个：**让用户可以在任意目录运行 CLI**。
+
+## Claude 产品化做法
+
+Claude 侧没有做 daemon，而是做了用户级 launch helper：
+
+```bash
+notion2cli claude launch
+```
+
+它会自动生成：
+
+```text
+~/.notion2cli/claude.mcp.json
+```
+
+并用这份配置启动：
+
+- `notion2cli_bridge`
+- `server/channel-server.mjs`
+
+这样就不再要求用户必须在源码仓库里依赖 `.mcp.json` 或 `.claude/commands`。
+
+## Codex 产品化做法
+
+Codex 侧是标准 daemon 模式：
+
+```bash
+notion2cli daemon start --runtime codex
+```
+
+bridge 会在后台调起：
+
+- `codex exec`
+- `codex mcp add`
+- `codex mcp login`
+
+Codex 当前仍然是**后台任务分发**，不是“附着当前 TUI 会话”。
+
+## 浏览器扩展现在只看什么
+
+扩展层现在只依赖 bridge 返回的这些字段：
+
+- `runtime`
+- `capabilities`
+- `notionMcp`
+- `paired`
+- `awaitingPairCode`
+
+因此扩展不再理解：
+
+- Claude channel 的协议细节
+- Codex daemon 是怎么拉起来的
+- MCP 安装命令具体长什么样
+
+这就是产品化后最关键的“低耦合边界”。
+
+## 安全和保守策略
+
+当前保守策略保持不变：
+
 - bridge 只监听 `127.0.0.1`
-- 配对码有效期 5 分钟
-- 每个 Claude 会话都有自己的本地 bridge 状态
-- 未配对时，扩展只能提示连接，不能发任务
-- 整页读取与写回要求当前 Claude 会话已连接并授权 Notion 官方 MCP
-- 默认写回路径是追加，不做破坏性替换
-- 预览期的 Channels 仍要求启动时显式放行 development channel
+- 配对码短期有效
+- 结果写回默认只做追加 section
+- 整页读取和写回仍然通过 Notion 官方 MCP
+- 浏览器选区仍然只从浏览器拿，不伪装成 MCP 能力
+
+这些约束不是缺点，而是为了把损坏半径压小。
+
+## 当前边界
+
+- 浏览器扩展仍然通过开发者模式加载
+- daemon 目前是本地后台进程，还没有做 OS 级开机自启
+- 本地通信目前仍然是 `127.0.0.1` HTTP
+- 更正式的产品阶段再考虑 Native Messaging 或更强 IPC
+- Claude 仍依赖 research preview 的 `Channels`
+- Codex 仍不复用已打开的交互 TUI
