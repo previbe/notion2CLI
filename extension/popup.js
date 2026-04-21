@@ -2,6 +2,8 @@ const NOTION_MCP_DOC_URL = 'https://developers.notion.com/guides/mcp/get-started
 
 const popupState = {
   status: null,
+  selectedRuntime: 'codex',
+  lastErrorMessage: '',
   installBusy: false,
   installJobId: null,
   installMessage: '',
@@ -11,10 +13,10 @@ const popupState = {
 const statusDot = document.querySelector('[data-status-dot]');
 const statusValue = document.querySelector('[data-status-value]');
 const statusHint = document.querySelector('[data-status-hint]');
-const runtimePill = document.querySelector('[data-runtime-pill]');
-const accessPill = document.querySelector('[data-access-pill]');
 const stepTitle = document.querySelector('[data-step-title]');
 const stepBody = document.querySelector('[data-step-body]');
+const runtimeSwitch = document.querySelector('[data-runtime-switch]');
+const runtimeButtons = [...document.querySelectorAll('[data-runtime-button]')];
 const commandRow = document.querySelector('[data-command-row]');
 const stepCommand = document.querySelector('[data-step-command]');
 const copyCommandButton = document.querySelector('[data-copy-command]');
@@ -29,6 +31,9 @@ connectButton.addEventListener('click', connectBridge);
 clearButton.addEventListener('click', clearBridge);
 copyCommandButton.addEventListener('click', copySuggestedCommand);
 installButton.addEventListener('click', sendInstallRequest);
+runtimeButtons.forEach((button) => {
+  button.addEventListener('click', () => selectRuntime(button.dataset.runtimeButton));
+});
 
 refreshStatus();
 
@@ -36,30 +41,15 @@ async function refreshStatus() {
   try {
     const status = await sendMessage({ type: 'getBridgeStatus' });
     popupState.status = status;
+    popupState.lastErrorMessage = '';
     renderStatus(status);
   } catch (error) {
-    popupState.status = null;
-    statusDot.classList.remove('ready');
-    statusValue.textContent = '无法连接本地 Agent';
-    statusHint.textContent = error.message || '请确认 notion2CLI bridge 已启动。';
-    runtimePill.textContent = '本地 Agent';
-    runtimePill.className = 'pill muted';
-    accessPill.textContent = '未检查';
-    accessPill.className = 'pill muted';
-    stepTitle.textContent = '先启动本地 Agent';
-    stepBody.textContent = '启动完成后，这里会自动显示连接与授权状态。';
-    stepCommand.textContent = 'notion2cli daemon start --runtime codex';
-    commandRow.classList.remove('hidden');
-    installButton.disabled = true;
-    installButton.textContent = '等待启动';
-    accessDetail.textContent = '启动本地 Agent 后，再在这里检查 Notion 访问。';
-    installStatus.textContent = '当前无法检查。';
+    renderDisconnectedState(error.message || '请确认 notion2CLI bridge 已启动。');
   }
 }
 
 function renderStatus(status) {
   const runtime = status.runtime || {};
-  const runtimeLabel = runtime.label || '本地 Agent';
   const connected = Boolean(status.paired) && Boolean(runtime.ready);
   const access = getAccessState(status);
   const nextStep = getNextStep(status);
@@ -67,11 +57,7 @@ function renderStatus(status) {
   statusDot.classList.toggle('ready', connected);
   statusValue.textContent = buildStatusValue(status);
   statusHint.textContent = buildStatusHint(status);
-
-  runtimePill.textContent = runtimeLabel;
-  runtimePill.className = 'pill';
-  accessPill.textContent = access.pill;
-  accessPill.className = `pill ${access.pillTone}`.trim();
+  updateRuntimeSwitch(nextStep.showRuntimeSwitch);
 
   stepTitle.textContent = nextStep.title;
   stepBody.textContent = nextStep.body;
@@ -82,6 +68,23 @@ function renderStatus(status) {
   installButton.disabled = access.disabled || popupState.installBusy;
   installButton.textContent = popupState.installBusy ? '处理中…' : access.button;
   installStatus.textContent = popupState.installMessage || access.status;
+}
+
+function renderDisconnectedState(message) {
+  popupState.status = null;
+  popupState.lastErrorMessage = message;
+  statusDot.classList.remove('ready');
+  statusValue.textContent = '没有连接本地 Agent';
+  statusHint.textContent = message;
+  updateRuntimeSwitch(true);
+  stepTitle.textContent = '启动本地 Agent';
+  stepBody.textContent = '启动完成后，这里会自动显示连接与授权状态。';
+  stepCommand.textContent = getSelectedRuntimeLaunchCommand();
+  commandRow.classList.remove('hidden');
+  installButton.disabled = true;
+  installButton.textContent = '等待启动';
+  accessDetail.textContent = '启动本地 Agent 后，再在这里检查 Notion MCP。';
+  installStatus.textContent = '当前无法检查。';
 }
 
 function buildStatusValue(status) {
@@ -117,12 +120,10 @@ function buildStatusHint(status) {
   }
 
   if (!runtime.ready) {
-    return runtime.launchCommand
-      ? `先启动本地 Agent：${runtime.launchCommand}`
-      : (runtime.statusMessage || '请先启动 notion2CLI bridge。');
+    return `启动本地 Agent：${getSelectedRuntimeLaunchCommand()}`;
   }
 
-  return '先运行配对命令生成 6 位码，再在下方完成浏览器连接。';
+  return '运行配对命令生成 6 位码，再在下方完成浏览器连接。';
 }
 
 function getNextStep(status) {
@@ -131,9 +132,10 @@ function getNextStep(status) {
 
   if (!runtime.ready) {
     return {
-      title: '先启动本地 Agent',
+      title: '启动本地 Agent',
       body: '启动后这里会自动识别当前 runtime，并告诉你后续步骤。',
-      command: runtime.launchCommand || '',
+      command: getSelectedRuntimeLaunchCommand(),
+      showRuntimeSwitch: true,
     };
   }
 
@@ -142,14 +144,16 @@ function getNextStep(status) {
       title: status.awaitingPairCode ? '把配对码贴回来' : '生成一个配对码',
       body: '运行下面的命令拿到 6 位数字，然后贴到下方的输入框里。',
       command: runtime.pairingCommand || 'notion2cli pair',
+      showRuntimeSwitch: false,
     };
   }
 
   if (!runtime.standalone && access.canInstall) {
     return {
-      title: '启用 Notion 访问',
-      body: '浏览器已经连上本地 Agent。接下来只要为当前 runtime 完成 Notion 配置或授权。',
+      title: '启用 Notion MCP',
+      body: '浏览器已经连上本地 Agent。接下来只要为当前 runtime 完成 Notion MCP 配置或授权。',
       command: '',
+      showRuntimeSwitch: false,
     };
   }
 
@@ -157,6 +161,7 @@ function getNextStep(status) {
     title: '回到页面开始使用',
     body: '连接与权限都已经准备好。现在去 Notion 页面，用右下角按钮发送当前页或选中内容。',
     command: '',
+    showRuntimeSwitch: false,
   };
 }
 
@@ -166,9 +171,7 @@ function getAccessState(status) {
 
   if (!runtime.ready) {
     return {
-      pill: '等待启动',
-      pillTone: 'muted',
-      detail: '启动本地 Agent 后，再在这里检查 Notion 访问。',
+      detail: '启动本地 Agent 后，再在这里检查 Notion MCP。',
       status: '还没有开始检查。',
       button: '等待启动',
       disabled: true,
@@ -178,11 +181,9 @@ function getAccessState(status) {
 
   if (!status.paired) {
     return {
-      pill: '等待连接',
-      pillTone: 'muted',
-      detail: '先完成浏览器连接，再为当前 runtime 启用 Notion 访问。',
+      detail: '完成浏览器连接，再为当前 runtime 启用 Notion MCP。',
       status: '连接完成后可继续。',
-      button: '先完成连接',
+      button: '完成连接',
       disabled: true,
       canInstall: false,
     };
@@ -190,9 +191,7 @@ function getAccessState(status) {
 
   if (runtime.standalone) {
     return {
-      pill: '调试模式',
-      pillTone: 'warning',
-      detail: '当前是 standalone 调试模式，不会调用真实 Notion。',
+      detail: '当前是 standalone 调试模式，不会调用真实 Notion MCP。',
       status: '这里只会返回模拟结果。',
       button: '调试模式不可用',
       disabled: true,
@@ -203,8 +202,6 @@ function getAccessState(status) {
   switch (notionMcp.status) {
     case 'configured':
       return {
-        pill: 'Notion 已就绪',
-        pillTone: '',
         detail: notionMcp.detail || '当前 runtime 已可读取和写回 Notion。',
         status: '无需额外设置。',
         button: '已启用',
@@ -213,9 +210,7 @@ function getAccessState(status) {
       };
     case 'unauthenticated':
       return {
-        pill: '需要授权',
-        pillTone: 'warning',
-        detail: notionMcp.detail || '已经检测到配置，但你还需要完成一次授权。',
+        detail: notionMcp.detail || '已经检测到 Notion MCP 配置，但你还需要完成一次授权。',
         status: '完成授权后，整页发送和写回都会恢复。',
         button: '继续授权',
         disabled: false,
@@ -225,21 +220,17 @@ function getAccessState(status) {
       };
     case 'missing':
       return {
-        pill: '未启用',
-        pillTone: 'warning',
-        detail: notionMcp.detail || '当前 runtime 还没有配置 Notion 访问。',
+        detail: notionMcp.detail || '当前 runtime 还没有配置 Notion MCP。',
         status: '启用后才能读取整页并写回结果。',
-        button: '启用 Notion 访问',
+        button: '启用 Notion MCP',
         disabled: false,
         canInstall: true,
-        pendingText: '正在启用 Notion 访问…',
+        pendingText: '正在启用 Notion MCP…',
         waitText: '启用请求已发出，等待本地 Agent 完成…',
       };
     case 'unavailable':
       return {
-        pill: '当前不可用',
-        pillTone: 'warning',
-        detail: notionMcp.detail || '当前模式不会调用真实 Notion。',
+        detail: notionMcp.detail || '当前模式不会调用真实 Notion MCP。',
         status: '切换到真实 runtime 后再继续。',
         button: '当前不可用',
         disabled: true,
@@ -247,14 +238,12 @@ function getAccessState(status) {
       };
     default:
       return {
-        pill: '状态未知',
-        pillTone: 'muted',
-        detail: notionMcp.detail || '现在还无法自动确认 Notion 访问状态。',
-        status: '如果发送整页或写回失败，请先查看官方文档。',
+        detail: notionMcp.detail || '现在还无法自动确认 Notion MCP 状态。',
+        status: '如果发送整页或写回失败，请查看官方文档。',
         button: '尝试修复',
         disabled: false,
         canInstall: true,
-        pendingText: '正在尝试修复 Notion 访问…',
+        pendingText: '正在尝试修复 Notion MCP…',
         waitText: '修复请求已发出，等待本地 Agent 处理…',
       };
   }
@@ -264,7 +253,7 @@ async function connectBridge() {
   const code = codeInput.value.trim();
   if (!/^\d{6}$/.test(code)) {
     statusValue.textContent = '配对码格式不正确';
-    statusHint.textContent = '请输入 6 位数字。配对码来自上面的“下一步”命令。';
+    statusHint.textContent = '请输入 6 位数字。配对码来自上面的命令。';
     return;
   }
 
@@ -381,6 +370,37 @@ function clearInstallPolling() {
     clearInterval(popupState.installPollTimer);
     popupState.installPollTimer = null;
   }
+}
+
+function selectRuntime(runtimeId) {
+  if (!runtimeId || popupState.selectedRuntime === runtimeId) {
+    return;
+  }
+
+  popupState.selectedRuntime = runtimeId;
+  if (popupState.status) {
+    renderStatus(popupState.status);
+    return;
+  }
+
+  renderDisconnectedState(popupState.lastErrorMessage || '请确认 notion2CLI bridge 已启动。');
+}
+
+function updateRuntimeSwitch(visible) {
+  runtimeSwitch.classList.toggle('hidden', !visible);
+  runtimeButtons.forEach((button) => {
+    const active = button.dataset.runtimeButton === popupState.selectedRuntime;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function getSelectedRuntimeLaunchCommand() {
+  if (popupState.selectedRuntime === 'claude') {
+    return 'notion2cli daemon start --runtime claude';
+  }
+
+  return 'notion2cli daemon start --runtime codex';
 }
 
 function formatJobStatus(status) {

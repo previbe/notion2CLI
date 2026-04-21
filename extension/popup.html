@@ -11,9 +11,6 @@
       <section class="hero">
         <div class="eyebrow">Connection & Setup</div>
         <h1>连接本地 Agent</h1>
-        <p class="lede">
-          这里只处理连接、授权和修复。发送当前页、查看结果、写回 Notion，请回到页面右下角按钮。
-        </p>
       </section>
 
       <section class="status-card">
@@ -25,16 +22,17 @@
               <div class="status-value" data-status-value>检查中…</div>
             </div>
           </div>
-          <div class="pill-row">
-            <span class="pill" data-runtime-pill>本地 Agent</span>
-            <span class="pill" data-access-pill>检查中</span>
-          </div>
         </div>
 
         <p class="status-hint" data-status-hint>正在读取本地状态。</p>
 
         <div class="step-card">
-          <div class="step-label">下一步</div>
+          <div class="step-topbar">
+            <div class="runtime-switch hidden" data-runtime-switch>
+              <button class="runtime-toggle active" data-runtime-button="codex" type="button" aria-pressed="true">codex</button>
+              <button class="runtime-toggle" data-runtime-button="claude" type="button" aria-pressed="false">claude</button>
+            </div>
+          </div>
           <div class="step-title" data-step-title>正在检查你需要做什么</div>
           <p class="step-body" data-step-body>如果需要运行命令，这里会直接给出最短路径。</p>
           <div class="command-row" data-command-row>
@@ -56,10 +54,10 @@
       </section>
 
       <section class="access-card">
-        <div class="section-title">Notion 访问</div>
-        <p class="section-copy" data-access-detail>连接完成后，可以在这里检查并启用当前 runtime 的 Notion 访问能力。</p>
+        <div class="section-title">Notion MCP</div>
+        <p class="section-copy" data-access-detail>连接完成后，可以在这里检查并启用当前 runtime 的 Notion MCP。</p>
         <a class="text-link" href="https://developers.notion.com/guides/mcp/get-started-with-mcp" target="_blank" rel="noreferrer">查看官方安装文档</a>
-        <button class="secondary" data-install-button type="button">启用 Notion 访问</button>
+        <button class="secondary" data-install-button type="button">启用 Notion MCP</button>
         <p class="access-status" data-install-status>等待检查。</p>
       </section>
     </main>
