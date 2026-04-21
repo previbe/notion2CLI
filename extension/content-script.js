@@ -1,14 +1,32 @@
+const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
+const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
+const WRITE_MODE_UPDATE_CONTENT = 'update_content';
+const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
+
+const ACTION_FORWARD_SELECTION = 'forward_selection_text';
+const ACTION_FORWARD_FULL_PAGE = 'forward_full_page_via_mcp';
+const ACTION_WRITE_REPLY = 'write_reply_to_notion';
+
 const state = {
   bridgeReady: false,
   bridgeMessage: '检查连接中',
+  expanded: false,
   currentJobId: null,
+  currentAction: '',
   pollTimer: null,
   busy: false,
   approvalBusy: false,
   pendingApproval: null,
   latestReply: '',
+  latestBrief: '',
   latestReplyJobId: null,
-  writeMode: 'append_markdown_section',
+  writeMode: WRITE_MODE_APPEND_SECTION,
+  lastSubmission: {
+    action: '',
+    pageUrl: '',
+    pageTitle: '',
+    selectionText: '',
+  },
   runtime: {
     id: 'unknown',
     label: '本地 Agent',
@@ -24,131 +42,144 @@ const state = {
   },
 };
 
-const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
-const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
-const WRITE_MODE_UPDATE_CONTENT = 'update_content';
-const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
-
 const root = document.createElement('div');
 root.id = 'n2c-root';
 document.documentElement.appendChild(root);
 
 root.innerHTML = `
   <div class="n2c-shell">
-    <button class="n2c-fab" type="button">
-      <span class="n2c-dot"></span>
-      <span class="n2c-fab-text">
-        <span class="n2c-fab-title">发送到本地 Agent</span>
-        <span class="n2c-fab-subtitle">正在检查连接…</span>
-      </span>
-    </button>
-
-    <section class="n2c-menu n2c-hidden">
-      <div class="n2c-card-header">
-        <div class="n2c-kicker">Current Page</div>
-        <div class="n2c-card-title">发送与结果</div>
+    <section class="n2c-menu" aria-hidden="true">
+      <div class="n2c-sheet-header">
+        <div class="n2c-strip-status">
+          <span class="n2c-dot" data-bridge-dot></span>
+          <span class="n2c-strip-label" data-strip-label>未连接本地 CLI</span>
+        </div>
+        <button class="n2c-strip-toggle" type="button" data-close-sheet aria-label="收起 Activity">
+          <span class="n2c-chevron n2c-chevron-down"></span>
+        </button>
       </div>
-      <div class="n2c-card-body">
-        <div class="n2c-context" data-context>正在检查当前页面状态。</div>
-        <div class="n2c-page-meta">
-          <div class="n2c-meta-label">当前页面</div>
-          <div class="n2c-page-title" data-page-title>读取中…</div>
-        </div>
-        <button class="n2c-send" type="button" data-send>发送当前页</button>
-        <div class="n2c-send-hint" data-send-hint>未选中时会发送当前页；选中后会优先发送选中内容。</div>
-        <div class="n2c-setup-tip n2c-hidden" data-setup-tip>连接、授权和修复都在浏览器工具栏里的 notion2CLI 弹窗里完成。</div>
-        <div class="n2c-section-divider"></div>
-        <div class="n2c-meta">
-          <span class="n2c-status" data-run-status>
-            <span class="n2c-spinner"></span>
-            <span>还没有开始</span>
-          </span>
-          <span data-job-id></span>
-        </div>
-        <div class="n2c-output n2c-empty" data-output>发送后，这次结果会显示在这里。你可以复制结果，或直接写回当前 Notion 页面。</div>
-        <div class="n2c-approval n2c-hidden" data-approval>
-          <div class="n2c-approval-title">需要你的确认</div>
-          <div class="n2c-approval-message" data-approval-message>Codex 需要确认后才能继续。</div>
-          <div class="n2c-approval-actions">
-            <button class="n2c-approve" type="button" data-approve>允许继续</button>
-            <button class="n2c-decline" type="button" data-decline>拒绝</button>
+      <div class="n2c-sheet-paper">
+        <div class="n2c-card-body">
+          <div class="n2c-page-meta">
+            <div class="n2c-meta-label">当前页面</div>
+            <div class="n2c-page-title" data-page-title>读取中…</div>
           </div>
+          <button class="n2c-send" type="button" data-send>发送当前页</button>
+          <div class="n2c-send-hint" data-send-hint>会先处理当前页，完成后自动写回当前 Notion 页面。</div>
+          <div class="n2c-section-divider"></div>
+          <div class="n2c-meta">
+            <span class="n2c-status" data-run-status>
+              <span class="n2c-spinner"></span>
+              <span>还没有开始</span>
+            </span>
+            <span class="n2c-job-id" data-job-id></span>
+          </div>
+          <div class="n2c-activity-note n2c-empty" data-activity-note>发送后，执行进度、授权请求和自动写回状态会显示在这里。</div>
+          <div class="n2c-approval n2c-hidden" data-approval>
+            <div class="n2c-approval-title">需要你的确认</div>
+            <div class="n2c-approval-message" data-approval-message>Codex 需要确认后才能继续。</div>
+            <div class="n2c-approval-actions">
+              <button class="n2c-approve" type="button" data-approve>允许继续</button>
+              <button class="n2c-decline" type="button" data-decline>拒绝</button>
+            </div>
+          </div>
+          <div class="n2c-brief-head">
+            <div class="n2c-meta-label">BRIEF</div>
+            <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
+          </div>
+          <div class="n2c-output n2c-empty" data-output>运行完成后，这里的 brief 会保留刚刚完成动作的总结。</div>
         </div>
-        <div class="n2c-actions">
-          <button class="n2c-write" type="button" data-write disabled>写回 Notion</button>
-          <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
-        </div>
-        <div class="n2c-write-config">
-          <label class="n2c-write-label" for="n2c-write-mode">写回模式</label>
-          <select class="n2c-write-select" id="n2c-write-mode" data-write-mode>
-            <option value="append_markdown_section">追加到页面末尾</option>
-            <option value="update_content">替换当前选中内容</option>
-            <option value="replace_content">覆盖页面正文</option>
-          </select>
-        </div>
-        <div class="n2c-write-hint" data-write-hint>会把结果追加到当前页末尾，不会改动原文。</div>
       </div>
     </section>
+
+    <button class="n2c-fab" type="button" aria-expanded="false" aria-controls="n2c-activity-sheet">
+      <span class="n2c-strip-status">
+        <span class="n2c-dot" data-bridge-dot></span>
+        <span class="n2c-strip-label" data-strip-label>未连接本地 CLI</span>
+      </span>
+      <span class="n2c-strip-toggle" aria-hidden="true">
+        <span class="n2c-chevron n2c-chevron-up"></span>
+      </span>
+    </button>
   </div>
 `;
 
-const dot = root.querySelector('.n2c-dot');
+const shell = root.querySelector('.n2c-shell');
+const statusDots = [...root.querySelectorAll('[data-bridge-dot]')];
+const stripLabelNodes = [...root.querySelectorAll('[data-strip-label]')];
 const fab = root.querySelector('.n2c-fab');
-const fabSubtitle = root.querySelector('.n2c-fab-subtitle');
 const menu = root.querySelector('.n2c-menu');
-const panel = menu;
-const contextNode = root.querySelector('[data-context]');
+menu.id = 'n2c-activity-sheet';
+const closeSheetButton = root.querySelector('[data-close-sheet]');
 const pageTitleNode = root.querySelector('[data-page-title]');
 const sendButton = root.querySelector('[data-send]');
 const sendHintNode = root.querySelector('[data-send-hint]');
-const setupTipNode = root.querySelector('[data-setup-tip]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
+const activityNoteNode = root.querySelector('[data-activity-note]');
 const outputNode = root.querySelector('[data-output]');
 const approvalNode = root.querySelector('[data-approval]');
 const approvalMessageNode = root.querySelector('[data-approval-message]');
 const approveButton = root.querySelector('[data-approve]');
 const declineButton = root.querySelector('[data-decline]');
 const copyButton = root.querySelector('[data-copy]');
-const writeButton = root.querySelector('[data-write]');
-const writeModeSelect = root.querySelector('[data-write-mode]');
-const writeHintNode = root.querySelector('[data-write-hint]');
 
 bindEvents();
+pageTitleNode.textContent = getPageTitle();
+renderBrief();
 loadWriteModePreference();
+updateActionCopy();
 updateControls();
 refreshBridgeStatus();
 setInterval(refreshBridgeStatus, 15000);
 
 function bindEvents() {
   fab.addEventListener('click', () => {
-    updateContextText();
-    menu.classList.toggle('n2c-hidden');
+    pageTitleNode.textContent = getPageTitle();
+    updateActionCopy();
+    renderBrief();
+    setExpanded(!state.expanded);
   });
 
+  closeSheetButton.addEventListener('click', () => setExpanded(false));
   sendButton.addEventListener('click', () => startAction());
-  writeButton.addEventListener('click', () => writeLatestReply());
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
-  writeModeSelect.addEventListener('change', handleWriteModeChange);
 
   document.addEventListener('selectionchange', () => {
-    updateContextText();
-    updateWriteModeUi();
+    updateActionCopy();
+    updateControls();
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !Object.hasOwn(changes, WRITE_MODE_STORAGE_KEY)) {
+      return;
+    }
+
+    state.writeMode = normalizeWriteMode(changes[WRITE_MODE_STORAGE_KEY].newValue);
+    updateActionCopy();
     updateControls();
   });
 
   copyButton.addEventListener('click', async () => {
-    if (!state.latestReply) {
+    const text = state.latestBrief || state.latestReply;
+    if (!text) {
       return;
     }
 
-    await navigator.clipboard.writeText(state.latestReply);
+    await navigator.clipboard.writeText(text);
     copyButton.textContent = '已复制';
     setTimeout(() => {
       copyButton.textContent = '复制结果';
     }, 1400);
   });
+}
+
+function setExpanded(nextExpanded) {
+  state.expanded = Boolean(nextExpanded);
+  shell.classList.toggle('n2c-shell-expanded', state.expanded);
+  menu.setAttribute('aria-hidden', state.expanded ? 'false' : 'true');
+  fab.setAttribute('aria-expanded', state.expanded ? 'true' : 'false');
 }
 
 async function refreshBridgeStatus() {
@@ -168,80 +199,118 @@ async function refreshBridgeStatus() {
     state.bridgeMessage = error.message || '无法连接 bridge';
   }
 
-  dot.classList.toggle('ready', state.bridgeReady);
-  fabSubtitle.textContent = state.bridgeMessage;
+  statusDots.forEach((node) => node.classList.toggle('ready', state.bridgeReady));
+  const stripLabel = state.bridgeReady ? 'Activity' : '未连接本地 CLI';
+  stripLabelNodes.forEach((node) => {
+    node.textContent = stripLabel;
+  });
   pageTitleNode.textContent = getPageTitle();
-  updateContextText();
-  updateWriteModeUi();
+  updateActionCopy();
   updateControls();
 }
 
-function updateContextText() {
+function updateActionCopy() {
   const selected = getSelectionText();
-  const runtimeLabel = state.runtime.label || '本地 Agent';
-  const setupTip = buildSetupTip();
-
-  setupTipNode.textContent = setupTip || '';
-  setupTipNode.classList.toggle('n2c-hidden', !setupTip);
+  const writeMode = normalizeWriteMode(state.writeMode);
 
   if (!state.runtime.ready) {
-    contextNode.textContent = state.runtime.statusMessage || '本地 Agent 还没有准备好。';
     sendButton.textContent = '发送当前页';
     sendHintNode.textContent = state.runtime.launchCommand
-      ? `先在工具栏弹窗里启动：${state.runtime.launchCommand}`
-      : '先在工具栏弹窗里完成启动。';
+      ? `先在扩展弹窗里启动 CLI：${state.runtime.launchCommand}`
+      : '先在扩展弹窗里启动 CLI。';
     return;
   }
 
   if (!state.bridgeReady) {
-    contextNode.textContent = `这个页面还没有连到 ${runtimeLabel}。`;
     sendButton.textContent = '完成连接后可发送';
-    sendHintNode.textContent = '先在工具栏弹窗里输入 6 位配对码，连接完成后再回来发送。';
+    sendHintNode.textContent = '先在扩展弹窗里生成并输入 6 位配对码，连接完成后再回来发送。';
+    return;
+  }
+
+  if (writeMode === WRITE_MODE_UPDATE_CONTENT && !selected) {
+    sendButton.textContent = '先选中要替换的内容';
+    sendHintNode.textContent = '当前插件配置为“替换当前选中内容”。请先在页面里选中原文，再发送给本地 Agent。';
+    return;
+  }
+
+  if (!canAttemptNotionFlow()) {
+    sendButton.textContent = '发送当前页';
+    sendHintNode.textContent = '自动写回需要 Notion MCP。请先在扩展弹窗里启用 Notion MCP，再回来发送。';
     return;
   }
 
   if (state.runtime.standalone) {
-    contextNode.textContent = '当前是调试模式。发送与写回都会返回模拟结果，不会调用真实 Notion MCP。';
     sendButton.textContent = selected ? '发送选中内容（调试）' : '发送当前页（调试）';
-    sendHintNode.textContent = '适合联调流程，不适合正式写回。';
+    sendHintNode.textContent = selected
+      ? '会先处理选中内容，生成模拟 brief，并模拟写回当前页面。'
+      : '会先处理当前页，生成模拟 brief，并模拟写回当前页面。';
     return;
   }
 
   if (selected) {
-    contextNode.textContent = `将发送你当前选中的内容（${selected.length} 个字符）。`;
     sendButton.textContent = '发送选中内容';
-    sendHintNode.textContent = canUseNotionAccess()
-      ? '这次只处理选中内容；如果你取消选中，这里会自动改为发送当前页。'
-      : '选中内容现在就能发送；要发送整页或写回结果，还需要先在弹窗里启用 Notion MCP。';
+    sendHintNode.textContent = buildAutoWriteHint({
+      hasSelection: true,
+      writeMode,
+      pendingAuth: state.notionMcp.status === 'unauthenticated',
+    });
     return;
   }
 
-  if (!canUseNotionAccess()) {
-    contextNode.textContent = '当前页还不能直接发送。';
-    sendButton.textContent = '发送当前页';
-    sendHintNode.textContent = '先在弹窗里启用 Notion MCP，或者先选中一段文字再发送。';
-    return;
-  }
-
-  contextNode.textContent = '将发送当前页，让本地 Agent 阅读页面正文与相关图片。';
   sendButton.textContent = '发送当前页';
-  sendHintNode.textContent = '如果你先选中内容，这里会自动改为只发送选中部分。';
+  sendHintNode.textContent = buildAutoWriteHint({
+    hasSelection: false,
+    writeMode,
+    pendingAuth: state.notionMcp.status === 'unauthenticated',
+  });
+}
+
+function buildAutoWriteHint({ hasSelection, writeMode, pendingAuth }) {
+  let hint;
+
+  if (writeMode === WRITE_MODE_UPDATE_CONTENT) {
+    hint = '会先处理你选中的内容，完成后自动替换这段原文。';
+  } else if (writeMode === WRITE_MODE_REPLACE_CONTENT) {
+    hint = hasSelection
+      ? '会先处理你选中的内容，完成后自动覆盖当前页面正文。请谨慎操作。'
+      : '会先处理当前页，完成后自动覆盖当前页面正文。请谨慎操作。';
+  } else {
+    hint = hasSelection
+      ? '会先处理选中内容，完成后自动追加到当前 Notion 页面末尾。'
+      : '会先处理当前页，完成后自动追加到当前 Notion 页面末尾。';
+  }
+
+  if (!pendingAuth) {
+    return hint;
+  }
+
+  return `${hint} 如果写回前还需要授权，会继续在 ACTIVITY 里请求你确认。`;
 }
 
 async function startAction() {
   const selectionText = getSelectionText();
-  const action = selectionText ? 'forward_selection_text' : 'forward_full_page_via_mcp';
+  const action = selectionText ? ACTION_FORWARD_SELECTION : ACTION_FORWARD_FULL_PAGE;
   const runtimeLabel = state.runtime.label || '本地 Agent';
 
-  menu.classList.add('n2c-hidden');
-  panel.classList.remove('n2c-hidden');
+  clearPolling();
+  setExpanded(true);
   state.busy = true;
-  updateControls();
+  state.approvalBusy = false;
+  state.pendingApproval = null;
+  state.currentAction = action;
+  state.currentJobId = null;
+  state.lastSubmission = {
+    action,
+    pageUrl: window.location.href,
+    pageTitle: getPageTitle(),
+    selectionText,
+  };
+
   renderJobState({
     status: 'sending',
     text: selectionText
-      ? `正在把选中内容交给 ${runtimeLabel}…`
-      : `正在把当前页交给 ${runtimeLabel}…`,
+      ? `正在把选中内容交给 ${runtimeLabel}，完成后会自动写回 Notion…`
+      : `正在把当前页交给 ${runtimeLabel}，完成后会自动写回 Notion…`,
     jobId: '',
     action,
   });
@@ -251,8 +320,8 @@ async function startAction() {
       type: 'submitNotionAction',
       payload: {
         action,
-        pageUrl: window.location.href,
-        pageTitle: getPageTitle(),
+        pageUrl: state.lastSubmission.pageUrl,
+        pageTitle: state.lastSubmission.pageTitle,
         selectionText,
         source: 'chrome-extension',
       },
@@ -262,15 +331,14 @@ async function startAction() {
     renderJobState({
       status: response.status,
       text: selectionText
-        ? `选中内容已发出，等待 ${runtimeLabel} 返回结果…`
-        : `当前页已发出，等待 ${runtimeLabel} 返回结果…`,
+        ? `选中内容已发出，正在等待 ${runtimeLabel} 生成 brief…`
+        : `当前页已发出，正在等待 ${runtimeLabel} 生成 brief…`,
       jobId: response.jobId,
       action,
     });
     pollJob(response.jobId);
   } catch (error) {
     state.busy = false;
-    updateControls();
     renderJobState({
       status: 'failed',
       text: error.message || '发送失败',
@@ -280,48 +348,43 @@ async function startAction() {
   }
 }
 
-async function writeLatestReply() {
-  if (!state.latestReply || state.busy) {
-    return;
-  }
-
+async function startAutoWriteBack({ replyText, sourceReplyJobId }) {
   const writeMode = normalizeWriteMode(state.writeMode);
-  const selectionText = getSelectionText();
+  const selectionText = state.lastSubmission.selectionText || '';
+
   if (writeMode === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
+    state.busy = false;
     renderJobState({
       status: 'failed',
-      text: '“替换当前选中文本”模式需要你先在页面里选中要替换的原文。',
+      text: '当前插件配置为“替换当前选中内容”，但这次发送时没有捕获到可替换的原文。',
       jobId: '',
-      action: 'write_reply_to_notion',
+      action: ACTION_WRITE_REPLY,
     });
-    updateWriteModeUi();
-    updateControls();
     return;
   }
 
   const runtimeLabel = state.runtime.label || '本地 Agent';
-  panel.classList.remove('n2c-hidden');
   state.busy = true;
-  updateControls();
+  state.currentAction = ACTION_WRITE_REPLY;
   renderJobState({
     status: 'sending',
     text: buildWritePendingText(writeMode, runtimeLabel),
     jobId: '',
-    action: 'write_reply_to_notion',
+    action: ACTION_WRITE_REPLY,
   });
 
   try {
     const response = await sendMessage({
       type: 'submitNotionAction',
       payload: {
-        action: 'write_reply_to_notion',
-        pageUrl: window.location.href,
-        pageTitle: getPageTitle(),
+        action: ACTION_WRITE_REPLY,
+        pageUrl: state.lastSubmission.pageUrl || window.location.href,
+        pageTitle: state.lastSubmission.pageTitle || getPageTitle(),
         selectionText,
-        replyTextToWrite: state.latestReply,
+        replyTextToWrite: replyText,
         writeMode,
         writeSectionTitle: 'notion2CLI',
-        sourceReplyJobId: state.latestReplyJobId,
+        sourceReplyJobId,
         source: 'chrome-extension',
       },
     });
@@ -331,23 +394,22 @@ async function writeLatestReply() {
       status: response.status,
       text: buildWriteWaitingText(writeMode, runtimeLabel),
       jobId: response.jobId,
-      action: 'write_reply_to_notion',
+      action: ACTION_WRITE_REPLY,
     });
     pollJob(response.jobId);
   } catch (error) {
     state.busy = false;
-    updateControls();
     renderJobState({
       status: 'failed',
-      text: error.message || '写回失败',
+      text: error.message || '自动写回失败',
       jobId: '',
-      action: 'write_reply_to_notion',
+      action: ACTION_WRITE_REPLY,
     });
   }
 }
 
 function pollJob(jobId) {
-  clearInterval(state.pollTimer);
+  clearPolling();
   state.pollTimer = setInterval(async () => {
     try {
       const response = await sendMessage({
@@ -356,78 +418,208 @@ function pollJob(jobId) {
       });
 
       const job = response.job;
-      const statusText = statusLabel(job.status);
+      if (job.status === 'completed' && isReplyAction(job.action)) {
+        clearPolling();
+        state.approvalBusy = false;
+        await handleForwardCompletion(job);
+        return;
+      }
+
       renderJobState({
         status: job.status,
-        text: job.replyText || job.error || job.runtimeMeta?.pendingApproval?.message || statusText,
+        text: buildJobStateText(job),
         jobId: job.id,
         action: job.action,
         runtimeMeta: job.runtimeMeta || {},
       });
 
       if (job.status === 'completed' || job.status === 'failed') {
-        clearInterval(state.pollTimer);
+        clearPolling();
         state.busy = false;
         state.approvalBusy = false;
         updateControls();
       }
     } catch (error) {
+      clearPolling();
+      state.busy = false;
+      state.approvalBusy = false;
       renderJobState({
         status: 'failed',
         text: error.message || '读取任务状态失败',
         jobId,
-        action: 'forward_full_page_via_mcp',
+        action: state.currentAction || ACTION_FORWARD_FULL_PAGE,
         runtimeMeta: {},
       });
-      clearInterval(state.pollTimer);
-      state.busy = false;
-      state.approvalBusy = false;
-      updateControls();
     }
   }, 1800);
 }
 
+async function handleForwardCompletion(job) {
+  const replyText = String(job.replyText || '').trim();
+  if (!replyText) {
+    state.busy = false;
+    renderJobState({
+      status: 'failed',
+      text: '本地 Agent 已完成，但没有返回可展示或写回的结果。',
+      jobId: job.id,
+      action: job.action,
+      runtimeMeta: job.runtimeMeta || {},
+    });
+    return;
+  }
+
+  state.latestReply = replyText;
+  state.latestBrief = extractBrief(replyText);
+  state.latestReplyJobId = job.id || null;
+  renderBrief();
+
+  await startAutoWriteBack({
+    replyText,
+    sourceReplyJobId: job.id || null,
+  });
+}
+
+function buildJobStateText(job) {
+  if (job.status === 'failed') {
+    return job.error || (job.action === ACTION_WRITE_REPLY ? '自动写回失败。' : '执行失败。');
+  }
+
+  if (job.status === 'waiting_for_approval') {
+    return job.runtimeMeta?.pendingApproval?.message || (job.action === ACTION_WRITE_REPLY
+      ? '自动写回前需要你的确认。'
+      : '继续执行前需要你的确认。');
+  }
+
+  if (job.action === ACTION_WRITE_REPLY) {
+    return buildWriteStatusText(job.status, normalizeWriteMode(job.writeMode));
+  }
+
+  if (isReplyAction(job.action)) {
+    return buildForwardStatusText(job.status, job.action);
+  }
+
+  return job.replyText || statusLabel(job.status, job.action);
+}
+
+function buildForwardStatusText(status, action) {
+  const target = action === ACTION_FORWARD_SELECTION ? '选中内容' : '当前页';
+
+  switch (status) {
+    case 'queued':
+      return `${target} 已发出，正在排队生成 brief…`;
+    case 'dispatched':
+      return `${target} 已送达本地 Agent，正在等待开始处理…`;
+    case 'running':
+      return `本地 Agent 正在处理${target}，准备生成 brief…`;
+    case 'sending':
+      return `正在提交${target}…`;
+    default:
+      return `${target} 处理中…`;
+  }
+}
+
+function buildWriteStatusText(status, writeMode) {
+  if (status === 'completed') {
+    return buildWriteCompletedText(writeMode);
+  }
+
+  switch (status) {
+    case 'queued':
+      return '自动写回请求已发出，正在排队…';
+    case 'dispatched':
+      return '自动写回请求已送达本地 Agent，正在等待执行…';
+    case 'running':
+      return buildWriteRunningText(writeMode);
+    case 'sending':
+      return '正在提交自动写回请求…';
+    default:
+      return '自动写回处理中…';
+  }
+}
+
+function buildWriteRunningText(writeMode) {
+  if (state.runtime.standalone) {
+    return '正在生成模拟写回结果，不会改动当前页面。';
+  }
+
+  switch (writeMode) {
+    case WRITE_MODE_UPDATE_CONTENT:
+      return '正在把结果自动替换到刚才选中的原文位置…';
+    case WRITE_MODE_REPLACE_CONTENT:
+      return '正在用结果自动覆盖当前页面正文…';
+    default:
+      return '正在把结果自动追加到当前页面末尾…';
+  }
+}
+
+function buildWriteCompletedText(writeMode) {
+  if (state.runtime.standalone) {
+    return '模拟写回已完成，不会改动当前页面。';
+  }
+
+  switch (writeMode) {
+    case WRITE_MODE_UPDATE_CONTENT:
+      return '这次结果已经自动替换到刚才选中的原文位置。';
+    case WRITE_MODE_REPLACE_CONTENT:
+      return '这次结果已经自动覆盖当前页面正文。';
+    default:
+      return '这次结果已经自动追加到当前页面末尾。';
+  }
+}
+
 function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
+  state.currentAction = action || state.currentAction;
+  state.currentJobId = jobId || null;
+
   jobIdNode.textContent = jobId ? `#${jobId.slice(0, 8)}` : '';
 
   const isTerminal = status === 'completed' || status === 'failed';
-  const isFailure = status === 'failed';
   const isWaitingForApproval = status === 'waiting_for_approval';
   const statusMarkup = isTerminal
-    ? `<span>${isFailure ? '执行失败' : '执行完成'}</span>`
+    ? `<span>${statusLabel(status, action)}</span>`
     : isWaitingForApproval
-      ? `<span>${statusLabel(status)}</span>`
-      : `<span class="n2c-spinner"></span><span>${statusLabel(status)}</span>`;
+      ? `<span>${statusLabel(status, action)}</span>`
+      : `<span class="n2c-spinner"></span><span>${statusLabel(status, action)}</span>`;
   runStatusNode.innerHTML = statusMarkup;
 
-  outputNode.textContent = text;
-  outputNode.classList.toggle('n2c-empty', !text);
+  activityNoteNode.textContent = text || '发送后，执行进度、授权请求和自动写回状态会显示在这里。';
+  activityNoteNode.classList.toggle('n2c-empty', !text);
   syncApprovalState(status, runtimeMeta.pendingApproval || null);
-
-  if (status === 'completed' && !isFailure && isReplyAction(action)) {
-    state.latestReply = text;
-    state.latestReplyJobId = jobId || null;
-  }
-
   updateControls();
 }
 
-function statusLabel(status) {
+function renderBrief() {
+  const brief = state.latestBrief || '';
+  outputNode.textContent = brief || '运行完成后，这里的 brief 会保留刚刚完成动作的总结。';
+  outputNode.classList.toggle('n2c-empty', !brief);
+  copyButton.disabled = !brief && !state.latestReply;
+}
+
+function extractBrief(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return trimmed.replace(/^Worked for[^\n]*\n+/i, '').trim() || trimmed;
+}
+
+function statusLabel(status, action) {
   switch (status) {
     case 'queued':
       return '已排队';
     case 'dispatched':
-      return '已发出';
+      return action === ACTION_WRITE_REPLY ? '准备写回' : '已发出';
     case 'running':
-      return '处理中';
+      return action === ACTION_WRITE_REPLY ? '写回中' : '处理中';
     case 'waiting_for_approval':
       return '等待确认';
     case 'sending':
-      return '发送中';
+      return action === ACTION_WRITE_REPLY ? '准备写回' : '发送中';
     case 'completed':
-      return '执行完成';
+      return action === ACTION_WRITE_REPLY ? '已写回 Notion' : '执行完成';
     case 'failed':
-      return '执行失败';
+      return action === ACTION_WRITE_REPLY ? '写回失败' : '执行失败';
     default:
       return '处理中';
   }
@@ -443,23 +635,36 @@ function getPageTitle() {
 
 function updateControls() {
   const selectionText = getSelectionText();
-  const requiresSelectionForWrite = state.writeMode === WRITE_MODE_UPDATE_CONTENT;
-  const hasSelectionForWrite = Boolean(selectionText);
-  const canSendCurrentState = Boolean(selectionText) || canUseNotionAccess();
+  const canSendCurrentState = canStartAction(selectionText);
 
   sendButton.disabled = state.busy || !state.bridgeReady || !canSendCurrentState;
-  copyButton.disabled = !state.latestReply;
-  writeButton.disabled = state.busy
-    || !state.latestReply
-    || !state.bridgeReady
-    || !canUseNotionAccess()
-    || (requiresSelectionForWrite && !hasSelectionForWrite);
+  copyButton.disabled = !(state.latestBrief || state.latestReply);
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
 }
 
+function canStartAction(selectionText) {
+  if (normalizeWriteMode(state.writeMode) === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
+    return false;
+  }
+
+  if (state.runtime.standalone) {
+    return true;
+  }
+
+  if (!canAttemptNotionFlow()) {
+    return false;
+  }
+
+  if (selectionText) {
+    return true;
+  }
+
+  return state.notionMcp.status === 'configured' || state.notionMcp.status === 'unauthenticated' || state.notionMcp.status === 'unknown';
+}
+
 function isReplyAction(action) {
-  return action === 'forward_selection_text' || action === 'forward_full_page_via_mcp';
+  return action === ACTION_FORWARD_SELECTION || action === ACTION_FORWARD_FULL_PAGE;
 }
 
 function formatBridgeMessage(response) {
@@ -485,39 +690,12 @@ function formatBridgeMessage(response) {
   return '打开扩展完成连接';
 }
 
-function canUseNotionAccess() {
+function canAttemptNotionFlow() {
   if (state.runtime.standalone) {
     return true;
   }
 
-  return !['missing', 'unauthenticated', 'unavailable'].includes(state.notionMcp.status);
-}
-
-function buildSetupTip() {
-  if (!state.runtime.ready) {
-    return state.runtime.launchCommand
-      ? `连接、授权和修复都在浏览器工具栏里的 notion2CLI 弹窗里完成。先启动：${state.runtime.launchCommand}`
-      : '连接、授权和修复都在浏览器工具栏里的 notion2CLI 弹窗里完成。';
-  }
-
-  if (!state.bridgeReady) {
-    return '先去浏览器工具栏里的 notion2CLI 弹窗输入 6 位配对码。';
-  }
-
-  if (state.runtime.standalone) {
-    return '';
-  }
-
-  switch (state.notionMcp.status) {
-    case 'missing':
-      return '要发送当前页或写回结果，请先在工具栏弹窗里启用 Notion MCP。';
-    case 'unauthenticated':
-      return '要发送当前页或写回结果，请先在工具栏弹窗里完成 Notion MCP 授权。';
-    case 'unavailable':
-      return '当前模式不会调用真实 Notion MCP。切换到真实 runtime 后再继续。';
-    default:
-      return '';
-  }
+  return !['missing', 'unavailable'].includes(state.notionMcp.status);
 }
 
 function sendMessage(message) {
@@ -561,10 +739,10 @@ async function submitApproval(action) {
     renderJobState({
       status: 'running',
       text: action === 'accept'
-        ? '已允许 Codex 继续执行，等待最终结果…'
-        : '已拒绝当前请求，等待 Codex 结束本次执行…',
+        ? '已允许继续执行，正在等待最新进度…'
+        : '已拒绝当前请求，正在等待本地 Agent 结束本次执行…',
       jobId: state.currentJobId,
-      action: 'write_reply_to_notion',
+      action: state.currentAction,
       runtimeMeta: {},
     });
   } catch (error) {
@@ -573,7 +751,7 @@ async function submitApproval(action) {
       status: 'failed',
       text: error.message || '提交确认失败',
       jobId: state.currentJobId,
-      action: 'write_reply_to_notion',
+      action: state.currentAction,
       runtimeMeta: {},
     });
   }
@@ -611,20 +789,8 @@ async function loadWriteModePreference() {
     state.writeMode = WRITE_MODE_APPEND_SECTION;
   }
 
-  updateWriteModeUi();
+  updateActionCopy();
   updateControls();
-}
-
-async function handleWriteModeChange() {
-  state.writeMode = normalizeWriteMode(writeModeSelect.value);
-  updateWriteModeUi();
-  updateControls();
-
-  try {
-    await chrome.storage.local.set({
-      [WRITE_MODE_STORAGE_KEY]: state.writeMode,
-    });
-  } catch {}
 }
 
 function normalizeWriteMode(mode) {
@@ -637,73 +803,31 @@ function normalizeWriteMode(mode) {
   }
 }
 
-function updateWriteModeUi() {
-  state.writeMode = normalizeWriteMode(state.writeMode);
-  writeModeSelect.value = state.writeMode;
-  const selectionText = getSelectionText();
-  const copy = getWriteModeCopy(state.writeMode, selectionText);
-  const gatedHint = buildWriteAccessHint();
-  writeHintNode.textContent = gatedHint ? `${copy.hint} ${gatedHint}` : copy.hint;
-  writeHintNode.classList.toggle('n2c-write-hint-danger', copy.tone === 'danger' || Boolean(gatedHint));
-}
-
-function getWriteModeCopy(mode, selectionText) {
-  if (mode === WRITE_MODE_UPDATE_CONTENT) {
-    return {
-      tone: selectionText ? 'default' : 'warning',
-      hint: selectionText
-        ? `会把你当前选中的内容替换为新的结果。当前已选中 ${selectionText.length} 个字符。`
-        : '会精确替换你当前选中的内容。请先在页面里选中要替换的文本。',
-    };
-  }
-
-  if (mode === WRITE_MODE_REPLACE_CONTENT) {
-    return {
-      tone: 'danger',
-      hint: '会用新的结果覆盖页面正文。这是高风险操作，请确认你真的想整页重写。',
-    };
-  }
-
-  return {
-    tone: 'default',
-    hint: '会把结果追加到当前页末尾，不会改动原文。',
-  };
-}
-
-function buildWriteAccessHint() {
-  if (state.runtime.standalone || canUseNotionAccess()) {
-    return '';
-  }
-
-  if (state.notionMcp.status === 'unauthenticated') {
-    return '写回前请先在工具栏弹窗里完成 Notion MCP 授权。';
-  }
-
-  if (state.notionMcp.status === 'missing') {
-    return '写回前请先在工具栏弹窗里启用 Notion MCP。';
-  }
-
-  return '写回能力当前不可用，请先在工具栏弹窗里修复连接。';
-}
-
 function buildWritePendingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `正在请求 ${runtimeLabel} 替换当前选中的内容…`;
+      return `正在请求 ${runtimeLabel} 自动替换刚才选中的原文…`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `正在请求 ${runtimeLabel} 覆盖当前页面正文…`;
+      return `正在请求 ${runtimeLabel} 自动覆盖当前页面正文…`;
     default:
-      return `正在请求 ${runtimeLabel} 把结果追加回当前页面…`;
+      return `正在请求 ${runtimeLabel} 自动把结果写回当前页面…`;
   }
 }
 
 function buildWriteWaitingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `替换请求已发出，等待 ${runtimeLabel} 完成精确替换…`;
+      return `自动替换请求已发出，等待 ${runtimeLabel} 完成写回…`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `整页替换请求已发出，等待 ${runtimeLabel} 完成覆盖…`;
+      return `整页覆盖请求已发出，等待 ${runtimeLabel} 完成写回…`;
     default:
-      return `写回请求已发出，等待 ${runtimeLabel} 完成追加…`;
+      return `自动写回请求已发出，等待 ${runtimeLabel} 完成追加…`;
+  }
+}
+
+function clearPolling() {
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
   }
 }

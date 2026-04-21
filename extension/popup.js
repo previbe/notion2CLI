@@ -1,8 +1,13 @@
 const NOTION_MCP_DOC_URL = 'https://developers.notion.com/guides/mcp/get-started-with-mcp';
+const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
+const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
+const WRITE_MODE_UPDATE_CONTENT = 'update_content';
+const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
 
 const popupState = {
   status: null,
   selectedRuntime: 'codex',
+  writeMode: WRITE_MODE_APPEND_SECTION,
   lastErrorMessage: '',
   installBusy: false,
   installJobId: null,
@@ -36,16 +41,20 @@ const pairSetup = document.querySelector('[data-pair-setup]');
 const accessDetail = document.querySelector('[data-access-detail]');
 const installButton = document.querySelector('[data-install-button]');
 const installStatus = document.querySelector('[data-install-status]');
+const writeModeSelect = document.querySelector('[data-write-mode-select]');
+const writeModeHint = document.querySelector('[data-write-mode-hint]');
 
 connectButton.addEventListener('click', connectBridge);
 clearButton.addEventListener('click', clearBridge);
 copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyCommandButton));
 copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
 installButton.addEventListener('click', sendInstallRequest);
+writeModeSelect.addEventListener('change', handleWriteModeChange);
 runtimeButtons.forEach((button) => {
   button.addEventListener('click', () => selectRuntime(button.dataset.runtimeButton));
 });
 
+loadWriteModePreference();
 refreshStatus();
 
 async function refreshStatus() {
@@ -151,7 +160,7 @@ function buildStatusHint(status) {
   if (status.paired && runtime.ready) {
     return runtime.standalone
       ? '当前是调试模式：页面内操作会返回模拟结果，不会调用真实 Notion。'
-      : '页面内按钮现在可以发送当前页、查看结果，并直接写回 Notion。';
+      : '页面内按钮现在可以发送当前页，在 ACTIVITY 中查看 brief，并在完成后自动写回 Notion。';
   }
 
   if (status.awaitingPairCode) {
@@ -482,6 +491,68 @@ function getSelectedRuntimeLaunchCommand() {
   }
 
   return 'notion2cli daemon start --runtime codex';
+}
+
+async function loadWriteModePreference() {
+  try {
+    const data = await chrome.storage.local.get([WRITE_MODE_STORAGE_KEY]);
+    popupState.writeMode = normalizeWriteMode(data[WRITE_MODE_STORAGE_KEY]);
+  } catch {
+    popupState.writeMode = WRITE_MODE_APPEND_SECTION;
+  }
+
+  renderWriteModeUi();
+}
+
+async function handleWriteModeChange() {
+  popupState.writeMode = normalizeWriteMode(writeModeSelect.value);
+  renderWriteModeUi();
+
+  try {
+    await chrome.storage.local.set({
+      [WRITE_MODE_STORAGE_KEY]: popupState.writeMode,
+    });
+  } catch {}
+}
+
+function renderWriteModeUi() {
+  popupState.writeMode = normalizeWriteMode(popupState.writeMode);
+  writeModeSelect.value = popupState.writeMode;
+
+  const copy = getWriteModeCopy(popupState.writeMode);
+  writeModeHint.textContent = copy.hint;
+  writeModeHint.classList.toggle('config-note-danger', copy.tone === 'danger');
+}
+
+function getWriteModeCopy(mode) {
+  if (mode === WRITE_MODE_UPDATE_CONTENT) {
+    return {
+      tone: 'warning',
+      hint: '发送选中内容后，会把结果自动替换回这段原文。发送前需要先在页面里选中目标文本。',
+    };
+  }
+
+  if (mode === WRITE_MODE_REPLACE_CONTENT) {
+    return {
+      tone: 'danger',
+      hint: '发送完成后，会用新结果自动覆盖页面正文。这是高风险模式，只适合明确知道后果时使用。',
+    };
+  }
+
+  return {
+    tone: 'default',
+    hint: '发送完成后，会把结果自动追加到当前页末尾，不改动原文。这是默认推荐模式。',
+  };
+}
+
+function normalizeWriteMode(mode) {
+  switch (mode) {
+    case WRITE_MODE_UPDATE_CONTENT:
+    case WRITE_MODE_REPLACE_CONTENT:
+      return mode;
+    default:
+      return WRITE_MODE_APPEND_SECTION;
+  }
 }
 
 function formatJobStatus(status) {

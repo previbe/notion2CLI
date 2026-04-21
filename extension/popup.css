@@ -73,7 +73,8 @@ code {
 
 .status-card,
 .pair-card,
-.access-card {
+.access-card,
+.config-card {
   margin-top: 14px;
   padding: 18px;
   border: 1px solid var(--line-soft);
@@ -126,6 +127,21 @@ code {
   font-size: 12px;
   line-height: 1.6;
   color: var(--ink-body);
+}
+
+.config-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-body);
+}
+
+.config-note-danger {
+  color: #8a402f;
+}
+
+.config-card > .field {
+  margin-top: 0;
 }
 
 .step-card {
@@ -278,7 +294,8 @@ code {
   color: #2b3725;
 }
 
-input {
+input,
+select {
   width: 100%;
   padding: 13px 14px;
   border: 1px solid var(--line-strong);
@@ -289,6 +306,21 @@ input {
   letter-spacing: 0.08em;
   color: #243020;
   font-variant-numeric: tabular-nums;
+}
+
+select {
+  appearance: none;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(36, 48, 32, 0.72) 50%),
+    linear-gradient(135deg, rgba(36, 48, 32, 0.72) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) calc(50% - 2px),
+    calc(100% - 14px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
 button,
@@ -410,6 +442,7 @@ button:hover:not(:disabled),
 }
 
 input:focus-visible,
+select:focus-visible,
 button:focus-visible,
 .text-link:focus-visible {
   outline: 2px solid rgba(92, 122, 74, 0.48);

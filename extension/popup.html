@@ -73,6 +73,18 @@
         <button class="secondary" data-install-button type="button">启用 Notion MCP</button>
         <p class="access-status" data-install-status>等待检查。</p>
       </section>
+
+      <section class="config-card">
+        <label class="field">
+          <span>写回模式</span>
+          <select data-write-mode-select>
+            <option value="append_markdown_section">追加到页面末尾</option>
+            <option value="update_content">替换当前选中内容</option>
+            <option value="replace_content">覆盖页面正文</option>
+          </select>
+        </label>
+        <p class="config-note" data-write-mode-hint>会把结果追加到当前页末尾，不改动原文。</p>
+      </section>
     </main>
     <script type="module" src="popup.js"></script>
   </body>
