@@ -116,7 +116,9 @@ code {
 
 .step-topbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .runtime-switch {
@@ -156,10 +158,11 @@ code {
 }
 
 .step-title {
-  margin-top: 10px;
+  margin: 0;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.3;
+  flex: 1;
 }
 
 .step-body {
@@ -169,14 +172,50 @@ code {
   color: rgba(31, 40, 29, 0.74);
 }
 
+.command-stack {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.command-stack.hidden {
+  display: none;
+}
+
+.command-block {
+  display: grid;
+  gap: 8px;
+}
+
+.command-block.hidden {
+  display: none;
+}
+
+.command-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(31, 40, 29, 0.58);
+}
+
+.command-label.hidden {
+  display: none;
+}
+
 .command-row {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .command-row.hidden {
   display: none;
+}
+
+.pair-setup.hidden {
+  display: none;
+}
+
+.pair-card.pair-card-minimal .ghost {
+  margin-top: 0;
 }
 
 .field {

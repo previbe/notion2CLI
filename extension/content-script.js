@@ -201,7 +201,7 @@ function updateContextText() {
   }
 
   if (state.runtime.standalone) {
-    contextNode.textContent = '当前是调试模式。发送与写回都会返回模拟结果，不会调用真实 Notion。';
+    contextNode.textContent = '当前是调试模式。发送与写回都会返回模拟结果，不会调用真实 Notion MCP。';
     sendButton.textContent = selected ? '发送选中内容（调试）' : '发送当前页（调试）';
     sendHintNode.textContent = '适合联调流程，不适合正式写回。';
     return;
@@ -212,14 +212,14 @@ function updateContextText() {
     sendButton.textContent = '发送选中内容';
     sendHintNode.textContent = canUseNotionAccess()
       ? '这次只处理选中内容；如果你取消选中，这里会自动改为发送当前页。'
-      : '选中内容现在就能发送；要发送整页或写回结果，还需要先在弹窗里启用 Notion 访问。';
+      : '选中内容现在就能发送；要发送整页或写回结果，还需要先在弹窗里启用 Notion MCP。';
     return;
   }
 
   if (!canUseNotionAccess()) {
     contextNode.textContent = '当前页还不能直接发送。';
     sendButton.textContent = '发送当前页';
-    sendHintNode.textContent = '先在弹窗里启用 Notion 访问，或者先选中一段文字再发送。';
+    sendHintNode.textContent = '先在弹窗里启用 Notion MCP，或者先选中一段文字再发送。';
     return;
   }
 
@@ -510,11 +510,11 @@ function buildSetupTip() {
 
   switch (state.notionMcp.status) {
     case 'missing':
-      return '要发送当前页或写回结果，请先在工具栏弹窗里启用 Notion 访问。';
+      return '要发送当前页或写回结果，请先在工具栏弹窗里启用 Notion MCP。';
     case 'unauthenticated':
-      return '要发送当前页或写回结果，请先在工具栏弹窗里完成 Notion 授权。';
+      return '要发送当前页或写回结果，请先在工具栏弹窗里完成 Notion MCP 授权。';
     case 'unavailable':
-      return '当前模式不会调用真实 Notion。切换到真实 runtime 后再继续。';
+      return '当前模式不会调用真实 Notion MCP。切换到真实 runtime 后再继续。';
     default:
       return '';
   }
@@ -676,11 +676,11 @@ function buildWriteAccessHint() {
   }
 
   if (state.notionMcp.status === 'unauthenticated') {
-    return '写回前请先在工具栏弹窗里完成 Notion 授权。';
+    return '写回前请先在工具栏弹窗里完成 Notion MCP 授权。';
   }
 
   if (state.notionMcp.status === 'missing') {
-    return '写回前请先在工具栏弹窗里启用 Notion 访问。';
+    return '写回前请先在工具栏弹窗里启用 Notion MCP。';
   }
 
   return '写回能力当前不可用，请先在工具栏弹窗里修复连接。';

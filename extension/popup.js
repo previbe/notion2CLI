@@ -17,19 +17,29 @@ const stepTitle = document.querySelector('[data-step-title]');
 const stepBody = document.querySelector('[data-step-body]');
 const runtimeSwitch = document.querySelector('[data-runtime-switch]');
 const runtimeButtons = [...document.querySelectorAll('[data-runtime-button]')];
+const commandStack = document.querySelector('[data-command-stack]');
+const commandBlock = document.querySelector('[data-command-block]');
+const stepCommandLabel = document.querySelector('[data-step-command-label]');
 const commandRow = document.querySelector('[data-command-row]');
 const stepCommand = document.querySelector('[data-step-command]');
 const copyCommandButton = document.querySelector('[data-copy-command]');
+const pairCommandBlock = document.querySelector('[data-pair-command-block]');
+const pairCommandLabel = document.querySelector('[data-pair-command-label]');
+const pairCommand = document.querySelector('[data-pair-command]');
+const copyPairCommandButton = document.querySelector('[data-copy-pair-command]');
 const codeInput = document.querySelector('[data-code-input]');
 const connectButton = document.querySelector('[data-connect-button]');
 const clearButton = document.querySelector('[data-clear-button]');
+const pairCard = document.querySelector('[data-pair-card]');
+const pairSetup = document.querySelector('[data-pair-setup]');
 const accessDetail = document.querySelector('[data-access-detail]');
 const installButton = document.querySelector('[data-install-button]');
 const installStatus = document.querySelector('[data-install-status]');
 
 connectButton.addEventListener('click', connectBridge);
 clearButton.addEventListener('click', clearBridge);
-copyCommandButton.addEventListener('click', copySuggestedCommand);
+copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyCommandButton));
+copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
 installButton.addEventListener('click', sendInstallRequest);
 runtimeButtons.forEach((button) => {
   button.addEventListener('click', () => selectRuntime(button.dataset.runtimeButton));
@@ -58,11 +68,11 @@ function renderStatus(status) {
   statusValue.textContent = buildStatusValue(status);
   statusHint.textContent = buildStatusHint(status);
   updateRuntimeSwitch(nextStep.showRuntimeSwitch);
+  updatePairSection(connected);
 
   stepTitle.textContent = nextStep.title;
   stepBody.textContent = nextStep.body;
-  stepCommand.textContent = nextStep.command || '当前不需要额外命令';
-  commandRow.classList.toggle('hidden', !nextStep.command);
+  renderCommands(nextStep);
 
   accessDetail.textContent = access.detail;
   installButton.disabled = access.disabled || popupState.installBusy;
@@ -77,13 +87,18 @@ function renderDisconnectedState(message) {
   statusValue.textContent = '没有连接本地 Agent';
   statusHint.textContent = message;
   updateRuntimeSwitch(true);
-  stepTitle.textContent = '启动本地 Agent';
-  stepBody.textContent = '启动完成后，这里会自动显示连接与授权状态。';
-  stepCommand.textContent = getSelectedRuntimeLaunchCommand();
-  commandRow.classList.remove('hidden');
+  updatePairSection(false);
+  stepTitle.textContent = '启动 CLI';
+  stepBody.textContent = '按顺序运行下面两条命令：启动 CLI 后，再生成 6 位配对码。';
+  renderCommands({
+    commandLabel: '启动命令',
+    command: getSelectedRuntimeLaunchCommand(),
+    secondaryCommandLabel: '生成配对码',
+    secondaryCommand: 'notion2cli pair',
+  });
   installButton.disabled = true;
   installButton.textContent = '等待启动';
-  accessDetail.textContent = '启动本地 Agent 后，再在这里检查 Notion MCP。';
+  accessDetail.textContent = '启动 CLI 后，再在这里检查 Notion MCP。';
   installStatus.textContent = '当前无法检查。';
 }
 
@@ -120,7 +135,7 @@ function buildStatusHint(status) {
   }
 
   if (!runtime.ready) {
-    return `启动本地 Agent：${getSelectedRuntimeLaunchCommand()}`;
+    return `启动 CLI：${getSelectedRuntimeLaunchCommand()}`;
   }
 
   return '运行配对命令生成 6 位码，再在下方完成浏览器连接。';
@@ -132,9 +147,12 @@ function getNextStep(status) {
 
   if (!runtime.ready) {
     return {
-      title: '启动本地 Agent',
-      body: '启动后这里会自动识别当前 runtime，并告诉你后续步骤。',
+      title: '启动 CLI',
+      body: '按顺序运行下面两条命令：启动 CLI 后，再生成 6 位配对码。',
+      commandLabel: '启动命令',
       command: getSelectedRuntimeLaunchCommand(),
+      secondaryCommandLabel: '生成配对码',
+      secondaryCommand: 'notion2cli pair',
       showRuntimeSwitch: true,
     };
   }
@@ -143,6 +161,7 @@ function getNextStep(status) {
     return {
       title: status.awaitingPairCode ? '把配对码贴回来' : '生成一个配对码',
       body: '运行下面的命令拿到 6 位数字，然后贴到下方的输入框里。',
+      commandLabel: '生成配对码',
       command: runtime.pairingCommand || 'notion2cli pair',
       showRuntimeSwitch: false,
     };
@@ -158,9 +177,10 @@ function getNextStep(status) {
   }
 
   return {
-    title: '回到页面开始使用',
-    body: '连接与权限都已经准备好。现在去 Notion 页面，用右下角按钮发送当前页或选中内容。',
-    command: '',
+    title: '退出命令',
+    body: '如果你想结束本地 Agent，可以运行下面的命令。',
+    commandLabel: '',
+    command: 'notion2cli daemon stop',
     showRuntimeSwitch: false,
   };
 }
@@ -171,7 +191,7 @@ function getAccessState(status) {
 
   if (!runtime.ready) {
     return {
-      detail: '启动本地 Agent 后，再在这里检查 Notion MCP。',
+      detail: '启动 CLI 后，再在这里检查 Notion MCP。',
       status: '还没有开始检查。',
       button: '等待启动',
       disabled: true,
@@ -253,7 +273,7 @@ async function connectBridge() {
   const code = codeInput.value.trim();
   if (!/^\d{6}$/.test(code)) {
     statusValue.textContent = '配对码格式不正确';
-    statusHint.textContent = '请输入 6 位数字。配对码来自上面的命令。';
+    statusHint.textContent = '请输入 6 位数字。配对码来自上面的生成配对码命令。';
     return;
   }
 
@@ -284,15 +304,52 @@ async function clearBridge() {
   await refreshStatus();
 }
 
-async function copySuggestedCommand() {
-  if (commandRow.classList.contains('hidden')) {
+function renderCommands(step) {
+  renderCommandBlock({
+    block: commandBlock,
+    labelNode: stepCommandLabel,
+    codeNode: stepCommand,
+    command: step.command,
+    label: step.commandLabel || '',
+  });
+
+  renderCommandBlock({
+    block: pairCommandBlock,
+    labelNode: pairCommandLabel,
+    codeNode: pairCommand,
+    command: step.secondaryCommand,
+    label: step.secondaryCommandLabel || '',
+  });
+
+  commandStack.classList.toggle('hidden', !step.command && !step.secondaryCommand);
+}
+
+function updatePairSection(connected) {
+  pairSetup.classList.toggle('hidden', connected);
+  pairCard.classList.toggle('pair-card-minimal', connected);
+}
+
+function renderCommandBlock({ block, labelNode, codeNode, command, label }) {
+  block.classList.toggle('hidden', !command);
+  if (!command) {
     return;
   }
 
-  await navigator.clipboard.writeText(stepCommand.textContent);
-  copyCommandButton.textContent = '已复制';
+  labelNode.classList.toggle('hidden', !label);
+  labelNode.textContent = label;
+  codeNode.textContent = command;
+}
+
+async function copyCommand(codeNode, buttonNode) {
+  const command = codeNode.textContent.trim();
+  if (!command) {
+    return;
+  }
+
+  await navigator.clipboard.writeText(command);
+  buttonNode.textContent = '已复制';
   setTimeout(() => {
-    copyCommandButton.textContent = '复制';
+    buttonNode.textContent = '复制';
   }, 1400);
 }
 
