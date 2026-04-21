@@ -11,7 +11,7 @@ const state = {
   writeMode: 'append_markdown_section',
   runtime: {
     id: 'unknown',
-    label: 'Agent Runtime',
+    label: '本地 Agent',
     ready: false,
     standalone: false,
     pairingCommand: 'notion2cli pair',
@@ -24,7 +24,6 @@ const state = {
   },
 };
 
-const NOTION_MCP_DOC_URL = 'https://developers.notion.com/guides/mcp/get-started-with-mcp';
 const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
@@ -39,40 +38,34 @@ root.innerHTML = `
     <button class="n2c-fab" type="button">
       <span class="n2c-dot"></span>
       <span class="n2c-fab-text">
-        <span class="n2c-fab-title">Run with notion2CLI</span>
+        <span class="n2c-fab-title">发送到本地 Agent</span>
         <span class="n2c-fab-subtitle">正在检查连接…</span>
       </span>
     </button>
 
     <section class="n2c-menu n2c-hidden">
       <div class="n2c-card-header">
-        <div class="n2c-kicker">Notion → Local Agent</div>
-        <div class="n2c-card-title">把内容发给本地 runtime</div>
+        <div class="n2c-kicker">Current Page</div>
+        <div class="n2c-card-title">发送与结果</div>
       </div>
       <div class="n2c-card-body">
-        <div class="n2c-context" data-context>未选中文本，将通过 Notion MCP 读取整页。</div>
-        <button class="n2c-send" type="button" data-send>发送整页（MCP）</button>
-        <div class="n2c-send-hint" data-send-hint>选中文本时直接发送选区；未选中时，本地 runtime 会通过 Notion MCP 读取当前页面全文。</div>
-        <div class="n2c-meta">
-          <span>当前页面：<strong data-page-title>读取中…</strong></span>
+        <div class="n2c-context" data-context>正在检查当前页面状态。</div>
+        <div class="n2c-page-meta">
+          <div class="n2c-meta-label">当前页面</div>
+          <div class="n2c-page-title" data-page-title>读取中…</div>
         </div>
-      </div>
-    </section>
-
-    <section class="n2c-panel n2c-hidden">
-      <div class="n2c-card-header">
-        <div class="n2c-kicker">Agent Result</div>
-        <div class="n2c-card-title">本次执行结果</div>
-      </div>
-      <div class="n2c-card-body">
+        <button class="n2c-send" type="button" data-send>发送当前页</button>
+        <div class="n2c-send-hint" data-send-hint>未选中时会发送当前页；选中后会优先发送选中内容。</div>
+        <div class="n2c-setup-tip n2c-hidden" data-setup-tip>连接、授权和修复都在浏览器工具栏里的 notion2CLI 弹窗里完成。</div>
+        <div class="n2c-section-divider"></div>
         <div class="n2c-meta">
           <span class="n2c-status" data-run-status>
             <span class="n2c-spinner"></span>
-            <span>等待执行</span>
+            <span>还没有开始</span>
           </span>
           <span data-job-id></span>
         </div>
-        <div class="n2c-output n2c-empty" data-output>点击上面的动作后，本地 runtime 的结果会显示在这里。</div>
+        <div class="n2c-output n2c-empty" data-output>发送后，这次结果会显示在这里。你可以复制结果，或直接写回当前 Notion 页面。</div>
         <div class="n2c-approval n2c-hidden" data-approval>
           <div class="n2c-approval-title">需要你的确认</div>
           <div class="n2c-approval-message" data-approval-message>Codex 需要确认后才能继续。</div>
@@ -82,24 +75,18 @@ root.innerHTML = `
           </div>
         </div>
         <div class="n2c-actions">
-          <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
           <button class="n2c-write" type="button" data-write disabled>写回 Notion</button>
+          <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
         </div>
         <div class="n2c-write-config">
           <label class="n2c-write-label" for="n2c-write-mode">写回模式</label>
           <select class="n2c-write-select" id="n2c-write-mode" data-write-mode>
-            <option value="append_markdown_section">追加为新 section</option>
-            <option value="update_content">替换当前选中文本</option>
-            <option value="replace_content">覆盖整页正文</option>
+            <option value="append_markdown_section">追加到页面末尾</option>
+            <option value="update_content">替换当前选中内容</option>
+            <option value="replace_content">覆盖页面正文</option>
           </select>
         </div>
-        <div class="n2c-write-hint" data-write-hint>写回会通过 Notion MCP 追加一个新的 Markdown section，默认不覆盖页面原文。</div>
-        <div class="n2c-install-card">
-          <div class="n2c-install-title" data-install-title>Notion MCP</div>
-          <a class="n2c-install-link" data-install-link href="${NOTION_MCP_DOC_URL}" target="_blank" rel="noreferrer">官方安装文档</a>
-          <div class="n2c-install-detail" data-install-detail>根据当前 runtime 选择安装方式。</div>
-          <button class="n2c-install" type="button" data-install>安装</button>
-        </div>
+        <div class="n2c-write-hint" data-write-hint>会把结果追加到当前页末尾，不会改动原文。</div>
       </div>
     </section>
   </div>
@@ -109,11 +96,12 @@ const dot = root.querySelector('.n2c-dot');
 const fab = root.querySelector('.n2c-fab');
 const fabSubtitle = root.querySelector('.n2c-fab-subtitle');
 const menu = root.querySelector('.n2c-menu');
-const panel = root.querySelector('.n2c-panel');
+const panel = menu;
 const contextNode = root.querySelector('[data-context]');
 const pageTitleNode = root.querySelector('[data-page-title]');
 const sendButton = root.querySelector('[data-send]');
 const sendHintNode = root.querySelector('[data-send-hint]');
+const setupTipNode = root.querySelector('[data-setup-tip]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
 const outputNode = root.querySelector('[data-output]');
@@ -125,10 +113,6 @@ const copyButton = root.querySelector('[data-copy]');
 const writeButton = root.querySelector('[data-write]');
 const writeModeSelect = root.querySelector('[data-write-mode]');
 const writeHintNode = root.querySelector('[data-write-hint]');
-const installTitleNode = root.querySelector('[data-install-title]');
-const installLinkNode = root.querySelector('[data-install-link]');
-const installDetailNode = root.querySelector('[data-install-detail]');
-const installButton = root.querySelector('[data-install]');
 
 bindEvents();
 loadWriteModePreference();
@@ -140,12 +124,10 @@ function bindEvents() {
   fab.addEventListener('click', () => {
     updateContextText();
     menu.classList.toggle('n2c-hidden');
-    panel.classList.remove('n2c-hidden');
   });
 
   sendButton.addEventListener('click', () => startAction());
   writeButton.addEventListener('click', () => writeLatestReply());
-  installButton.addEventListener('click', () => sendInstallRequest());
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
   writeModeSelect.addEventListener('change', handleWriteModeChange);
@@ -189,8 +171,6 @@ async function refreshBridgeStatus() {
   dot.classList.toggle('ready', state.bridgeReady);
   fabSubtitle.textContent = state.bridgeMessage;
   pageTitleNode.textContent = getPageTitle();
-  installLinkNode.href = NOTION_MCP_DOC_URL;
-  updateInstallCard();
   updateContextText();
   updateWriteModeUi();
   updateControls();
@@ -198,48 +178,60 @@ async function refreshBridgeStatus() {
 
 function updateContextText() {
   const selected = getSelectionText();
-  const runtimeLabel = state.runtime.label || '本地 runtime';
-  const mcpHint = buildNotionMcpHint();
+  const runtimeLabel = state.runtime.label || '本地 Agent';
+  const setupTip = buildSetupTip();
+
+  setupTipNode.textContent = setupTip || '';
+  setupTipNode.classList.toggle('n2c-hidden', !setupTip);
 
   if (!state.runtime.ready) {
-    contextNode.textContent = state.runtime.statusMessage || '本地 runtime 还没有就绪。';
-    sendButton.textContent = '发送整页（MCP）';
+    contextNode.textContent = state.runtime.statusMessage || '本地 Agent 还没有准备好。';
+    sendButton.textContent = '发送当前页';
     sendHintNode.textContent = state.runtime.launchCommand
-      ? `先启动 bridge：${state.runtime.launchCommand}`
-      : '先启动 notion2CLI bridge。';
+      ? `先在工具栏弹窗里启动：${state.runtime.launchCommand}`
+      : '先在工具栏弹窗里完成启动。';
     return;
   }
 
   if (!state.bridgeReady) {
-    contextNode.textContent = `浏览器还没有和 ${runtimeLabel} bridge 连接。先运行 ${state.runtime.pairingCommand || 'notion2cli pair'}，再去扩展弹窗输入配对码。`;
-    sendButton.textContent = '发送整页（MCP）';
-    sendHintNode.textContent = `整页读取和写回都依赖当前 runtime 里的 Notion MCP 连接。${mcpHint}`;
+    contextNode.textContent = `这个页面还没有连到 ${runtimeLabel}。`;
+    sendButton.textContent = '完成连接后可发送';
+    sendHintNode.textContent = '先在工具栏弹窗里输入 6 位配对码，连接完成后再回来发送。';
     return;
   }
 
   if (state.runtime.standalone) {
-    contextNode.textContent = '当前连接的是 standalone 调试 runtime。动作会返回模拟结果，不会调用真实 Claude/Codex 或 Notion MCP。';
-    sendButton.textContent = selected ? '发送选中内容（模拟）' : '发送整页（模拟）';
-    sendHintNode.textContent = '这个模式只用于浏览器侧联调。';
+    contextNode.textContent = '当前是调试模式。发送与写回都会返回模拟结果，不会调用真实 Notion。';
+    sendButton.textContent = selected ? '发送选中内容（调试）' : '发送当前页（调试）';
+    sendHintNode.textContent = '适合联调流程，不适合正式写回。';
     return;
   }
 
   if (selected) {
-    contextNode.textContent = `将按选中文本执行，当前选中 ${selected.length} 个字符。`;
+    contextNode.textContent = `将发送你当前选中的内容（${selected.length} 个字符）。`;
     sendButton.textContent = '发送选中内容';
-    sendHintNode.textContent = `选中文本直接来自浏览器选区；如果没有选区，bridge 会改为通过 Notion MCP 读取整页。${mcpHint}`;
+    sendHintNode.textContent = canUseNotionAccess()
+      ? '这次只处理选中内容；如果你取消选中，这里会自动改为发送当前页。'
+      : '选中内容现在就能发送；要发送整页或写回结果，还需要先在弹窗里启用 Notion 访问。';
     return;
   }
 
-  contextNode.textContent = '未选中文本，将通过 Notion MCP 读取整页。';
-  sendButton.textContent = '发送整页（MCP）';
-  sendHintNode.textContent = `整页内容不再通过 DOM 抓取，而是由 bridge 借当前 runtime 的 Notion MCP 预取统一的页面 bundle。${mcpHint}`;
+  if (!canUseNotionAccess()) {
+    contextNode.textContent = '当前页还不能直接发送。';
+    sendButton.textContent = '发送当前页';
+    sendHintNode.textContent = '先在弹窗里启用 Notion 访问，或者先选中一段文字再发送。';
+    return;
+  }
+
+  contextNode.textContent = '将发送当前页，让本地 Agent 阅读页面正文与相关图片。';
+  sendButton.textContent = '发送当前页';
+  sendHintNode.textContent = '如果你先选中内容，这里会自动改为只发送选中部分。';
 }
 
 async function startAction() {
   const selectionText = getSelectionText();
   const action = selectionText ? 'forward_selection_text' : 'forward_full_page_via_mcp';
-  const runtimeLabel = state.runtime.label || '本地 runtime';
+  const runtimeLabel = state.runtime.label || '本地 Agent';
 
   menu.classList.add('n2c-hidden');
   panel.classList.remove('n2c-hidden');
@@ -248,8 +240,8 @@ async function startAction() {
   renderJobState({
     status: 'sending',
     text: selectionText
-      ? `正在把选中文本发送给 ${runtimeLabel}…`
-      : `正在请求 ${runtimeLabel} 通过 Notion MCP 读取当前页面…`,
+      ? `正在把选中内容交给 ${runtimeLabel}…`
+      : `正在把当前页交给 ${runtimeLabel}…`,
     jobId: '',
     action,
   });
@@ -270,8 +262,8 @@ async function startAction() {
     renderJobState({
       status: response.status,
       text: selectionText
-        ? `选中文本已发出，等待 ${runtimeLabel} 回复…`
-        : `页面读取请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成处理…`,
+        ? `选中内容已发出，等待 ${runtimeLabel} 返回结果…`
+        : `当前页已发出，等待 ${runtimeLabel} 返回结果…`,
       jobId: response.jobId,
       action,
     });
@@ -307,7 +299,7 @@ async function writeLatestReply() {
     return;
   }
 
-  const runtimeLabel = state.runtime.label || '本地 runtime';
+  const runtimeLabel = state.runtime.label || '本地 Agent';
   panel.classList.remove('n2c-hidden');
   state.busy = true;
   updateControls();
@@ -350,55 +342,6 @@ async function writeLatestReply() {
       text: error.message || '写回失败',
       jobId: '',
       action: 'write_reply_to_notion',
-    });
-  }
-}
-
-async function sendInstallRequest() {
-  if (state.busy || !state.bridgeReady) {
-    return;
-  }
-
-  const installCopy = getInstallCopy();
-  panel.classList.remove('n2c-hidden');
-  state.busy = true;
-  updateControls();
-  renderJobState({
-    status: 'sending',
-    text: installCopy.pendingText,
-    jobId: '',
-    action: 'install_notion_mcp',
-  });
-
-  try {
-    const response = await sendMessage({
-      type: 'submitNotionAction',
-      payload: {
-        action: 'install_notion_mcp',
-        pageUrl: window.location.href,
-        pageTitle: getPageTitle(),
-        installPrompt: `按照以下 notion 官方文档完成 notion MCP 的安装与授权：${NOTION_MCP_DOC_URL}`,
-        officialDocUrl: NOTION_MCP_DOC_URL,
-        source: 'chrome-extension',
-      },
-    });
-
-    state.currentJobId = response.jobId;
-    renderJobState({
-      status: response.status,
-      text: installCopy.waitText,
-      jobId: response.jobId,
-      action: 'install_notion_mcp',
-    });
-    pollJob(response.jobId);
-  } catch (error) {
-    state.busy = false;
-    updateControls();
-    renderJobState({
-      status: 'failed',
-      text: error.message || '发送安装请求失败',
-      jobId: '',
-      action: 'install_notion_mcp',
     });
   }
 }
@@ -499,15 +442,18 @@ function getPageTitle() {
 }
 
 function updateControls() {
+  const selectionText = getSelectionText();
   const requiresSelectionForWrite = state.writeMode === WRITE_MODE_UPDATE_CONTENT;
-  const hasSelectionForWrite = Boolean(getSelectionText());
-  sendButton.disabled = state.busy || !state.bridgeReady;
+  const hasSelectionForWrite = Boolean(selectionText);
+  const canSendCurrentState = Boolean(selectionText) || canUseNotionAccess();
+
+  sendButton.disabled = state.busy || !state.bridgeReady || !canSendCurrentState;
   copyButton.disabled = !state.latestReply;
   writeButton.disabled = state.busy
     || !state.latestReply
     || !state.bridgeReady
+    || !canUseNotionAccess()
     || (requiresSelectionForWrite && !hasSelectionForWrite);
-  installButton.disabled = state.busy || !state.bridgeReady || isInstallSatisfied();
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
 }
@@ -518,113 +464,60 @@ function isReplyAction(action) {
 
 function formatBridgeMessage(response) {
   const runtime = response.runtime || {};
-  const runtimeLabel = runtime.label || '本地 runtime';
+  const runtimeLabel = runtime.label || '本地 Agent';
 
   if (response.paired && runtime.ready) {
     if (runtime.standalone) {
-      return '已连接 standalone 调试 runtime';
+      return '已连接调试模式';
     }
 
-    return `已连接 ${runtimeLabel} bridge`;
+    return `已连接 ${runtimeLabel}`;
   }
 
   if (response.awaitingPairCode) {
-    return '等待浏览器输入配对码';
+    return '等待输入 6 位配对码';
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || '本地 runtime 未就绪';
+    return runtime.statusMessage || '本地 Agent 未就绪';
   }
 
-  return '未连接';
+  return '打开扩展完成连接';
 }
 
-function buildNotionMcpHint() {
-  switch (state.notionMcp.status) {
-    case 'configured':
-      return '';
-    case 'unauthenticated':
-      return ' 当前 runtime 还没有完成 Notion MCP 授权。';
-    case 'missing':
-      return ' 当前 runtime 还没检测到 Notion MCP 配置。';
-    case 'unavailable':
-      return ' 当前模式不会调用真实 Notion MCP。';
-    default:
-      return ' Notion MCP 状态暂时无法自动确认。';
-  }
-}
-
-function updateInstallCard() {
-  const copy = getInstallCopy();
-  installTitleNode.textContent = copy.title;
-  installDetailNode.textContent = copy.detail;
-  installButton.textContent = copy.button;
-}
-
-function getInstallCopy() {
-  const runtimeLabel = state.runtime.label || '当前 runtime';
-
-  if (state.runtime.id === 'claude') {
-    return {
-      title: '安装到 Claude Code',
-      detail: '点击后 bridge 会直接检查并执行 Claude Code 所需的 Notion MCP 配置与授权步骤。',
-      button: '安装到 Claude Code',
-      pendingText: '正在为 Claude Code 配置 Notion MCP…',
-      waitText: '安装请求已发出，等待 Claude Code 完成配置…',
-    };
+function canUseNotionAccess() {
+  if (state.runtime.standalone) {
+    return true;
   }
 
-  if (state.runtime.id === 'codex') {
-    if (state.notionMcp.status === 'configured') {
-      return {
-        title: '安装到 Codex CLI',
-        detail: state.notionMcp.detail || 'Codex CLI 已配置 Notion MCP。',
-        button: 'Codex 已配置',
-        pendingText: 'Codex CLI 的 Notion MCP 已就绪。',
-        waitText: 'Codex CLI 的 Notion MCP 已就绪。',
-      };
-    }
+  return !['missing', 'unauthenticated', 'unavailable'].includes(state.notionMcp.status);
+}
 
-    if (state.notionMcp.status === 'unauthenticated') {
-      return {
-        title: '登录 Codex CLI 的 Notion MCP',
-        detail: state.notionMcp.detail || '点击后会直接执行 codex mcp login notion，完成授权后结果会回传到这里。',
-        button: '登录到 Codex CLI',
-        pendingText: '正在为 Codex CLI 执行 Notion MCP 登录…',
-        waitText: '登录请求已发出，等待 Codex CLI 完成授权…',
-      };
-    }
+function buildSetupTip() {
+  if (!state.runtime.ready) {
+    return state.runtime.launchCommand
+      ? `连接、授权和修复都在浏览器工具栏里的 notion2CLI 弹窗里完成。先启动：${state.runtime.launchCommand}`
+      : '连接、授权和修复都在浏览器工具栏里的 notion2CLI 弹窗里完成。';
+  }
 
-    return {
-      title: '安装到 Codex CLI',
-      detail: '点击后 bridge 会直接执行 codex mcp add notion；如果需要 OAuth，会按 Codex CLI 的流程继续授权。',
-      button: '安装到 Codex CLI',
-      pendingText: '正在为 Codex CLI 安装 Notion MCP…',
-      waitText: '安装请求已发出，等待 Codex CLI 完成配置…',
-    };
+  if (!state.bridgeReady) {
+    return '先去浏览器工具栏里的 notion2CLI 弹窗输入 6 位配对码。';
   }
 
   if (state.runtime.standalone) {
-    return {
-      title: 'Notion MCP（调试模式）',
-      detail: 'standalone 调试模式不会调用真实 Notion MCP。',
-      button: '调试模式不可用',
-      pendingText: 'standalone 调试模式不会执行真实安装。',
-      waitText: 'standalone 调试模式不会执行真实安装。',
-    };
+    return '';
   }
 
-  return {
-    title: `安装到 ${runtimeLabel}`,
-    detail: '根据当前 runtime 选择安装方式。',
-    button: '安装',
-    pendingText: `正在把 Notion MCP 安装请求发送到 ${runtimeLabel}…`,
-    waitText: `安装请求已发出，等待 ${runtimeLabel} 处理…`,
-  };
-}
-
-function isInstallSatisfied() {
-  return state.runtime.id === 'codex' && state.notionMcp.status === 'configured';
+  switch (state.notionMcp.status) {
+    case 'missing':
+      return '要发送当前页或写回结果，请先在工具栏弹窗里启用 Notion 访问。';
+    case 'unauthenticated':
+      return '要发送当前页或写回结果，请先在工具栏弹窗里完成 Notion 授权。';
+    case 'unavailable':
+      return '当前模式不会调用真实 Notion。切换到真实 runtime 后再继续。';
+    default:
+      return '';
+  }
 }
 
 function sendMessage(message) {
@@ -749,8 +642,9 @@ function updateWriteModeUi() {
   writeModeSelect.value = state.writeMode;
   const selectionText = getSelectionText();
   const copy = getWriteModeCopy(state.writeMode, selectionText);
-  writeHintNode.textContent = copy.hint;
-  writeHintNode.classList.toggle('n2c-write-hint-danger', copy.tone === 'danger');
+  const gatedHint = buildWriteAccessHint();
+  writeHintNode.textContent = gatedHint ? `${copy.hint} ${gatedHint}` : copy.hint;
+  writeHintNode.classList.toggle('n2c-write-hint-danger', copy.tone === 'danger' || Boolean(gatedHint));
 }
 
 function getWriteModeCopy(mode, selectionText) {
@@ -758,42 +652,58 @@ function getWriteModeCopy(mode, selectionText) {
     return {
       tone: selectionText ? 'default' : 'warning',
       hint: selectionText
-        ? `会通过 Notion MCP 把你当前选中的原文替换为新的结果。当前已选中 ${selectionText.length} 个字符。`
-        : '会通过 Notion MCP 精确替换你当前选中的原文。请先在页面里选中要替换的文本。',
+        ? `会把你当前选中的内容替换为新的结果。当前已选中 ${selectionText.length} 个字符。`
+        : '会精确替换你当前选中的内容。请先在页面里选中要替换的文本。',
     };
   }
 
   if (mode === WRITE_MODE_REPLACE_CONTENT) {
     return {
       tone: 'danger',
-      hint: '会通过 Notion MCP 覆盖整页正文内容。这是破坏性操作，请确认你真的想整页重写。',
+      hint: '会用新的结果覆盖页面正文。这是高风险操作，请确认你真的想整页重写。',
     };
   }
 
   return {
     tone: 'default',
-    hint: '会通过 Notion MCP 在当前页面末尾追加一个新的 Markdown section，默认不覆盖页面原文。',
+    hint: '会把结果追加到当前页末尾，不会改动原文。',
   };
+}
+
+function buildWriteAccessHint() {
+  if (state.runtime.standalone || canUseNotionAccess()) {
+    return '';
+  }
+
+  if (state.notionMcp.status === 'unauthenticated') {
+    return '写回前请先在工具栏弹窗里完成 Notion 授权。';
+  }
+
+  if (state.notionMcp.status === 'missing') {
+    return '写回前请先在工具栏弹窗里启用 Notion 访问。';
+  }
+
+  return '写回能力当前不可用，请先在工具栏弹窗里修复连接。';
 }
 
 function buildWritePendingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `正在请求 ${runtimeLabel} 通过 Notion MCP 替换当前选中的原文…`;
+      return `正在请求 ${runtimeLabel} 替换当前选中的内容…`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `正在请求 ${runtimeLabel} 通过 Notion MCP 覆盖当前页面正文…`;
+      return `正在请求 ${runtimeLabel} 覆盖当前页面正文…`;
     default:
-      return `正在请求 ${runtimeLabel} 通过 Notion MCP 把结果追加回当前页面…`;
+      return `正在请求 ${runtimeLabel} 把结果追加回当前页面…`;
   }
 }
 
 function buildWriteWaitingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `替换请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成精确替换…`;
+      return `替换请求已发出，等待 ${runtimeLabel} 完成精确替换…`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `整页替换请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成覆盖…`;
+      return `整页替换请求已发出，等待 ${runtimeLabel} 完成覆盖…`;
     default:
-      return `写回请求已发出，等待 ${runtimeLabel} 通过 Notion MCP 完成追加…`;
+      return `写回请求已发出，等待 ${runtimeLabel} 完成追加…`;
   }
 }

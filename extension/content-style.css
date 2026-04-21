@@ -66,9 +66,8 @@
   color: rgba(30, 36, 29, 0.68);
 }
 
-.n2c-menu,
-.n2c-panel {
-  width: 340px;
+.n2c-menu {
+  width: min(360px, calc(100vw - 32px));
   margin-top: 12px;
   border: 1px solid rgba(68, 84, 63, 0.16);
   border-radius: 22px;
@@ -114,6 +113,27 @@
   line-height: 1.45;
 }
 
+.n2c-page-meta {
+  margin-top: 14px;
+}
+
+.n2c-meta-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(37, 48, 31, 0.56);
+}
+
+.n2c-page-title {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #243020;
+  word-break: break-word;
+}
+
 .n2c-send {
   width: 100%;
   margin-top: 16px;
@@ -145,6 +165,22 @@
   font-size: 11px;
   line-height: 1.45;
   color: rgba(37, 48, 31, 0.66);
+}
+
+.n2c-setup-tip {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(127, 88, 30, 0.14);
+  background: rgba(255, 243, 219, 0.72);
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(91, 71, 32, 0.86);
+}
+
+.n2c-section-divider {
+  margin-top: 16px;
+  border-top: 1px solid rgba(68, 84, 63, 0.1);
 }
 
 .n2c-meta {
@@ -188,23 +224,6 @@
 
 .n2c-empty {
   color: rgba(30, 36, 29, 0.64);
-}
-
-.n2c-copy {
-  flex: 1;
-  padding: 11px 12px;
-  border: 0;
-  border-radius: 14px;
-  background: #5c7a4a;
-  color: #f7f3ea;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.n2c-copy:disabled {
-  background: rgba(92, 122, 74, 0.38);
-  cursor: default;
 }
 
 .n2c-actions {
@@ -271,6 +290,23 @@
 .n2c-write {
   flex: 1;
   padding: 11px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: #5c7a4a;
+  color: #f7f3ea;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-write:disabled {
+  background: rgba(92, 122, 74, 0.38);
+  cursor: default;
+}
+
+.n2c-copy {
+  flex: 1;
+  padding: 11px 12px;
   border: 1px solid rgba(68, 84, 63, 0.18);
   border-radius: 14px;
   background: rgba(247, 243, 234, 0.92);
@@ -280,7 +316,7 @@
   cursor: pointer;
 }
 
-.n2c-write:disabled {
+.n2c-copy:disabled {
   color: rgba(50, 66, 43, 0.45);
   border-color: rgba(68, 84, 63, 0.1);
   background: rgba(247, 243, 234, 0.55);
@@ -320,57 +356,15 @@
   color: #8a402f;
 }
 
-.n2c-install-card {
-  margin-top: 14px;
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(233, 226, 213, 0.48);
-  border: 1px solid rgba(68, 84, 63, 0.12);
-}
-
-.n2c-install-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #243020;
-}
-
-.n2c-install-link {
-  display: inline-block;
-  margin-top: 8px;
-  color: #48653b;
-  font-size: 12px;
-  text-decoration: underline;
-}
-
-.n2c-install-detail {
-  margin-top: 10px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: rgba(37, 48, 31, 0.66);
-}
-
-.n2c-install {
-  width: 100%;
-  margin-top: 12px;
-  padding: 11px 12px;
-  border: 1px solid rgba(68, 84, 63, 0.18);
-  border-radius: 14px;
-  background: rgba(255, 252, 247, 0.92);
-  color: #32422b;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.n2c-install:disabled {
-  color: rgba(50, 66, 43, 0.45);
-  border-color: rgba(68, 84, 63, 0.1);
-  background: rgba(247, 243, 234, 0.55);
-  cursor: default;
-}
-
 @keyframes n2c-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .n2c-shell {
+    right: 16px;
+    bottom: 16px;
   }
 }

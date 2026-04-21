@@ -9,41 +9,58 @@
   <body>
     <main class="popup">
       <section class="hero">
-        <div class="eyebrow">Notion to Local Agent</div>
-        <h1>把当前浏览器和本地 runtime 连起来</h1>
+        <div class="eyebrow">Connection & Setup</div>
+        <h1>连接本地 Agent</h1>
         <p class="lede">
-          先启动 notion2CLI bridge，再按状态提示运行对应的配对命令，拿到 6 位配对码后回到这里。
+          这里只处理连接、授权和修复。发送当前页、查看结果、写回 Notion，请回到页面右下角按钮。
         </p>
       </section>
 
       <section class="status-card">
-        <div class="status-row">
-          <span class="status-dot" data-status-dot></span>
-          <div>
-            <div class="status-label">当前状态</div>
-            <div class="status-value" data-status-value>检查中…</div>
+        <div class="status-top">
+          <div class="status-row">
+            <span class="status-dot" data-status-dot></span>
+            <div>
+              <div class="status-label">当前状态</div>
+              <div class="status-value" data-status-value>检查中…</div>
+            </div>
+          </div>
+          <div class="pill-row">
+            <span class="pill" data-runtime-pill>本地 Agent</span>
+            <span class="pill" data-access-pill>检查中</span>
           </div>
         </div>
-        <p class="status-hint" data-status-hint>正在读取本地 bridge 状态。</p>
+
+        <p class="status-hint" data-status-hint>正在读取本地状态。</p>
+
+        <div class="step-card">
+          <div class="step-label">下一步</div>
+          <div class="step-title" data-step-title>正在检查你需要做什么</div>
+          <p class="step-body" data-step-body>如果需要运行命令，这里会直接给出最短路径。</p>
+          <div class="command-row" data-command-row>
+            <code data-step-command>notion2cli daemon start --runtime codex</code>
+            <button class="chip" data-copy-command type="button">复制</button>
+          </div>
+        </div>
       </section>
 
       <section class="pair-card">
+        <div class="section-title">浏览器连接</div>
+        <p class="section-copy">当上面的状态提示你输入 6 位配对码时，再在这里完成连接。</p>
         <label class="field">
-          <span>配对码</span>
+          <span>6 位配对码</span>
           <input data-code-input type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位数字" />
         </label>
-        <button class="primary" data-connect-button type="button">连接当前 bridge</button>
-        <button class="ghost" data-clear-button type="button">清除本地配对</button>
+        <button class="primary" data-connect-button type="button">连接浏览器</button>
+        <button class="ghost" data-clear-button type="button">断开当前浏览器</button>
       </section>
 
-      <section class="notes">
-        <div class="note-title">使用顺序</div>
-        <ol>
-          <li>启动 notion2CLI bridge</li>
-          <li>运行状态提示里的配对命令</li>
-          <li>把配对码贴到这里</li>
-          <li>回到 Notion 页面点击右下角按钮</li>
-        </ol>
+      <section class="access-card">
+        <div class="section-title">Notion 访问</div>
+        <p class="section-copy" data-access-detail>连接完成后，可以在这里检查并启用当前 runtime 的 Notion 访问能力。</p>
+        <a class="text-link" href="https://developers.notion.com/guides/mcp/get-started-with-mcp" target="_blank" rel="noreferrer">查看官方安装文档</a>
+        <button class="secondary" data-install-button type="button">启用 Notion 访问</button>
+        <p class="access-status" data-install-status>等待检查。</p>
       </section>
     </main>
     <script type="module" src="popup.js"></script>
