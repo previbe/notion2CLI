@@ -10,6 +10,7 @@ const popupState = {
   installPollTimer: null,
 };
 
+const popupRoot = document.querySelector('[data-popup-root]');
 const statusDot = document.querySelector('[data-status-dot]');
 const statusValue = document.querySelector('[data-status-value]');
 const statusHint = document.querySelector('[data-status-hint]');
@@ -67,6 +68,7 @@ function renderStatus(status) {
   statusDot.classList.toggle('ready', connected);
   statusValue.textContent = buildStatusValue(status);
   statusHint.textContent = buildStatusHint(status);
+  updateVisualState(status, access, connected);
   updateRuntimeSwitch(nextStep.showRuntimeSwitch);
   updatePairSection(connected);
 
@@ -86,6 +88,7 @@ function renderDisconnectedState(message) {
   statusDot.classList.remove('ready');
   statusValue.textContent = '没有连接本地 Agent';
   statusHint.textContent = message;
+  popupRoot.dataset.state = 'offline';
   updateRuntimeSwitch(true);
   updatePairSection(false);
   stepTitle.textContent = '启动 CLI';
@@ -100,6 +103,27 @@ function renderDisconnectedState(message) {
   installButton.textContent = '等待启动';
   accessDetail.textContent = '启动 CLI 后，再在这里检查 Notion MCP。';
   installStatus.textContent = '当前无法检查。';
+}
+
+function updateVisualState(status, access, connected) {
+  const runtime = status.runtime || {};
+
+  if (!runtime.ready) {
+    popupRoot.dataset.state = 'offline';
+    return;
+  }
+
+  if (!connected) {
+    popupRoot.dataset.state = 'pairing';
+    return;
+  }
+
+  if (runtime.standalone) {
+    popupRoot.dataset.state = 'standalone';
+    return;
+  }
+
+  popupRoot.dataset.state = access.canInstall ? 'attention' : 'ready';
 }
 
 function buildStatusValue(status) {
