@@ -56,6 +56,9 @@ runtimeButtons.forEach((button) => {
 
 loadWriteModePreference();
 refreshStatus();
+setInterval(() => {
+  refreshStatus().catch(() => {});
+}, 15000);
 
 async function refreshStatus() {
   try {
@@ -262,6 +265,18 @@ function getAccessState(status) {
         canInstall: false,
       };
     case 'unauthenticated':
+      if (runtime.id === 'claude') {
+        return {
+          detail: notionMcp.detail || '已经检测到 Claude Code 的 Notion MCP 配置，但还没有完成授权。',
+          status: '点击后会打开一个专用 Claude Code 终端，引导你在 `/mcp` 中完成 Notion OAuth。',
+          button: '打开授权引导',
+          disabled: false,
+          canInstall: true,
+          pendingText: '正在打开 Claude 授权引导…',
+          waitText: 'Claude 授权引导已打开，请在新终端和浏览器里完成授权…',
+        };
+      }
+
       return {
         detail: notionMcp.detail || '已经检测到 Notion MCP 配置，但你还需要完成一次授权。',
         status: '完成授权后，整页发送和写回都会恢复。',

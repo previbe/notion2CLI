@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { chmod, writeFile } from 'node:fs/promises';
 import { buildClaudePrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
@@ -242,6 +243,9 @@ export class ClaudeRuntime {
 
     this.cachedMcpStatus = null;
     status = await this.getNotionMcpStatus();
+    if (status.status === 'unauthenticated') {
+      notes.push(await launchClaudeMcpAuthGuide(this.log));
+    }
     const summary = [
       status.status === 'configured'
         ? 'Claude Code 已检测到可用的 Notion MCP 连接。'
@@ -372,4 +376,73 @@ function compactCommandOutput(result) {
     .filter(Boolean)
     .slice(-8)
     .join('\n');
+}
+
+async function launchClaudeMcpAuthGuide(log) {
+  const guidance = [
+    'Claude Code 当前没有可编排的 `claude mcp login` 子命令。',
+    '我会尽量在插件里发起授权引导，但真正的 OAuth 仍需在 Claude Code + 浏览器里完成。',
+  ].join('\n');
+
+  if (os.platform() !== 'darwin') {
+    return [
+      guidance,
+      '请手动打开一个终端并运行 `claude`，进入 Claude Code 后输入 `/mcp`，选择 `notion`，再按浏览器提示完成授权。',
+      '授权完成后回到 notion2cli 插件，状态会自动刷新。',
+    ].join('\n\n');
+  }
+
+  try {
+    const scriptPath = path.join(os.tmpdir(), `notion2cli-claude-mcp-auth-${Date.now()}.command`);
+    await writeFile(scriptPath, buildClaudeMcpAuthTerminalScript(), { mode: 0o755 });
+    await chmod(scriptPath, 0o755);
+
+    const openResult = await runCommand('open', ['-a', 'Terminal', scriptPath], {
+      cwd: os.homedir(),
+      timeoutMs: 10000,
+    });
+    const openOutput = compactCommandOutput(openResult);
+    if (openResult.code !== 0) {
+      throw new Error(openOutput || '无法打开 Terminal.app');
+    }
+
+    log('claude mcp auth guide opened in Terminal', {
+      scriptPath,
+    });
+
+    return [
+      guidance,
+      '已为你打开一个专用 Claude Code 终端。',
+      '请在新终端中按提示进入 `/mcp`，选择 `notion`，再在系统浏览器里完成 OAuth。',
+      '授权完成后回到 notion2cli 插件，状态会自动刷新。',
+    ].join('\n\n');
+  } catch (error) {
+    return [
+      guidance,
+      `自动打开 Claude 授权终端失败：${error?.message || 'unknown error'}`,
+      '请手动打开一个终端并运行 `claude`，进入 Claude Code 后输入 `/mcp`，选择 `notion`，再按浏览器提示完成授权。',
+      '授权完成后回到 notion2cli 插件，状态会自动刷新。',
+    ].join('\n\n');
+  }
+}
+
+function buildClaudeMcpAuthTerminalScript() {
+  return [
+    '#!/bin/zsh',
+    'clear',
+    "cat <<'EOF'",
+    'notion2cli 正在引导 Claude Code 完成 Notion MCP 授权。',
+    '',
+    '接下来请按下面步骤操作：',
+    '1. Claude Code 启动后，输入 /mcp',
+    '2. 在 MCP 列表中选择 notion',
+    '3. 按浏览器提示完成 Notion OAuth',
+    '4. 完成后回到 notion2cli 插件，状态会自动刷新',
+    '',
+    '如果 Claude Code 没有自动显示提示，你仍然只需要输入 /mcp。',
+    'EOF',
+    'echo',
+    'exec claude',
+    '',
+  ].join('\n');
 }
