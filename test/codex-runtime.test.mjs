@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
+import { parseClaudeMcpList, parseClaudeSessionInitNotionStatus } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudePrompt } from '../server/core/codex-prompt.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
@@ -128,6 +128,32 @@ notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
     {
       status: 'unauthenticated',
       detail: '已检测到 Claude Code 的 Notion MCP 配置，但当前还没有完成授权。',
+    },
+  );
+});
+
+test('parseClaudeSessionInitNotionStatus uses the runtime session view of Claude MCP state', () => {
+  assert.deepEqual(
+    parseClaudeSessionInitNotionStatus({
+      mcp_servers: [
+        { name: 'notion', status: 'connected' },
+      ],
+    }),
+    {
+      status: 'configured',
+      detail: '检测到 Claude Code 已配置并可使用 Notion MCP。',
+    },
+  );
+
+  assert.deepEqual(
+    parseClaudeSessionInitNotionStatus({
+      mcp_servers: [
+        { name: 'notion', status: 'needs-auth' },
+      ],
+    }),
+    {
+      status: 'unauthenticated',
+      detail: 'Claude Code 运行时仍需要先完成一次 Notion 浏览器授权。',
     },
   );
 });

@@ -29,6 +29,7 @@ export class RuntimeBackedNotionPageBundleProvider {
 
     try {
       const responseText = await this.runtime.fetchPageBundle({
+        jobId: job.id,
         pageUrl: job.pageUrl,
         pageTitle: job.pageTitle,
         source: job.source,

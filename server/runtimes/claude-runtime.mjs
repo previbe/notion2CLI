@@ -1,11 +1,12 @@
 import os from 'node:os';
 import path from 'node:path';
-import { chmod, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import readline from 'node:readline';
 import { buildClaudePrompt } from '../core/codex-prompt.mjs';
-import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
+import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
 import { runCommand } from './exec-utils.mjs';
-import { ClaudeCliSession } from './claude-cli-session.mjs';
+import { buildClaudeCliArgs, buildStreamJsonUserMessage, ClaudeCliSession } from './claude-cli-session.mjs';
 
 const MCP_PROBE_TTL_MS = 15000;
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
@@ -22,7 +23,7 @@ export class ClaudeRuntime {
     this.ready = false;
     this.statusMessage = '等待检查 Claude Code。';
     this.runningJobs = new Map();
-    this.auxiliarySessions = new Set();
+    this.probeSessions = new Set();
     this.cachedMcpStatus = null;
   }
 
@@ -45,10 +46,11 @@ export class ClaudeRuntime {
       session.shutdown();
     }
     this.runningJobs.clear();
-    for (const session of this.auxiliarySessions.values()) {
+
+    for (const session of this.probeSessions.values()) {
       session.shutdown();
     }
-    this.auxiliarySessions.clear();
+    this.probeSessions.clear();
   }
 
   async startPairing() {
@@ -57,7 +59,7 @@ export class ClaudeRuntime {
     }
   }
 
-  async fetchPageBundle({ pageUrl, pageTitle }) {
+  async fetchPageBundle({ jobId, pageUrl, pageTitle }) {
     if (!this.ready) {
       throw new Error(this.statusMessage || 'Claude Code is not ready');
     }
@@ -67,12 +69,29 @@ export class ClaudeRuntime {
       pageTitle,
       runtimeLabel: 'the local Claude Code runtime',
     });
+    const sessionPrompts = await this.prepareNotionAwarePrompts({
+      prompt,
+      requiresNotionAuth: true,
+    });
     this.log('claude page bundle fetch requested', {
+      jobId,
       pageUrl,
       pageTitle,
     });
-    const result = await this.runEphemeralPrompt(prompt);
+
+    const result = await this.runManagedPrompt({
+      jobId: jobId || `prefetch-${Date.now()}`,
+      prompt: sessionPrompts.prompt,
+      resumePromptAfterApproval: sessionPrompts.resumePromptAfterApproval,
+      addDirs: [this.cwd],
+      phase: 'page_bundle_fetch',
+      dispatchType: 'claude_page_bundle_fetch_requested',
+      runningType: 'claude_page_bundle_fetch_running',
+      waitingType: 'claude_page_bundle_fetch_waiting_for_approval',
+    });
+
     this.log('claude page bundle fetch completed', {
+      jobId,
       pageUrl,
       pageTitle,
       sessionId: result.sessionId,
@@ -95,67 +114,64 @@ export class ClaudeRuntime {
       notionMcpHint: 'Use the configured Notion MCP tools when the action requires full-page reading or write-back.',
     });
     const addDirs = collectAddDirs(job, this.cwd);
-
-    this.context.markJobDispatched(job.id, {
-      type: 'sent_to_claude_cli',
-      runtimeMeta: {
-        runtime: 'claude',
-        transport: 'cli-print',
-      },
+    const sessionPrompts = await this.prepareNotionAwarePrompts({
+      prompt,
+      requiresNotionAuth: job.action === ACTION_WRITE_REPLY,
     });
 
-    const session = new ClaudeCliSession({
+    await this.runManagedPrompt({
       jobId: job.id,
-      cwd: this.cwd,
-      prompt,
-      model: this.model,
-      extraArgs: this.extraArgs,
+      prompt: sessionPrompts.prompt,
+      resumePromptAfterApproval: sessionPrompts.resumePromptAfterApproval,
       addDirs,
-      log: this.log,
-      onRunning: () => {
-        this.context.markJobRunning(job.id, {
-          type: 'claude_cli_running',
-          runtimeMeta: {
-            runtime: 'claude',
-            transport: 'cli-print',
-          },
-        });
-      },
+      phase: 'job_turn',
+      dispatchType: 'sent_to_claude_cli',
+      runningType: 'claude_cli_running',
+      waitingType: 'claude_cli_waiting_for_approval',
       onCompleted: (replyText, meta = {}) => {
-        this.runningJobs.delete(job.id);
         this.context.completeJob(job.id, replyText, {
           type: 'claude_cli_completed',
-          runtimeMeta: {
-            runtime: 'claude',
-            transport: 'cli-print',
+          runtimeMeta: buildRuntimeMeta({
+            phase: 'job_turn',
             sessionId: meta.sessionId || null,
-          },
+          }),
         });
       },
       onFailed: (errorText, meta = {}) => {
-        this.runningJobs.delete(job.id);
         this.context.failJob(job.id, errorText, {
           type: 'claude_cli_failed',
-          runtimeMeta: {
-            runtime: 'claude',
-            transport: 'cli-print',
+          runtimeMeta: buildRuntimeMeta({
+            phase: 'job_turn',
             sessionId: meta.sessionId || null,
             exitCode: meta.exitCode ?? null,
             signal: meta.signal ?? null,
-          },
+            pendingApproval: null,
+          }),
         });
       },
-      onClosed: () => {
-        this.runningJobs.delete(job.id);
-      },
     });
-
-    this.runningJobs.set(job.id, session);
-    await session.start();
   }
 
-  async respondToApproval() {
-    throw new Error('Claude dedicated runtime does not use bridge-managed approval callbacks');
+  async respondToApproval(jobId, resolution) {
+    const session = this.runningJobs.get(jobId);
+    if (!session) {
+      throw new Error('No active Claude Code session for this job');
+    }
+
+    this.cachedMcpStatus = null;
+    await session.respondToApproval(resolution);
+    if (resolution.action !== 'accept') {
+      return;
+    }
+
+    this.context.markJobRunning(jobId, {
+      type: 'claude_cli_approval_resolved',
+      note: '已允许 Claude Code 继续执行。',
+      runtimeMeta: buildRuntimeMeta({
+        approvalResponse: resolution.action,
+        pendingApproval: null,
+      }),
+    });
   }
 
   async getStatus() {
@@ -181,13 +197,28 @@ export class ClaudeRuntime {
 
     let value;
     try {
-      const result = await runCommand('claude', ['mcp', 'list'], { cwd: os.homedir(), timeoutMs: 12000 });
-      value = parseClaudeMcpList(`${result.stdout}\n${result.stderr}`);
+      value = await probeClaudeSessionNotionMcpStatus({
+        cwd: this.cwd,
+        model: this.model,
+        extraArgs: this.extraArgs,
+        log: this.log,
+        registerProbeSession: (session) => {
+          this.probeSessions.add(session);
+        },
+        unregisterProbeSession: (session) => {
+          this.probeSessions.delete(session);
+        },
+      });
     } catch (error) {
-      value = {
-        status: 'unknown',
-        detail: error?.message || '无法检查 Claude Code 的 Notion MCP 状态。',
-      };
+      try {
+        const result = await runCommand('claude', ['mcp', 'list'], { cwd: os.homedir(), timeoutMs: 12000 });
+        value = parseClaudeMcpList(`${result.stdout}\n${result.stderr}`);
+      } catch {
+        value = {
+          status: 'unknown',
+          detail: error?.message || '无法检查 Claude Code 的 Notion MCP 状态。',
+        };
+      }
     }
 
     this.cachedMcpStatus = {
@@ -244,12 +275,13 @@ export class ClaudeRuntime {
     this.cachedMcpStatus = null;
     status = await this.getNotionMcpStatus();
     if (status.status === 'unauthenticated') {
-      notes.push(await launchClaudeMcpAuthGuide(this.log));
+      notes.push('Notion MCP 配置已经存在，但真正的浏览器授权会在第一次整页读取或自动写回时，直接在 Activity 面板里发起。');
     }
+
     const summary = [
       status.status === 'configured'
         ? 'Claude Code 已检测到可用的 Notion MCP 连接。'
-        : 'Claude Code 已添加 Notion MCP 配置，但可能还需要完成授权。',
+        : 'Claude Code 已添加 Notion MCP 配置，但还没有完成浏览器授权。',
       status.detail,
       ...notes,
     ].filter(Boolean).join('\n\n');
@@ -260,57 +292,129 @@ export class ClaudeRuntime {
     });
   }
 
-  async runEphemeralPrompt(prompt) {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const session = new ClaudeCliSession({
-        jobId: `prefetch-${Date.now()}`,
-        cwd: this.cwd,
-        prompt,
-        model: this.model,
-        extraArgs: this.extraArgs,
-        addDirs: [this.cwd],
-        log: this.log,
-        onRunning: () => {
-          this.log('claude auxiliary session running');
-        },
-        onCompleted: (replyText, meta = {}) => {
-          resolveOnce({
-            replyText,
-            sessionId: meta.sessionId || null,
-          });
-        },
-        onFailed: (errorText) => {
-          rejectOnce(new Error(errorText || 'Claude auxiliary session failed'));
-        },
-        onClosed: () => {
-          this.auxiliarySessions.delete(session);
-        },
-      });
+  runManagedPrompt({
+    jobId,
+    prompt,
+    resumePromptAfterApproval = '',
+    addDirs,
+    phase,
+    dispatchType,
+    runningType,
+    waitingType,
+    onCompleted,
+    onFailed,
+  }) {
+    const session = new ClaudeCliSession({
+      jobId,
+      cwd: this.cwd,
+      prompt,
+      resumePromptAfterApproval,
+      model: this.model,
+      extraArgs: this.extraArgs,
+      addDirs,
+      log: this.log,
+      onRunning: ({ sessionId }) => {
+        this.context.markJobDispatched(jobId, {
+          type: dispatchType,
+          runtimeMeta: buildRuntimeMeta({
+            phase,
+            sessionId: sessionId || null,
+          }),
+        });
+        this.context.markJobRunning(jobId, {
+          type: runningType,
+          runtimeMeta: buildRuntimeMeta({
+            phase,
+            sessionId: sessionId || null,
+            pendingApproval: null,
+          }),
+        });
+      },
+      onApprovalRequested: ({ sessionId, pendingApproval }) => {
+        this.context.markJobWaitingForApproval(jobId, {
+          type: waitingType,
+          note: pendingApproval.mode === 'url'
+            ? 'Claude Code 需要先完成浏览器授权。'
+            : 'Claude Code 需要用户确认才能继续。',
+          runtimeMeta: buildRuntimeMeta({
+            phase,
+            sessionId: sessionId || null,
+            pendingApproval,
+          }),
+        });
+      },
+      onCompleted: (replyText, meta = {}) => {
+        this.runningJobs.delete(jobId);
+        if (typeof onCompleted === 'function') {
+          onCompleted(replyText, meta);
+        }
+        resolveOnce({
+          replyText,
+          sessionId: meta.sessionId || null,
+        });
+      },
+      onFailed: (errorText, meta = {}) => {
+        this.runningJobs.delete(jobId);
+        if (typeof onFailed === 'function') {
+          onFailed(errorText, meta);
+        }
+        rejectOnce(new Error(errorText || 'Claude session failed'));
+      },
+      onClosed: () => {
+        this.runningJobs.delete(jobId);
+      },
+    });
 
-      const resolveOnce = (value) => {
+    let settled = false;
+    let resolveOnce = null;
+    let rejectOnce = null;
+
+    const completion = new Promise((resolve, reject) => {
+      resolveOnce = (value) => {
         if (settled) {
           return;
         }
         settled = true;
-        this.auxiliarySessions.delete(session);
         resolve(value);
       };
-
-      const rejectOnce = (error) => {
+      rejectOnce = (error) => {
         if (settled) {
           return;
         }
         settled = true;
-        this.auxiliarySessions.delete(session);
         reject(error);
       };
-
-      this.auxiliarySessions.add(session);
-      session.start().catch((error) => {
-        rejectOnce(error);
-      });
     });
+
+    this.runningJobs.set(jobId, session);
+    session.start().catch((error) => {
+      this.runningJobs.delete(jobId);
+      rejectOnce(error);
+    });
+
+    return completion;
+  }
+
+  async prepareNotionAwarePrompts({ prompt, requiresNotionAuth }) {
+    if (!requiresNotionAuth) {
+      return {
+        prompt,
+        resumePromptAfterApproval: '',
+      };
+    }
+
+    const notionMcp = await this.getNotionMcpStatus();
+    if (notionMcp.status !== 'unauthenticated') {
+      return {
+        prompt,
+        resumePromptAfterApproval: '',
+      };
+    }
+
+    return {
+      prompt: buildClaudeNotionAuthBootstrapPrompt(),
+      resumePromptAfterApproval: prompt,
+    };
   }
 }
 
@@ -348,6 +452,38 @@ export function parseClaudeMcpList(output) {
   };
 }
 
+export function parseClaudeSessionInitNotionStatus(message) {
+  const servers = Array.isArray(message?.mcp_servers) ? message.mcp_servers : [];
+  const notionServer = servers.find((server) => String(server?.name || '').trim().toLowerCase() === 'notion');
+
+  if (!notionServer) {
+    return {
+      status: 'missing',
+      detail: '未检测到 Claude Code 的 Notion MCP 配置。',
+    };
+  }
+
+  const status = String(notionServer.status || '').trim().toLowerCase();
+  if (status === 'connected') {
+    return {
+      status: 'configured',
+      detail: '检测到 Claude Code 已配置并可使用 Notion MCP。',
+    };
+  }
+
+  if (status === 'needs-auth') {
+    return {
+      status: 'unauthenticated',
+      detail: 'Claude Code 运行时仍需要先完成一次 Notion 浏览器授权。',
+    };
+  }
+
+  return {
+    status: 'unknown',
+    detail: `Claude Code Notion MCP 状态：${notionServer.status || 'unknown'}`,
+  };
+}
+
 function parseArgs(raw) {
   const value = String(raw || '').trim();
   if (!value) {
@@ -378,71 +514,108 @@ function compactCommandOutput(result) {
     .join('\n');
 }
 
-async function launchClaudeMcpAuthGuide(log) {
-  const guidance = [
-    'Claude Code 当前没有可编排的 `claude mcp login` 子命令。',
-    '我会尽量在插件里发起授权引导，但真正的 OAuth 仍需在 Claude Code + 浏览器里完成。',
-  ].join('\n');
-
-  if (os.platform() !== 'darwin') {
-    return [
-      guidance,
-      '请手动打开一个终端并运行 `claude`，进入 Claude Code 后输入 `/mcp`，选择 `notion`，再按浏览器提示完成授权。',
-      '授权完成后回到 notion2cli 插件，状态会自动刷新。',
-    ].join('\n\n');
-  }
-
-  try {
-    const scriptPath = path.join(os.tmpdir(), `notion2cli-claude-mcp-auth-${Date.now()}.command`);
-    await writeFile(scriptPath, buildClaudeMcpAuthTerminalScript(), { mode: 0o755 });
-    await chmod(scriptPath, 0o755);
-
-    const openResult = await runCommand('open', ['-a', 'Terminal', scriptPath], {
-      cwd: os.homedir(),
-      timeoutMs: 10000,
-    });
-    const openOutput = compactCommandOutput(openResult);
-    if (openResult.code !== 0) {
-      throw new Error(openOutput || '无法打开 Terminal.app');
-    }
-
-    log('claude mcp auth guide opened in Terminal', {
-      scriptPath,
-    });
-
-    return [
-      guidance,
-      '已为你打开一个专用 Claude Code 终端。',
-      '请在新终端中按提示进入 `/mcp`，选择 `notion`，再在系统浏览器里完成 OAuth。',
-      '授权完成后回到 notion2cli 插件，状态会自动刷新。',
-    ].join('\n\n');
-  } catch (error) {
-    return [
-      guidance,
-      `自动打开 Claude 授权终端失败：${error?.message || 'unknown error'}`,
-      '请手动打开一个终端并运行 `claude`，进入 Claude Code 后输入 `/mcp`，选择 `notion`，再按浏览器提示完成授权。',
-      '授权完成后回到 notion2cli 插件，状态会自动刷新。',
-    ].join('\n\n');
-  }
+function buildRuntimeMeta(overrides = {}) {
+  return {
+    runtime: 'claude',
+    transport: 'cli-stream-json',
+    ...overrides,
+  };
 }
 
-function buildClaudeMcpAuthTerminalScript() {
+function buildClaudeNotionAuthBootstrapPrompt() {
   return [
-    '#!/bin/zsh',
-    'clear',
-    "cat <<'EOF'",
-    'notion2cli 正在引导 Claude Code 完成 Notion MCP 授权。',
-    '',
-    '接下来请按下面步骤操作：',
-    '1. Claude Code 启动后，输入 /mcp',
-    '2. 在 MCP 列表中选择 notion',
-    '3. 按浏览器提示完成 Notion OAuth',
-    '4. 完成后回到 notion2cli 插件，状态会自动刷新',
-    '',
-    '如果 Claude Code 没有自动显示提示，你仍然只需要输入 /mcp。',
-    'EOF',
-    'echo',
-    'exec claude',
-    '',
+    'You are handling a notion2cli task that requires the Notion MCP server.',
+    'Do not attempt the main task yet.',
+    'Call the Notion authentication tool now.',
+    'If it returns an authorization URL, output only that URL and nothing else.',
+    'Do not summarize the task, and do not claim failure before trying authentication.',
   ].join('\n');
+}
+
+function probeClaudeSessionNotionMcpStatus({
+  cwd,
+  model,
+  extraArgs,
+  log,
+  registerProbeSession,
+  unregisterProbeSession,
+}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('claude', buildClaudeCliArgs({
+      model,
+      extraArgs,
+      addDirs: [cwd],
+    }), {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const reader = readline.createInterface({ input: child.stdout });
+    const session = {
+      shutdown() {
+        reader.close();
+        if (!child.killed) {
+          child.kill('SIGTERM');
+        }
+      },
+    };
+    registerProbeSession?.(session);
+
+    let stderr = '';
+    let settled = false;
+    let timeoutId = null;
+
+    const finish = (fn, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      unregisterProbeSession?.(session);
+      session.shutdown();
+      fn(value);
+    };
+
+    reader.on('line', (line) => {
+      if (!line.trim()) {
+        return;
+      }
+
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        log?.('claude probe emitted invalid JSON', { line });
+        return;
+      }
+
+      if (message?.type === 'system' && message?.subtype === 'init') {
+        finish(resolve, parseClaudeSessionInitNotionStatus(message));
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf8');
+    });
+
+    child.on('error', (error) => {
+      finish(reject, new Error(error?.message || 'Failed to start Claude Code probe'));
+    });
+
+    child.on('close', (code, signal) => {
+      if (settled) {
+        return;
+      }
+
+      const reason = stderr.trim() || `Claude Code probe exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`;
+      finish(reject, new Error(reason));
+    });
+
+    timeoutId = setTimeout(() => {
+      finish(reject, new Error('Timed out while waiting for Claude Code MCP status'));
+    }, 6000);
+
+    child.stdin.write(`${JSON.stringify(buildStreamJsonUserMessage('Reply exactly ok.'))}\n`);
+  });
 }

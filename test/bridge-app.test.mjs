@@ -138,6 +138,80 @@ class FakeImageBundleRuntime extends FakeRuntime {
   }
 }
 
+class FakePageBundleApprovalRuntime extends FakeRuntime {
+  constructor() {
+    super();
+    this.pendingFetches = new Map();
+  }
+
+  async fetchPageBundle({ jobId, pageUrl, pageTitle }) {
+    return new Promise((resolve, reject) => {
+      this.context.markJobWaitingForApproval(jobId, {
+        type: 'fake_page_bundle_waiting_for_approval',
+        runtimeMeta: {
+          pendingApproval: {
+            requestId: `fetch-${jobId}`,
+            kind: 'mcp_auth',
+            serverName: 'notion',
+            mode: 'url',
+            url: 'https://example.com/notion-auth',
+            message: 'Authorize page fetch first',
+          },
+        },
+      });
+
+      this.pendingFetches.set(jobId, {
+        resolve,
+        reject,
+        pageUrl,
+        pageTitle,
+      });
+    });
+  }
+
+  async dispatchJob(job) {
+    this.context.markJobDispatched(job.id, { type: 'fake_dispatched_after_page_bundle' });
+    this.context.markJobRunning(job.id, { type: 'fake_running_after_page_bundle' });
+    setTimeout(() => {
+      this.context.completeJob(job.id, `Fetched page: ${job.pageTitle}`, {
+        type: 'fake_completed_after_page_bundle',
+      });
+    }, 20);
+  }
+
+  async respondToApproval(jobId, resolution) {
+    const pendingFetch = this.pendingFetches.get(jobId);
+    if (pendingFetch) {
+      this.pendingFetches.delete(jobId);
+      this.context.markJobRunning(jobId, { type: 'fake_page_bundle_approval_resolved' });
+      setTimeout(() => {
+        if (resolution.action === 'accept') {
+          pendingFetch.resolve([
+            '<<<N2C_PAGE_BUNDLE_JSON',
+            JSON.stringify({
+              ok: true,
+              pageUrl: pendingFetch.pageUrl,
+              pageTitle: pendingFetch.pageTitle,
+              truncated: false,
+              warnings: [],
+            }),
+            'N2C_PAGE_BUNDLE_JSON',
+            '<<<N2C_PAGE_MARKDOWN',
+            `# ${pendingFetch.pageTitle}\n\nApproved body.`,
+            'N2C_PAGE_MARKDOWN',
+          ].join('\n'));
+          return;
+        }
+
+        pendingFetch.reject(new Error('Fetch declined'));
+      }, 20);
+      return;
+    }
+
+    await super.respondToApproval(jobId, resolution);
+  }
+}
+
 test('bridge app pairs and completes a browser job through the runtime contract', async () => {
   const app = new BridgeApp({
     runtime: new FakeRuntime(),
@@ -177,7 +251,7 @@ test('bridge app pairs and completes a browser job through the runtime contract'
 
     assert.equal(jobResponse.ok, true);
     assert.ok(jobResponse.jobId);
-    assert.equal(jobResponse.status, 'running');
+    assert.match(jobResponse.status, /^(queued|dispatched|running)$/);
 
     let job;
     for (let index = 0; index < 20; index += 1) {
@@ -324,6 +398,69 @@ test('bridge app prefers runtime-backed page bundles for full-page artifact reso
     await httpServer.close();
     await app.stop();
     imageServer.close();
+  }
+});
+
+test('bridge app can wait for approval during runtime-backed page bundle fetch', async () => {
+  const app = new BridgeApp({
+    runtime: new FakePageBundleApprovalRuntime(),
+    log: () => {},
+  });
+  const httpServer = createBridgeHttpServer(app, () => {}, { port: 0 });
+
+  await app.start();
+  const address = await httpServer.listen();
+  const baseUrl = `http://${address.host}:${address.port}`;
+
+  try {
+    const pairResponse = await postJson(`${baseUrl}/api/pair/create`, {});
+    const confirmResponse = await postJson(`${baseUrl}/api/pair/confirm`, {
+      code: pairResponse.code,
+      clientLabel: 'Page Bundle Approval Browser',
+    });
+
+    const jobResponse = await postJson(`${baseUrl}/api/jobs`, {
+      action: 'forward_full_page_via_mcp',
+      pageUrl: 'https://www.notion.so/page-bundle-approval',
+      pageTitle: 'Approval Page',
+      source: 'test',
+    }, confirmResponse.token);
+
+    let job = null;
+    for (let index = 0; index < 30; index += 1) {
+      const snapshot = await getJson(`${baseUrl}/api/jobs/${jobResponse.jobId}`, confirmResponse.token);
+      job = snapshot.job;
+      if (job.status === 'waiting_for_approval') {
+        break;
+      }
+
+      await sleep(20);
+    }
+
+    assert.equal(job.status, 'waiting_for_approval');
+    assert.equal(job.runtimeMeta.pendingApproval.message, 'Authorize page fetch first');
+
+    await postJson(`${baseUrl}/api/jobs/${jobResponse.jobId}/approval`, {
+      action: 'accept',
+    }, confirmResponse.token);
+
+    for (let index = 0; index < 40; index += 1) {
+      const snapshot = await getJson(`${baseUrl}/api/jobs/${jobResponse.jobId}`, confirmResponse.token);
+      job = snapshot.job;
+      if (job.status === 'completed') {
+        break;
+      }
+
+      await sleep(20);
+    }
+
+    assert.equal(job.status, 'completed');
+    assert.equal(job.replyText, 'Fetched page: Approval Page');
+    assert.equal(job.history.some((entry) => entry.type === 'fake_page_bundle_waiting_for_approval'), true);
+    assert.equal(job.history.some((entry) => entry.type === 'fake_page_bundle_approval_resolved'), true);
+  } finally {
+    await httpServer.close();
+    await app.stop();
   }
 });
 

@@ -268,12 +268,10 @@ function getAccessState(status) {
       if (runtime.id === 'claude') {
         return {
           detail: notionMcp.detail || '已经检测到 Claude Code 的 Notion MCP 配置，但还没有完成授权。',
-          status: '点击后会打开一个专用 Claude Code 终端，引导你在 `/mcp` 中完成 Notion OAuth。',
-          button: '打开授权引导',
-          disabled: false,
-          canInstall: true,
-          pendingText: '正在打开 Claude 授权引导…',
-          waitText: 'Claude 授权引导已打开，请在新终端和浏览器里完成授权…',
+          status: '整页读取或自动写回时，会直接在 Activity 里弹出浏览器授权链接。',
+          button: '按需授权',
+          disabled: true,
+          canInstall: false,
         };
       }
 

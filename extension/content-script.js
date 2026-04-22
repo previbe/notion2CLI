@@ -284,7 +284,7 @@ function buildAutoWriteHint({ hasSelection, writeMode, pendingAuth }) {
     return hint;
   }
 
-  return `${hint} 如果写回前还需要授权，会继续在 ACTIVITY 里请求你确认。`;
+  return `${hint} 如果执行过程中还需要授权，会继续在 ACTIVITY 里请求你确认。`;
 }
 
 async function startAction() {
@@ -641,6 +641,17 @@ function updateControls() {
   copyButton.disabled = !(state.latestBrief || state.latestReply);
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
+  approveButton.textContent = state.pendingApproval?.mode === 'url' && !isUrlApprovalReadyToContinue()
+    ? '打开授权页'
+    : '允许继续';
+}
+
+function isUrlApprovalReadyToContinue() {
+  if (!state.pendingApproval || state.pendingApproval.mode !== 'url') {
+    return false;
+  }
+
+  return Boolean(state.pendingApproval.opened) || state.notionMcp.status === 'configured';
 }
 
 function canStartAction(selectionText) {
@@ -722,6 +733,31 @@ async function submitApproval(action) {
     return;
   }
 
+  if (action === 'accept' && state.pendingApproval.mode === 'url' && state.pendingApproval.url && !isUrlApprovalReadyToContinue()) {
+    const authWindow = window.open(state.pendingApproval.url, '_blank', 'noopener,noreferrer');
+    if (!authWindow) {
+      renderJobState({
+        status: 'waiting_for_approval',
+        text: '浏览器拦截了授权窗口。请允许弹窗后再试一次。',
+        jobId: state.currentJobId,
+        action: state.currentAction,
+        runtimeMeta: {
+          pendingApproval: state.pendingApproval,
+        },
+      });
+      return;
+    }
+
+    state.pendingApproval = {
+      ...state.pendingApproval,
+      opened: true,
+    };
+    approvalMessageNode.textContent = buildApprovalMessage(state.pendingApproval);
+    activityNoteNode.textContent = '授权页已打开。完成浏览器授权后，再点一次“允许继续”。';
+    updateControls();
+    return;
+  }
+
   state.approvalBusy = true;
   updateControls();
 
@@ -759,26 +795,47 @@ async function submitApproval(action) {
 
 function syncApprovalState(status, pendingApproval) {
   if (status === 'waiting_for_approval' && pendingApproval) {
-    state.pendingApproval = pendingApproval;
+    const previousKey = approvalRequestKey(state.pendingApproval);
+    const nextKey = approvalRequestKey(pendingApproval);
+    state.pendingApproval = {
+      ...pendingApproval,
+      opened: previousKey && previousKey === nextKey ? Boolean(state.pendingApproval?.opened) : false,
+    };
     approvalNode.classList.remove('n2c-hidden');
-    approvalMessageNode.textContent = buildApprovalMessage(pendingApproval);
+    approvalMessageNode.textContent = buildApprovalMessage(state.pendingApproval);
     updateControls();
     return;
   }
 
   state.pendingApproval = null;
   approvalNode.classList.add('n2c-hidden');
-  approvalMessageNode.textContent = 'Codex 需要确认后才能继续。';
+  approvalMessageNode.textContent = '当前执行需要确认后才能继续。';
   updateControls();
 }
 
 function buildApprovalMessage(pendingApproval) {
-  const base = pendingApproval.message || 'Codex 需要你的确认才能继续。';
+  const base = pendingApproval.message || '当前执行需要你的确认才能继续。';
   if (pendingApproval.mode === 'url' && pendingApproval.url) {
-    return `${base} 如有需要，请在新标签页打开：${pendingApproval.url}`;
+    if (isUrlApprovalReadyToContinue()) {
+      return `${base} 浏览器授权似乎已经完成，现在可以直接点“允许继续”。`;
+    }
+
+    if (pendingApproval.opened) {
+      return `${base} 授权页已经打开。完成浏览器授权后，再点一次“允许继续”。`;
+    }
+
+    return `${base} 先点“打开授权页”，完成浏览器授权后，再回来继续。`;
   }
 
   return base;
+}
+
+function approvalRequestKey(pendingApproval) {
+  if (!pendingApproval || typeof pendingApproval !== 'object') {
+    return '';
+  }
+
+  return String(pendingApproval.requestId || pendingApproval.url || pendingApproval.message || '').trim();
 }
 
 async function loadWriteModePreference() {
