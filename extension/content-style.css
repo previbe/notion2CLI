@@ -33,6 +33,10 @@
   align-items: flex-end;
 }
 
+.n2c-shell-dragging {
+  user-select: none;
+}
+
 .n2c-fab,
 .n2c-strip-toggle,
 .n2c-send,
@@ -54,7 +58,8 @@
   border-radius: 20px;
   background: var(--n2c-strip-bg);
   box-shadow: var(--n2c-shadow-soft);
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   backdrop-filter: blur(14px);
   transition:
     transform 220ms ease,
@@ -69,6 +74,9 @@
 }
 
 .n2c-shell-expanded .n2c-fab {
+  position: absolute;
+  right: 0;
+  bottom: 0;
   opacity: 0;
   transform: translateY(10px) scale(0.98);
   pointer-events: none;
@@ -184,6 +192,13 @@
   border-radius: 20px 20px 0 0;
   background: var(--n2c-strip-bg);
   backdrop-filter: blur(14px);
+  cursor: grab;
+  touch-action: none;
+}
+
+.n2c-shell-dragging .n2c-fab,
+.n2c-shell-dragging .n2c-sheet-header {
+  cursor: grabbing;
 }
 
 .n2c-sheet-paper {

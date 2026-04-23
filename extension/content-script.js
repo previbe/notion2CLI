@@ -1,4 +1,5 @@
 const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
+const PANEL_POSITION_STORAGE_KEY = 'notion2cli.panelPosition';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
 const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
@@ -20,6 +21,10 @@ const state = {
   latestReply: '',
   latestBrief: '',
   latestReplyJobId: null,
+  drag: null,
+  panelPosition: null,
+  panelClampFrame: null,
+  suppressFabClick: false,
   writeMode: WRITE_MODE_APPEND_SECTION,
   lastSubmission: {
     action: '',
@@ -110,6 +115,7 @@ const stripLabelNodes = [...root.querySelectorAll('[data-strip-label]')];
 const fab = root.querySelector('.n2c-fab');
 const menu = root.querySelector('.n2c-menu');
 menu.id = 'n2c-activity-sheet';
+const sheetHeader = root.querySelector('.n2c-sheet-header');
 const closeSheetButton = root.querySelector('[data-close-sheet]');
 const pageTitleNode = root.querySelector('[data-page-title]');
 const sendButton = root.querySelector('[data-send]');
@@ -123,24 +129,41 @@ const approvalMessageNode = root.querySelector('[data-approval-message]');
 const approveButton = root.querySelector('[data-approve]');
 const declineButton = root.querySelector('[data-decline]');
 const copyButton = root.querySelector('[data-copy]');
+const shellResizeObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(() => {
+      schedulePanelViewportClamp();
+    })
+  : null;
+
+shellResizeObserver?.observe(shell);
 
 bindEvents();
 pageTitleNode.textContent = getPageTitle();
 renderBrief();
 loadWriteModePreference();
+loadPanelPositionPreference();
 updateActionCopy();
 updateControls();
 refreshBridgeStatus();
 setInterval(refreshBridgeStatus, 15000);
 
 function bindEvents() {
-  fab.addEventListener('click', () => {
+  fab.addEventListener('click', (event) => {
+    if (state.suppressFabClick) {
+      state.suppressFabClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     pageTitleNode.textContent = getPageTitle();
     updateActionCopy();
     renderBrief();
     setExpanded(!state.expanded);
   });
 
+  fab.addEventListener('pointerdown', (event) => startDrag(event, 'fab'));
+  sheetHeader.addEventListener('pointerdown', (event) => startDrag(event, 'header'));
   closeSheetButton.addEventListener('click', () => setExpanded(false));
   sendButton.addEventListener('click', () => startAction());
   approveButton.addEventListener('click', () => submitApproval('accept'));
@@ -159,6 +182,14 @@ function bindEvents() {
     state.writeMode = normalizeWriteMode(changes[WRITE_MODE_STORAGE_KEY].newValue);
     updateActionCopy();
     updateControls();
+  });
+
+  window.addEventListener('resize', () => {
+    if (!state.panelPosition) {
+      return;
+    }
+
+    schedulePanelViewportClamp();
   });
 
   copyButton.addEventListener('click', async () => {
@@ -180,6 +211,201 @@ function setExpanded(nextExpanded) {
   shell.classList.toggle('n2c-shell-expanded', state.expanded);
   menu.setAttribute('aria-hidden', state.expanded ? 'false' : 'true');
   fab.setAttribute('aria-expanded', state.expanded ? 'true' : 'false');
+
+  if (state.panelPosition) {
+    schedulePanelViewportClamp();
+  }
+}
+
+async function loadPanelPositionPreference() {
+  try {
+    const data = await chrome.storage.local.get([PANEL_POSITION_STORAGE_KEY]);
+    const position = normalizePanelPosition(data[PANEL_POSITION_STORAGE_KEY]);
+    if (!position) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      applyPanelPosition(position, { persist: false });
+    });
+  } catch {}
+}
+
+function startDrag(event, source) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  if (source === 'header' && event.target.closest('[data-close-sheet]')) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const rect = shell.getBoundingClientRect();
+  state.drag = {
+    source,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originLeft: rect.left,
+    originBottom: window.innerHeight - rect.bottom,
+    moved: false,
+  };
+
+  shell.classList.add('n2c-shell-dragging');
+  window.addEventListener('pointermove', handleDragMove);
+  window.addEventListener('pointerup', stopDrag);
+  window.addEventListener('pointercancel', stopDrag);
+}
+
+function handleDragMove(event) {
+  if (!state.drag || event.pointerId !== state.drag.pointerId) {
+    return;
+  }
+
+  if (!state.drag.moved) {
+    const delta = Math.abs(event.clientX - state.drag.startX) + Math.abs(event.clientY - state.drag.startY);
+    if (delta <= 4) {
+      return;
+    }
+
+    state.drag.moved = true;
+  }
+
+  const nextPosition = clampPanelPosition({
+    left: state.drag.originLeft + (event.clientX - state.drag.startX),
+    bottom: state.drag.originBottom - (event.clientY - state.drag.startY),
+  });
+  state.panelPosition = nextPosition;
+  applyPanelPosition(nextPosition, { persist: false });
+}
+
+function stopDrag(event) {
+  if (!state.drag || (event && event.pointerId !== state.drag.pointerId)) {
+    return;
+  }
+
+  const drag = state.drag;
+  state.drag = null;
+  shell.classList.remove('n2c-shell-dragging');
+  window.removeEventListener('pointermove', handleDragMove);
+  window.removeEventListener('pointerup', stopDrag);
+  window.removeEventListener('pointercancel', stopDrag);
+
+  if (!drag.moved) {
+    return;
+  }
+
+  if (drag.source === 'fab') {
+    state.suppressFabClick = true;
+  }
+
+  persistPanelPosition(state.panelPosition).catch(() => {});
+}
+
+function ensurePanelWithinViewport({ persist }) {
+  const normalized = normalizePanelPosition(state.panelPosition);
+  if (!normalized) {
+    return;
+  }
+
+  applyPanelPosition(normalized, { persist });
+}
+
+function schedulePanelViewportClamp() {
+  if (!state.panelPosition) {
+    return;
+  }
+
+  if (state.panelClampFrame) {
+    cancelAnimationFrame(state.panelClampFrame);
+  }
+
+  state.panelClampFrame = requestAnimationFrame(() => {
+    state.panelClampFrame = null;
+    ensurePanelWithinViewport({ persist: true });
+  });
+}
+
+function applyPanelPosition(position, { persist }) {
+  const normalized = normalizePanelPosition(position);
+  if (!normalized) {
+    shell.style.left = '';
+    shell.style.top = '';
+    shell.style.right = '';
+    shell.style.bottom = '';
+    state.panelPosition = null;
+    if (persist) {
+      persistPanelPosition(null).catch(() => {});
+    }
+    return;
+  }
+
+  const clamped = clampPanelPosition(normalized);
+  shell.style.left = `${clamped.left}px`;
+  shell.style.bottom = `${clamped.bottom}px`;
+  shell.style.right = 'auto';
+  shell.style.top = 'auto';
+  state.panelPosition = clamped;
+
+  if (persist) {
+    persistPanelPosition(clamped).catch(() => {});
+  }
+}
+
+function clampPanelPosition(position) {
+  const margin = window.innerWidth <= 720 ? 12 : 24;
+  const rect = shell.getBoundingClientRect();
+  const projectedWidth = Math.max(rect.width, Math.min(360, Math.max(220, window.innerWidth - 24)));
+  const projectedHeight = Math.max(rect.height, 60);
+  const maxLeft = Math.max(margin, window.innerWidth - projectedWidth - margin);
+  const maxBottom = Math.max(margin, window.innerHeight - projectedHeight - margin);
+
+  return {
+    left: Math.round(Math.min(Math.max(position.left, margin), maxLeft)),
+    bottom: Math.round(Math.min(Math.max(position.bottom, margin), maxBottom)),
+  };
+}
+
+function normalizePanelPosition(value) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const left = Number(value.left);
+  const bottom = Number(value.bottom);
+  if (Number.isFinite(left) && Number.isFinite(bottom)) {
+    return {
+      left,
+      bottom,
+    };
+  }
+
+  const top = Number(value.top);
+  if (!Number.isFinite(left) || !Number.isFinite(top)) {
+    return null;
+  }
+
+  const rect = shell.getBoundingClientRect();
+  return {
+    left,
+    bottom: Math.max(0, window.innerHeight - top - rect.height),
+  };
+}
+
+async function persistPanelPosition(position) {
+  if (!position) {
+    await chrome.storage.local.remove([PANEL_POSITION_STORAGE_KEY]);
+    return;
+  }
+
+  await chrome.storage.local.set({
+    [PANEL_POSITION_STORAGE_KEY]: {
+      left: position.left,
+      bottom: position.bottom,
+    },
+  });
 }
 
 async function refreshBridgeStatus() {
@@ -586,6 +812,10 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
   activityNoteNode.classList.toggle('n2c-empty', !text);
   syncApprovalState(status, runtimeMeta.pendingApproval || null);
   updateControls();
+
+  if (state.expanded && state.panelPosition) {
+    schedulePanelViewportClamp();
+  }
 }
 
 function renderBrief() {
@@ -593,6 +823,10 @@ function renderBrief() {
   outputNode.textContent = brief || '运行完成后，这里的 brief 会保留刚刚完成动作的总结。';
   outputNode.classList.toggle('n2c-empty', !brief);
   copyButton.disabled = !brief && !state.latestReply;
+
+  if (state.expanded && state.panelPosition) {
+    schedulePanelViewportClamp();
+  }
 }
 
 function extractBrief(text) {
