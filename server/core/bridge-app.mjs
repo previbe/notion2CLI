@@ -51,6 +51,7 @@ export class BridgeApp {
       bridgeRunning: true,
       startedAt: this.startedAt,
       runtime: runtimeStatus.runtime,
+      session: runtimeStatus.session || null,
       notionMcp: runtimeStatus.notionMcp,
       ...this.pairingStore.getPublicSnapshot(authenticated),
       pendingJobs: this.jobStore.pendingCount(),
@@ -111,6 +112,15 @@ export class BridgeApp {
       jobId: job.id,
       status: this.jobStore.get(job.id)?.status || job.status,
     };
+  }
+
+  async openCodexApp(token) {
+    this.assertToken(token);
+    if (typeof this.runtime.openCodexApp !== 'function') {
+      throw createHttpError(501, 'Current runtime does not support opening Codex App');
+    }
+
+    return await this.runtime.openCodexApp();
   }
 
   readJob(token, jobId) {

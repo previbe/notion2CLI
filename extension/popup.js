@@ -98,7 +98,7 @@ function renderDisconnectedState(message) {
   popupState.status = null;
   popupState.lastErrorMessage = message;
   statusDot.classList.remove('ready');
-  statusValue.textContent = '没有连接本地 Agent';
+  statusValue.textContent = '没有连接本地 Codex daemon';
   statusHint.textContent = message;
   popupRoot.dataset.state = 'offline';
   updateRuntimeSwitch(true);
@@ -140,7 +140,7 @@ function updateVisualState(status, access, connected) {
 
 function buildStatusValue(status) {
   const runtime = status.runtime || {};
-  const runtimeLabel = runtime.label || '本地 Agent';
+  const runtimeLabel = runtime.label || 'Codex CLI';
 
   if (status.paired && runtime.ready) {
     return runtime.standalone ? '已连接调试模式' : `已连接 ${runtimeLabel}`;
@@ -151,7 +151,7 @@ function buildStatusValue(status) {
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || '本地 Agent 未就绪';
+    return runtime.statusMessage || 'Codex CLI 未就绪';
   }
 
   return '浏览器尚未连接';
@@ -163,11 +163,11 @@ function buildStatusHint(status) {
   if (status.paired && runtime.ready) {
     return runtime.standalone
       ? '当前是调试模式：页面内操作会返回模拟结果，不会调用真实 Notion。'
-      : '页面内按钮现在可以发送当前页，在 ACTIVITY 中查看 brief，并在完成后自动写回 Notion。';
+      : '浏览器已经连到当前 Codex 会话。回到 Notion 页面点击“运行当前页”即可直接开始处理；需要看终端细节时再打开可见 CLI。';
   }
 
   if (status.awaitingPairCode) {
-    return '已经生成 6 位配对码。把数字贴到下方，就能把当前浏览器连到本地 Agent。';
+    return '已经生成 6 位配对码。把数字贴到下方，就能把当前浏览器连到本地 Codex daemon。';
   }
 
   if (!runtime.ready) {
@@ -184,12 +184,12 @@ function getNextStep(status) {
   if (!runtime.ready) {
     return {
       title: '启动 CLI',
-      body: '按顺序运行下面两条命令：启动 CLI 后，再生成 6 位配对码。',
+      body: '按顺序运行下面两条命令：先启动 Codex daemon，再生成 6 位配对码。',
       commandLabel: '启动命令',
       command: getSelectedRuntimeLaunchCommand(),
       secondaryCommandLabel: '生成配对码',
       secondaryCommand: 'notion2cli pair',
-      showRuntimeSwitch: true,
+      showRuntimeSwitch: false,
     };
   }
 
@@ -206,17 +206,17 @@ function getNextStep(status) {
   if (!runtime.standalone && access.canInstall) {
     return {
       title: '启用 Notion MCP',
-      body: '浏览器已经连上本地 Agent。接下来只要为当前 runtime 完成 Notion MCP 配置或授权。',
+      body: '浏览器已经连上当前 Codex 会话。接下来只要把 Notion MCP 配好，运行整页和手动写回就能正常工作。',
       command: '',
       showRuntimeSwitch: false,
     };
   }
 
   return {
-    title: '退出命令',
-    body: '如果你想结束本地 Agent，可以运行下面的命令。',
-    commandLabel: '',
-    command: 'notion2cli daemon stop',
+    title: '可以运行 Notion 输入',
+    body: 'daemon 和浏览器都已就绪。回到 Notion 页点击“运行当前页”会直接启动 Codex 处理；下面的命令只用于你想查看同一个可见 CLI 会话时。',
+    commandLabel: '查看会话',
+    command: runtime.attachCommand || 'notion2cli codex attach',
     showRuntimeSwitch: false,
   };
 }
@@ -268,7 +268,7 @@ function getAccessState(status) {
       if (runtime.id === 'claude') {
         return {
           detail: notionMcp.detail || '已经检测到 Claude Code 的 Notion MCP 配置，但还没有完成授权。',
-          status: '整页读取或自动写回时，会直接在 Activity 里弹出浏览器授权链接。',
+          status: '整页读取或写回时，会直接在 Activity 里弹出浏览器授权链接。',
           button: '按需授权',
           disabled: true,
           canInstall: false,
@@ -277,12 +277,12 @@ function getAccessState(status) {
 
       return {
         detail: notionMcp.detail || '已经检测到 Notion MCP 配置，但你还需要完成一次授权。',
-        status: '完成授权后，整页发送和写回都会恢复。',
+          status: '完成授权后，运行整页和写回都会恢复。',
         button: '继续授权',
         disabled: false,
         canInstall: true,
         pendingText: '正在发起授权请求…',
-        waitText: '授权请求已发出，等待本地 Agent 完成…',
+        waitText: '授权请求已发出，等待 Codex 完成…',
       };
     case 'missing':
       return {
@@ -292,7 +292,7 @@ function getAccessState(status) {
         disabled: false,
         canInstall: true,
         pendingText: '正在启用 Notion MCP…',
-        waitText: '启用请求已发出，等待本地 Agent 完成…',
+        waitText: '启用请求已发出，等待 Codex 完成…',
       };
     case 'unavailable':
       return {
@@ -305,12 +305,12 @@ function getAccessState(status) {
     default:
       return {
         detail: notionMcp.detail || '现在还无法自动确认 Notion MCP 状态。',
-        status: '如果发送整页或写回失败，请查看官方文档。',
+        status: '如果运行整页或写回失败，请查看官方文档。',
         button: '尝试修复',
         disabled: false,
         canInstall: true,
         pendingText: '正在尝试修复 Notion MCP…',
-        waitText: '修复请求已发出，等待本地 Agent 处理…',
+        waitText: '修复请求已发出，等待 Codex 处理…',
       };
   }
 }
@@ -424,12 +424,12 @@ async function sendInstallRequest() {
     });
 
     popupState.installJobId = response.jobId;
-    popupState.installMessage = access.waitText || '请求已发出，等待本地 Agent 处理…';
+    popupState.installMessage = access.waitText || '请求已发出，等待 Codex 处理…';
     renderStatus(status);
     pollInstallJob(response.jobId);
   } catch (error) {
     popupState.installBusy = false;
-    popupState.installMessage = error.message || '发送请求失败';
+    popupState.installMessage = error.message || '请求失败';
     renderStatus(status);
   }
 }
@@ -490,7 +490,7 @@ function selectRuntime(runtimeId) {
 }
 
 function updateRuntimeSwitch(visible) {
-  runtimeSwitch.classList.toggle('hidden', !visible);
+  runtimeSwitch.classList.toggle('hidden', true);
   runtimeButtons.forEach((button) => {
     const active = button.dataset.runtimeButton === popupState.selectedRuntime;
     button.classList.toggle('active', active);
@@ -499,10 +499,6 @@ function updateRuntimeSwitch(visible) {
 }
 
 function getSelectedRuntimeLaunchCommand() {
-  if (popupState.selectedRuntime === 'claude') {
-    return 'notion2cli daemon start --runtime claude';
-  }
-
   return 'notion2cli daemon start --runtime codex';
 }
 
@@ -541,20 +537,20 @@ function getWriteModeCopy(mode) {
   if (mode === WRITE_MODE_UPDATE_CONTENT) {
     return {
       tone: 'warning',
-      hint: '发送选中内容后，会把结果自动替换回这段原文。发送前需要先在页面里选中目标文本。',
+      hint: '点击“写回 Notion”时，会用当前最新回复替换你此刻选中的原文。写回前需要先在页面里选中目标文本。',
     };
   }
 
   if (mode === WRITE_MODE_REPLACE_CONTENT) {
     return {
       tone: 'danger',
-      hint: '发送完成后，会用新结果自动覆盖页面正文。这是高风险模式，只适合明确知道后果时使用。',
+      hint: '点击“写回 Notion”时，会用当前最新回复覆盖页面正文。这是高风险模式，只适合明确知道后果时使用。',
     };
   }
 
   return {
     tone: 'default',
-    hint: '发送完成后，会把结果自动追加到当前页末尾，不改动原文。这是默认推荐模式。',
+    hint: '点击“写回 Notion”时，会把当前最新回复追加到页面末尾，不改动原文。这是默认推荐模式。',
   };
 }
 

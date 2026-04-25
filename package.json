@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A local-first bridge that lets a Notion browser button send work into a local Claude Code or Codex runtime.",
+  "description": "A local-first bridge that runs Notion page content as the next input in a local Codex CLI session.",
   "bin": {
     "notion2cli": "./bin/notion2cli.mjs",
     "notion2cli-bridge": "./bin/notion2cli-bridge",

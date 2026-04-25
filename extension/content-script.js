@@ -17,6 +17,7 @@ const state = {
   pollTimer: null,
   busy: false,
   approvalBusy: false,
+  openAppBusy: false,
   pendingApproval: null,
   latestReply: '',
   latestBrief: '',
@@ -32,13 +33,15 @@ const state = {
     pageTitle: '',
     selectionText: '',
   },
+  session: null,
   runtime: {
     id: 'unknown',
-    label: '本地 Agent',
+    label: 'Codex CLI',
     ready: false,
     standalone: false,
     pairingCommand: 'notion2cli pair',
     launchCommand: '',
+    attachCommand: 'notion2cli codex attach',
     statusMessage: '',
   },
   notionMcp: {
@@ -69,8 +72,12 @@ root.innerHTML = `
             <div class="n2c-meta-label">当前页面</div>
             <div class="n2c-page-title" data-page-title>读取中…</div>
           </div>
-          <button class="n2c-send" type="button" data-send>发送当前页</button>
-          <div class="n2c-send-hint" data-send-hint>会先处理当前页，完成后自动写回当前 Notion 页面。</div>
+          <button class="n2c-send" type="button" data-send>作为新问题运行</button>
+          <div class="n2c-send-hint" data-send-hint>会把当前页作为下一条用户输入发给 Codex，并直接开始处理。</div>
+          <div class="n2c-session-bar">
+            <div class="n2c-session-text" data-session-text>Codex App session 尚未准备好</div>
+            <button class="n2c-open-app" type="button" data-open-app disabled>打开 Codex App</button>
+          </div>
           <div class="n2c-section-divider"></div>
           <div class="n2c-meta">
             <span class="n2c-status" data-run-status>
@@ -79,7 +86,7 @@ root.innerHTML = `
             </span>
             <span class="n2c-job-id" data-job-id></span>
           </div>
-          <div class="n2c-activity-note n2c-empty" data-activity-note>发送后，执行进度、授权请求和自动写回状态会显示在这里。</div>
+          <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态、Codex 回复和手动写回结果会显示在这里。</div>
           <div class="n2c-approval n2c-hidden" data-approval>
             <div class="n2c-approval-title">需要你的确认</div>
             <div class="n2c-approval-message" data-approval-message>Codex 需要确认后才能继续。</div>
@@ -89,10 +96,13 @@ root.innerHTML = `
             </div>
           </div>
           <div class="n2c-brief-head">
-            <div class="n2c-meta-label">BRIEF</div>
-            <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
+            <div class="n2c-meta-label">LATEST REPLY</div>
+            <div class="n2c-brief-actions">
+              <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
+              <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
+            </div>
           </div>
-          <div class="n2c-output n2c-empty" data-output>运行完成后，这里的 brief 会保留刚刚完成动作的总结。</div>
+          <div class="n2c-output n2c-empty" data-output>最新 Codex 回复会显示在这里，写回时会使用这段内容。</div>
         </div>
       </div>
     </section>
@@ -120,6 +130,8 @@ const closeSheetButton = root.querySelector('[data-close-sheet]');
 const pageTitleNode = root.querySelector('[data-page-title]');
 const sendButton = root.querySelector('[data-send]');
 const sendHintNode = root.querySelector('[data-send-hint]');
+const sessionTextNode = root.querySelector('[data-session-text]');
+const openAppButton = root.querySelector('[data-open-app]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
 const activityNoteNode = root.querySelector('[data-activity-note]');
@@ -129,6 +141,7 @@ const approvalMessageNode = root.querySelector('[data-approval-message]');
 const approveButton = root.querySelector('[data-approve]');
 const declineButton = root.querySelector('[data-decline]');
 const copyButton = root.querySelector('[data-copy]');
+const writeBackButton = root.querySelector('[data-write-back]');
 const shellResizeObserver = typeof ResizeObserver === 'function'
   ? new ResizeObserver(() => {
       schedulePanelViewportClamp();
@@ -166,6 +179,7 @@ function bindEvents() {
   sheetHeader.addEventListener('pointerdown', (event) => startDrag(event, 'header'));
   closeSheetButton.addEventListener('click', () => setExpanded(false));
   sendButton.addEventListener('click', () => startAction());
+  openAppButton.addEventListener('click', () => openCodexAppFromPanel());
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
 
@@ -204,6 +218,8 @@ function bindEvents() {
       copyButton.textContent = '复制结果';
     }, 1400);
   });
+
+  writeBackButton.addEventListener('click', () => startManualWriteBack());
 }
 
 function setExpanded(nextExpanded) {
@@ -412,11 +428,14 @@ async function refreshBridgeStatus() {
   try {
     const response = await sendMessage({ type: 'getBridgeStatus' });
     state.runtime = response.runtime || state.runtime;
+    state.session = response.session || null;
     state.notionMcp = response.notionMcp || state.notionMcp;
     state.bridgeReady = Boolean(response.paired) && Boolean(state.runtime.ready);
     state.bridgeMessage = formatBridgeMessage(response);
+    syncLatestReplyFromSession(response.session || null);
   } catch (error) {
     state.bridgeReady = false;
+    state.session = null;
     state.runtime = {
       ...state.runtime,
       ready: false,
@@ -431,16 +450,16 @@ async function refreshBridgeStatus() {
     node.textContent = stripLabel;
   });
   pageTitleNode.textContent = getPageTitle();
+  renderSessionState();
   updateActionCopy();
   updateControls();
 }
 
 function updateActionCopy() {
   const selected = getSelectionText();
-  const writeMode = normalizeWriteMode(state.writeMode);
 
   if (!state.runtime.ready) {
-    sendButton.textContent = '发送当前页';
+    sendButton.textContent = '作为新问题运行';
     sendHintNode.textContent = state.runtime.launchCommand
       ? `先在扩展弹窗里启动 CLI：${state.runtime.launchCommand}`
       : '先在扩展弹窗里启动 CLI。';
@@ -448,75 +467,37 @@ function updateActionCopy() {
   }
 
   if (!state.bridgeReady) {
-    sendButton.textContent = '完成连接后可发送';
-    sendHintNode.textContent = '先在扩展弹窗里生成并输入 6 位配对码，连接完成后再回来发送。';
+    sendButton.textContent = '连接后可运行';
+    sendHintNode.textContent = '先在扩展弹窗里生成并输入 6 位配对码，连接完成后再回来运行。';
     return;
   }
 
-  if (writeMode === WRITE_MODE_UPDATE_CONTENT && !selected) {
-    sendButton.textContent = '先选中要替换的内容';
-    sendHintNode.textContent = '当前插件配置为“替换当前选中内容”。请先在页面里选中原文，再发送给本地 Agent。';
-    return;
-  }
-
-  if (!canAttemptNotionFlow()) {
-    sendButton.textContent = '发送当前页';
-    sendHintNode.textContent = '自动写回需要 Notion MCP。请先在扩展弹窗里启用 Notion MCP，再回来发送。';
-    return;
-  }
-
-  if (state.runtime.standalone) {
-    sendButton.textContent = selected ? '发送选中内容（调试）' : '发送当前页（调试）';
-    sendHintNode.textContent = selected
-      ? '会先处理选中内容，生成模拟 brief，并模拟写回当前页面。'
-      : '会先处理当前页，生成模拟 brief，并模拟写回当前页面。';
+  if (state.runtime.id !== 'codex' || state.runtime.standalone) {
+    sendButton.textContent = '请切换到 Codex runtime';
+    sendHintNode.textContent = '当前模式只支持 Codex。请在扩展弹窗里启动 Codex daemon，再回来运行。';
     return;
   }
 
   if (selected) {
-    sendButton.textContent = '发送选中内容';
-    sendHintNode.textContent = buildAutoWriteHint({
-      hasSelection: true,
-      writeMode,
-      pendingAuth: state.notionMcp.status === 'unauthenticated',
-    });
+    sendButton.textContent = '运行选中内容';
+    sendHintNode.textContent = '会把选中内容作为下一条用户输入发给 Codex，并直接开始处理。';
     return;
   }
 
-  sendButton.textContent = '发送当前页';
-  sendHintNode.textContent = buildAutoWriteHint({
-    hasSelection: false,
-    writeMode,
-    pendingAuth: state.notionMcp.status === 'unauthenticated',
-  });
-}
-
-function buildAutoWriteHint({ hasSelection, writeMode, pendingAuth }) {
-  let hint;
-
-  if (writeMode === WRITE_MODE_UPDATE_CONTENT) {
-    hint = '会先处理你选中的内容，完成后自动替换这段原文。';
-  } else if (writeMode === WRITE_MODE_REPLACE_CONTENT) {
-    hint = hasSelection
-      ? '会先处理你选中的内容，完成后自动覆盖当前页面正文。请谨慎操作。'
-      : '会先处理当前页，完成后自动覆盖当前页面正文。请谨慎操作。';
-  } else {
-    hint = hasSelection
-      ? '会先处理选中内容，完成后自动追加到当前 Notion 页面末尾。'
-      : '会先处理当前页，完成后自动追加到当前 Notion 页面末尾。';
+  if (!canAttemptFullPageDelivery()) {
+    sendButton.textContent = '运行整页需要 Notion MCP';
+    sendHintNode.textContent = '运行整页前需要先能读取 Notion 页面内容。请先在扩展弹窗里启用 Notion MCP。';
+    return;
   }
 
-  if (!pendingAuth) {
-    return hint;
-  }
-
-  return `${hint} 如果执行过程中还需要授权，会继续在 ACTIVITY 里请求你确认。`;
+  sendButton.textContent = '运行当前页';
+  sendHintNode.textContent = '会把整页内容作为下一条用户输入发给 Codex，并直接开始处理。';
 }
 
 async function startAction() {
   const selectionText = getSelectionText();
   const action = selectionText ? ACTION_FORWARD_SELECTION : ACTION_FORWARD_FULL_PAGE;
-  const runtimeLabel = state.runtime.label || '本地 Agent';
+  const runtimeLabel = state.runtime.label || 'Codex CLI';
 
   clearPolling();
   setExpanded(true);
@@ -535,8 +516,8 @@ async function startAction() {
   renderJobState({
     status: 'sending',
     text: selectionText
-      ? `正在把选中内容交给 ${runtimeLabel}，完成后会自动写回 Notion…`
-      : `正在把当前页交给 ${runtimeLabel}，完成后会自动写回 Notion…`,
+      ? `正在把选中内容作为新问题提交给 ${runtimeLabel}…`
+      : `正在把当前页作为新问题提交给 ${runtimeLabel}…`,
     jobId: '',
     action,
   });
@@ -557,8 +538,8 @@ async function startAction() {
     renderJobState({
       status: response.status,
       text: selectionText
-        ? `选中内容已发出，正在等待 ${runtimeLabel} 生成 brief…`
-        : `当前页已发出，正在等待 ${runtimeLabel} 生成 brief…`,
+        ? `选中内容已作为新问题提交给 ${runtimeLabel}，正在等待处理结果。`
+        : `当前页已作为新问题提交给 ${runtimeLabel}，正在等待处理结果。`,
       jobId: response.jobId,
       action,
     });
@@ -567,29 +548,40 @@ async function startAction() {
     state.busy = false;
     renderJobState({
       status: 'failed',
-      text: error.message || '发送失败',
+      text: error.message || '提交失败',
       jobId: '',
       action,
     });
   }
 }
 
-async function startAutoWriteBack({ replyText, sourceReplyJobId }) {
+async function startManualWriteBack() {
   const writeMode = normalizeWriteMode(state.writeMode);
-  const selectionText = state.lastSubmission.selectionText || '';
+  const selectionText = getSelectionText();
+  const replyText = String(state.latestReply || '').trim();
 
-  if (writeMode === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
-    state.busy = false;
+  if (!replyText) {
     renderJobState({
       status: 'failed',
-      text: '当前插件配置为“替换当前选中内容”，但这次发送时没有捕获到可替换的原文。',
+      text: '当前没有可写回的 Codex 回复。',
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
     return;
   }
 
-  const runtimeLabel = state.runtime.label || '本地 Agent';
+  if (writeMode === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
+    state.busy = false;
+    renderJobState({
+      status: 'failed',
+      text: '当前写回模式是“替换当前选中内容”。请先选中要替换的原文，再点击“写回 Notion”。',
+      jobId: '',
+      action: ACTION_WRITE_REPLY,
+    });
+    return;
+  }
+
+  const runtimeLabel = state.runtime.label || 'Codex CLI';
   state.busy = true;
   state.currentAction = ACTION_WRITE_REPLY;
   renderJobState({
@@ -604,13 +596,13 @@ async function startAutoWriteBack({ replyText, sourceReplyJobId }) {
       type: 'submitNotionAction',
       payload: {
         action: ACTION_WRITE_REPLY,
-        pageUrl: state.lastSubmission.pageUrl || window.location.href,
-        pageTitle: state.lastSubmission.pageTitle || getPageTitle(),
+        pageUrl: window.location.href,
+        pageTitle: getPageTitle(),
         selectionText,
         replyTextToWrite: replyText,
         writeMode,
         writeSectionTitle: 'notion2CLI',
-        sourceReplyJobId,
+        sourceReplyJobId: state.latestReplyJobId || '',
         source: 'chrome-extension',
       },
     });
@@ -627,7 +619,7 @@ async function startAutoWriteBack({ replyText, sourceReplyJobId }) {
     state.busy = false;
     renderJobState({
       status: 'failed',
-      text: error.message || '自动写回失败',
+      text: error.message || '写回失败',
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
@@ -647,7 +639,21 @@ function pollJob(jobId) {
       if (job.status === 'completed' && isReplyAction(job.action)) {
         clearPolling();
         state.approvalBusy = false;
-        await handleForwardCompletion(job);
+        state.busy = false;
+        state.latestReply = String(job.replyText || '').trim();
+        state.latestBrief = extractBrief(state.latestReply);
+        state.latestReplyJobId = job.id || null;
+        renderBrief();
+        renderJobState({
+          status: 'completed',
+          text: job.runtimeMeta?.appVisible
+            ? '这条结果已经进入同一个 Codex App session，并显示在面板里。'
+            : '这条结果已经显示在面板里，你可以继续手动写回 Notion。',
+          jobId: job.id,
+          action: job.action,
+          runtimeMeta: job.runtimeMeta || {},
+        });
+        refreshBridgeStatus();
         return;
       }
 
@@ -680,39 +686,14 @@ function pollJob(jobId) {
   }, 1800);
 }
 
-async function handleForwardCompletion(job) {
-  const replyText = String(job.replyText || '').trim();
-  if (!replyText) {
-    state.busy = false;
-    renderJobState({
-      status: 'failed',
-      text: '本地 Agent 已完成，但没有返回可展示或写回的结果。',
-      jobId: job.id,
-      action: job.action,
-      runtimeMeta: job.runtimeMeta || {},
-    });
-    return;
-  }
-
-  state.latestReply = replyText;
-  state.latestBrief = extractBrief(replyText);
-  state.latestReplyJobId = job.id || null;
-  renderBrief();
-
-  await startAutoWriteBack({
-    replyText,
-    sourceReplyJobId: job.id || null,
-  });
-}
-
 function buildJobStateText(job) {
   if (job.status === 'failed') {
-    return job.error || (job.action === ACTION_WRITE_REPLY ? '自动写回失败。' : '执行失败。');
+    return job.error || (job.action === ACTION_WRITE_REPLY ? '写回失败。' : '执行失败。');
   }
 
   if (job.status === 'waiting_for_approval') {
     return job.runtimeMeta?.pendingApproval?.message || (job.action === ACTION_WRITE_REPLY
-      ? '自动写回前需要你的确认。'
+      ? '写回前需要你的确认。'
       : '继续执行前需要你的确认。');
   }
 
@@ -732,11 +713,11 @@ function buildForwardStatusText(status, action) {
 
   switch (status) {
     case 'queued':
-      return `${target} 已发出，正在排队生成 brief…`;
+      return `${target} 已提交，正在排队处理…`;
     case 'dispatched':
-      return `${target} 已送达本地 Agent，正在等待开始处理…`;
+      return `${target} 已送达 Codex，正在等待开始处理…`;
     case 'running':
-      return `本地 Agent 正在处理${target}，准备生成 brief…`;
+      return `Codex 正在处理${target}…`;
     case 'sending':
       return `正在提交${target}…`;
     default:
@@ -751,15 +732,15 @@ function buildWriteStatusText(status, writeMode) {
 
   switch (status) {
     case 'queued':
-      return '自动写回请求已发出，正在排队…';
+      return '写回请求已发出，正在排队…';
     case 'dispatched':
-      return '自动写回请求已送达本地 Agent，正在等待执行…';
+      return '写回请求已送达 Codex，正在等待执行…';
     case 'running':
       return buildWriteRunningText(writeMode);
     case 'sending':
-      return '正在提交自动写回请求…';
+      return '正在提交写回请求…';
     default:
-      return '自动写回处理中…';
+      return '写回处理中…';
   }
 }
 
@@ -770,11 +751,11 @@ function buildWriteRunningText(writeMode) {
 
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return '正在把结果自动替换到刚才选中的原文位置…';
+      return '正在把结果替换到刚才选中的原文位置…';
     case WRITE_MODE_REPLACE_CONTENT:
-      return '正在用结果自动覆盖当前页面正文…';
+      return '正在用结果覆盖当前页面正文…';
     default:
-      return '正在把结果自动追加到当前页面末尾…';
+      return '正在把结果追加到当前页面末尾…';
   }
 }
 
@@ -785,11 +766,11 @@ function buildWriteCompletedText(writeMode) {
 
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return '这次结果已经自动替换到刚才选中的原文位置。';
+      return '这次结果已经替换到刚才选中的原文位置。';
     case WRITE_MODE_REPLACE_CONTENT:
-      return '这次结果已经自动覆盖当前页面正文。';
+      return '这次结果已经覆盖当前页面正文。';
     default:
-      return '这次结果已经自动追加到当前页面末尾。';
+      return '这次结果已经追加到当前页面末尾。';
   }
 }
 
@@ -808,7 +789,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
       : `<span class="n2c-spinner"></span><span>${statusLabel(status, action)}</span>`;
   runStatusNode.innerHTML = statusMarkup;
 
-  activityNoteNode.textContent = text || '发送后，执行进度、授权请求和自动写回状态会显示在这里。';
+  activityNoteNode.textContent = text || '运行状态、Codex 回复和手动写回结果会显示在这里。';
   activityNoteNode.classList.toggle('n2c-empty', !text);
   syncApprovalState(status, runtimeMeta.pendingApproval || null);
   updateControls();
@@ -820,7 +801,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
 
 function renderBrief() {
   const brief = state.latestBrief || '';
-  outputNode.textContent = brief || '运行完成后，这里的 brief 会保留刚刚完成动作的总结。';
+  outputNode.textContent = brief || '最新 Codex 回复会显示在这里，写回时会使用这段内容。';
   outputNode.classList.toggle('n2c-empty', !brief);
   copyButton.disabled = !brief && !state.latestReply;
 
@@ -849,9 +830,9 @@ function statusLabel(status, action) {
     case 'waiting_for_approval':
       return '等待确认';
     case 'sending':
-      return action === ACTION_WRITE_REPLY ? '准备写回' : '发送中';
+      return action === ACTION_WRITE_REPLY ? '准备写回' : '提交中';
     case 'completed':
-      return action === ACTION_WRITE_REPLY ? '已写回 Notion' : '执行完成';
+      return action === ACTION_WRITE_REPLY ? '已写回 Notion' : '已完成';
     case 'failed':
       return action === ACTION_WRITE_REPLY ? '写回失败' : '执行失败';
     default:
@@ -872,12 +853,37 @@ function updateControls() {
   const canSendCurrentState = canStartAction(selectionText);
 
   sendButton.disabled = state.busy || !state.bridgeReady || !canSendCurrentState;
+  openAppButton.disabled = state.openAppBusy || !state.session?.threadId || state.runtime.id !== 'codex';
   copyButton.disabled = !(state.latestBrief || state.latestReply);
+  writeBackButton.disabled = state.busy || !canWriteBack(selectionText);
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
   approveButton.textContent = state.pendingApproval?.mode === 'url' && !isUrlApprovalReadyToContinue()
     ? '打开授权页'
     : '允许继续';
+}
+
+async function openCodexAppFromPanel() {
+  if (!state.session?.threadId || state.openAppBusy) {
+    return;
+  }
+
+  state.openAppBusy = true;
+  openAppButton.textContent = '打开中';
+  updateControls();
+
+  try {
+    const response = await sendMessage({ type: 'openCodexApp' });
+    activityNoteNode.textContent = response.message || '已打开 Codex App。';
+    activityNoteNode.classList.remove('n2c-empty');
+  } catch (error) {
+    activityNoteNode.textContent = error.message || '无法打开 Codex App。';
+    activityNoteNode.classList.remove('n2c-empty');
+  } finally {
+    state.openAppBusy = false;
+    openAppButton.textContent = '打开 Codex App';
+    updateControls();
+  }
 }
 
 function isUrlApprovalReadyToContinue() {
@@ -889,15 +895,7 @@ function isUrlApprovalReadyToContinue() {
 }
 
 function canStartAction(selectionText) {
-  if (normalizeWriteMode(state.writeMode) === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
-    return false;
-  }
-
-  if (state.runtime.standalone) {
-    return true;
-  }
-
-  if (!canAttemptNotionFlow()) {
+  if (state.runtime.id !== 'codex' || state.runtime.standalone) {
     return false;
   }
 
@@ -905,7 +903,7 @@ function canStartAction(selectionText) {
     return true;
   }
 
-  return state.notionMcp.status === 'configured' || state.notionMcp.status === 'unauthenticated' || state.notionMcp.status === 'unknown';
+  return canAttemptFullPageDelivery();
 }
 
 function isReplyAction(action) {
@@ -914,14 +912,14 @@ function isReplyAction(action) {
 
 function formatBridgeMessage(response) {
   const runtime = response.runtime || {};
-  const runtimeLabel = runtime.label || '本地 Agent';
+  const runtimeLabel = runtime.label || 'Codex CLI';
 
   if (response.paired && runtime.ready) {
     if (runtime.standalone) {
       return '已连接调试模式';
     }
 
-    return `已连接 ${runtimeLabel}`;
+    return response.session?.threadId ? `已连接 ${runtimeLabel} 会话` : `已连接 ${runtimeLabel}`;
   }
 
   if (response.awaitingPairCode) {
@@ -929,18 +927,67 @@ function formatBridgeMessage(response) {
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || '本地 Agent 未就绪';
+    return runtime.statusMessage || 'Codex CLI 未就绪';
   }
 
   return '打开扩展完成连接';
 }
 
-function canAttemptNotionFlow() {
-  if (state.runtime.standalone) {
-    return true;
+function canAttemptFullPageDelivery() {
+  return state.notionMcp.status === 'configured' || state.notionMcp.status === 'unknown';
+}
+
+function canAttemptWriteBack() {
+  return !['missing', 'unavailable'].includes(state.notionMcp.status);
+}
+
+function canWriteBack(selectionText) {
+  if (state.runtime.id !== 'codex' || state.runtime.standalone) {
+    return false;
   }
 
-  return !['missing', 'unavailable'].includes(state.notionMcp.status);
+  if (!String(state.latestReply || '').trim()) {
+    return false;
+  }
+
+  if (!canAttemptWriteBack()) {
+    return false;
+  }
+
+  if (normalizeWriteMode(state.writeMode) === WRITE_MODE_UPDATE_CONTENT && !selectionText) {
+    return false;
+  }
+
+  return true;
+}
+
+function syncLatestReplyFromSession(session) {
+  const latestReply = String(session?.latestSharableAssistantMessage || '').trim();
+  if (!latestReply || latestReply === state.latestReply) {
+    return;
+  }
+
+  state.latestReply = latestReply;
+  state.latestBrief = extractBrief(latestReply);
+  renderBrief();
+}
+
+function renderSessionState() {
+  if (!state.runtime.ready || state.runtime.id !== 'codex') {
+    sessionTextNode.textContent = 'Codex App session 尚未准备好';
+    return;
+  }
+
+  const threadId = String(state.session?.threadId || '').trim();
+  if (!threadId) {
+    sessionTextNode.textContent = '正在准备 Codex App session';
+    return;
+  }
+
+  const name = String(state.session?.threadName || '').trim() || 'notion2CLI';
+  const turnCount = Number(state.session?.turnCount || 0);
+  const visibility = state.session?.appVisible ? 'App 可见' : '等待 App 同步';
+  sessionTextNode.textContent = `${name} · ${visibility} · ${turnCount} turns`;
 }
 
 function sendMessage(message) {
@@ -1010,7 +1057,7 @@ async function submitApproval(action) {
       status: 'running',
       text: action === 'accept'
         ? '已允许继续执行，正在等待最新进度…'
-        : '已拒绝当前请求，正在等待本地 Agent 结束本次执行…',
+        : '已拒绝当前请求，正在等待 Codex 结束本次执行…',
       jobId: state.currentJobId,
       action: state.currentAction,
       runtimeMeta: {},
@@ -1097,22 +1144,22 @@ function normalizeWriteMode(mode) {
 function buildWritePendingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `正在请求 ${runtimeLabel} 自动替换刚才选中的原文…`;
+      return `正在请求 ${runtimeLabel} 替换刚才选中的原文…`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `正在请求 ${runtimeLabel} 自动覆盖当前页面正文…`;
+      return `正在请求 ${runtimeLabel} 覆盖当前页面正文…`;
     default:
-      return `正在请求 ${runtimeLabel} 自动把结果写回当前页面…`;
+      return `正在请求 ${runtimeLabel} 把结果写回当前页面…`;
   }
 }
 
 function buildWriteWaitingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `自动替换请求已发出，等待 ${runtimeLabel} 完成写回…`;
+      return `替换请求已发出，等待 ${runtimeLabel} 完成写回…`;
     case WRITE_MODE_REPLACE_CONTENT:
       return `整页覆盖请求已发出，等待 ${runtimeLabel} 完成写回…`;
     default:
-      return `自动写回请求已发出，等待 ${runtimeLabel} 完成追加…`;
+      return `写回请求已发出，等待 ${runtimeLabel} 完成追加…`;
   }
 }
 

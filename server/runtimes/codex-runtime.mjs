@@ -1,7 +1,8 @@
 import { buildCodexPrompt } from '../core/codex-prompt.mjs';
-import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
+import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
 import { CodexAppServerSession, buildCodexAppServerArgs, buildCodexInputItems } from './codex-app-server-session.mjs';
+import { CodexLiveSession } from './codex-live-session.mjs';
 import { runCommand } from './exec-utils.mjs';
 
 const MCP_PROBE_TTL_MS = 15000;
@@ -22,31 +23,51 @@ export class CodexRuntime {
     this.runningJobs = new Map();
     this.auxiliarySessions = new Set();
     this.cachedMcpStatus = null;
+    this.liveSession = null;
   }
 
   async start(context) {
     this.context = context;
     try {
       const result = await runCommand('codex', ['--version'], { timeoutMs: 4000 });
-      this.ready = result.code === 0;
-      this.statusMessage = this.ready
-        ? `Codex CLI 已就绪（${result.stdout.trim() || 'version unknown'}）。`
-        : (result.stderr.trim() || 'Codex CLI 未就绪。');
+      if (result.code !== 0) {
+        this.ready = false;
+        this.statusMessage = result.stderr.trim() || 'Codex CLI 未就绪。';
+        return;
+      }
+
+      this.liveSession = new CodexLiveSession({
+        cwd: this.cwd,
+        model: this.model,
+        profile: this.profile,
+        extraArgs: this.extraArgs,
+        log: this.log,
+      });
+      await this.liveSession.start();
+
+      this.ready = true;
+      this.statusMessage = `Codex CLI 已就绪（${result.stdout.trim() || 'version unknown'}）。`;
     } catch (error) {
       this.ready = false;
       this.statusMessage = error?.message || '无法启动 codex 命令。';
+      if (this.liveSession) {
+        await this.liveSession.stop().catch(() => {});
+        this.liveSession = null;
+      }
     }
   }
 
   async stop() {
-    for (const session of this.runningJobs.values()) {
-      session.shutdown();
-    }
     this.runningJobs.clear();
     for (const session of this.auxiliarySessions.values()) {
       session.shutdown();
     }
     this.auxiliarySessions.clear();
+    if (this.liveSession) {
+      await this.liveSession.stop().catch(() => {});
+      this.liveSession = null;
+    }
+    this.ready = false;
   }
 
   async startPairing() {
@@ -79,7 +100,7 @@ export class CodexRuntime {
   }
 
   async dispatchJob(job) {
-    if (!this.ready) {
+    if (!this.ready || !this.liveSession?.getSnapshot().ready) {
       throw new Error(this.statusMessage || 'Codex CLI is not ready');
     }
 
@@ -103,18 +124,13 @@ export class CodexRuntime {
         transport: 'app-server',
       },
     });
-
-    const session = new CodexAppServerSession({
+    const queueResult = this.liveSession.enqueueTurn({
       jobId: job.id,
-      cwd: this.cwd,
       inputItems,
-      model: this.model,
-      profile: this.profile,
-      extraArgs: this.extraArgs,
-      log: this.log,
+      captureReply: job.action !== ACTION_WRITE_REPLY,
       onRunning: ({ threadId, turnId }) => {
         this.context.markJobRunning(job.id, {
-          type: 'codex_app_server_running',
+          type: 'codex_live_session_running',
           runtimeMeta: {
             runtime: 'codex',
             transport: 'app-server',
@@ -126,7 +142,7 @@ export class CodexRuntime {
       },
       onApprovalRequested: ({ threadId, turnId, requestId, pendingApproval }) => {
         this.context.markJobWaitingForApproval(job.id, {
-          type: 'codex_app_server_waiting_for_approval',
+          type: 'codex_live_session_waiting_for_approval',
           note: 'Codex 需要用户确认才能继续。',
           runtimeMeta: {
             runtime: 'codex',
@@ -140,15 +156,31 @@ export class CodexRuntime {
           },
         });
       },
+      onApprovalResolved: (resolution) => {
+        this.context.markJobRunning(job.id, {
+          type: 'codex_live_session_approval_resolved',
+          note: resolution.action === 'accept' ? '已允许 Codex 继续执行。' : '已拒绝当前请求，等待 Codex 结束本次 turn。',
+          runtimeMeta: {
+            runtime: 'codex',
+            transport: 'app-server',
+            approvalResponse: resolution.action,
+            pendingApproval: null,
+          },
+        });
+      },
       onCompleted: (replyText, meta = {}) => {
         this.runningJobs.delete(job.id);
         this.context.completeJob(job.id, replyText, {
-          type: 'codex_app_server_completed',
+          type: 'codex_live_session_completed',
           runtimeMeta: {
             runtime: 'codex',
             transport: 'app-server',
             threadId: meta.threadId || null,
             turnId: meta.turnId || null,
+            appVisible: meta.appVisible ?? false,
+            verifiedAt: meta.verifiedAt || null,
+            turnCount: meta.turnCount ?? null,
+            verificationError: meta.verificationError || null,
             pendingApproval: null,
           },
         });
@@ -156,7 +188,7 @@ export class CodexRuntime {
       onFailed: (errorText, meta = {}) => {
         this.runningJobs.delete(job.id);
         this.context.failJob(job.id, errorText, {
-          type: 'codex_app_server_failed',
+          type: 'codex_live_session_failed',
           runtimeMeta: {
             runtime: 'codex',
             transport: 'app-server',
@@ -169,47 +201,74 @@ export class CodexRuntime {
           },
         });
       },
-      onClosed: () => {
-        this.runningJobs.delete(job.id);
-      },
     });
 
-    this.runningJobs.set(job.id, session);
-    await session.start();
-  }
-
-  async respondToApproval(jobId, resolution) {
-    const session = this.runningJobs.get(jobId);
-    if (!session) {
-      throw new Error('No active Codex app-server session for this job');
-    }
-
-    await session.respondToApproval(resolution);
-    this.context.markJobRunning(jobId, {
-      type: 'codex_app_server_approval_resolved',
-      note: resolution.action === 'accept' ? '已允许 Codex 继续执行。' : '已拒绝当前请求，等待 Codex 结束本次 turn。',
+    this.runningJobs.set(job.id, {
+      type: 'live-turn',
+    });
+    this.context.markJobDispatched(job.id, {
+      type: 'codex_live_session_queued',
+      note: queueResult.queueDepth > 1 ? '已加入当前 Codex 会话队列。' : '正在等待当前 Codex 会话可用。',
       runtimeMeta: {
         runtime: 'codex',
         transport: 'app-server',
-        pendingApproval: null,
-        approvalResponse: resolution.action,
+        queueDepth: queueResult.queueDepth,
+        threadId: this.liveSession?.threadId || null,
       },
     });
   }
 
+  async respondToApproval(jobId, resolution) {
+    if (!this.runningJobs.has(jobId)) {
+      throw new Error('No active Codex live-session job for this request');
+    }
+
+    await this.liveSession.respondToApproval(jobId, resolution);
+  }
+
   async getStatus() {
+    const session = this.liveSession?.getSnapshot() || null;
+    const ready = Boolean(this.ready && session?.ready);
+
     return {
       runtime: {
         id: this.id,
         label: this.label,
         launchMode: 'app-server',
-        ready: this.ready,
+        ready,
         standalone: false,
+        cwd: this.cwd,
         pairingCommand: 'notion2cli pair',
         launchCommand: 'notion2cli daemon start --runtime codex',
         statusMessage: this.statusMessage,
+        attachCommand: session?.attachCommand || 'notion2cli codex attach',
       },
+      session,
       notionMcp: await this.getNotionMcpStatus(),
+    };
+  }
+
+  async openCodexApp() {
+    if (process.platform !== 'darwin') {
+      return {
+        ok: false,
+        message: '当前平台暂时只支持 macOS 上自动打开 Codex App。请手动打开 Codex App 后查看 notion2CLI session。',
+      };
+    }
+
+    const result = await runCommand('open', ['-b', 'com.openai.codex'], {
+      cwd: this.cwd,
+      timeoutMs: 8000,
+    });
+    const output = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+    if (result.code !== 0) {
+      throw new Error(output || '无法打开 Codex App。');
+    }
+
+    return {
+      ok: true,
+      message: '已打开 Codex App。请在最近会话里查看 notion2CLI session。',
+      session: this.liveSession?.getSnapshot() || null,
     };
   }
 

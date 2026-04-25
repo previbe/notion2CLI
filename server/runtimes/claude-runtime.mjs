@@ -275,7 +275,7 @@ export class ClaudeRuntime {
     this.cachedMcpStatus = null;
     status = await this.getNotionMcpStatus();
     if (status.status === 'unauthenticated') {
-      notes.push('Notion MCP 配置已经存在，但真正的浏览器授权会在第一次整页读取或自动写回时，直接在 Activity 面板里发起。');
+      notes.push('Notion MCP 配置已经存在，但真正的浏览器授权会在第一次整页读取或写回时，直接在 Activity 面板里发起。');
     }
 
     const summary = [

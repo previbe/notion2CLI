@@ -39,10 +39,11 @@
 
 .n2c-fab,
 .n2c-strip-toggle,
-.n2c-send,
-.n2c-approve,
-.n2c-decline,
-.n2c-copy {
+  .n2c-send,
+  .n2c-approve,
+  .n2c-decline,
+  .n2c-copy,
+  .n2c-open-app {
   font-family: inherit;
 }
 
@@ -273,6 +274,40 @@
   color: var(--n2c-ink-body);
 }
 
+.n2c-session-bar {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.n2c-session-text {
+  min-width: 0;
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--n2c-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.n2c-open-app {
+  flex: none;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid var(--n2c-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--n2c-ink-strong);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-open-app:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .n2c-section-divider {
   margin-top: 16px;
   border-top: 1px solid var(--n2c-border-soft);
@@ -323,6 +358,12 @@
   margin-top: 18px;
 }
 
+.n2c-brief-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .n2c-output {
   margin-top: 10px;
   padding: 14px;
@@ -370,7 +411,8 @@
 
 .n2c-approve,
 .n2c-decline,
-.n2c-copy {
+.n2c-copy,
+.n2c-writeback {
   padding: 11px 12px;
   border-radius: 14px;
   font-size: 12px;
@@ -395,7 +437,8 @@
   color: #5b4720;
 }
 
-.n2c-copy {
+.n2c-copy,
+.n2c-writeback {
   width: auto;
   min-width: 92px;
   border: 1px solid var(--n2c-border);
@@ -405,7 +448,8 @@
 
 .n2c-approve:disabled,
 .n2c-decline:disabled,
-.n2c-copy:disabled {
+.n2c-copy:disabled,
+.n2c-writeback:disabled {
   cursor: default;
   opacity: 0.48;
 }

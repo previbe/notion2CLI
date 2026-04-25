@@ -24,6 +24,8 @@ async function handleMessage(message) {
       return getJobStatus(message.jobId);
     case 'resolveJobApproval':
       return resolveJobApproval(message.jobId, message.resolution);
+    case 'openCodexApp':
+      return openCodexApp();
     default:
       throw new Error(`Unknown message type: ${message?.type || 'undefined'}`);
   }
@@ -114,6 +116,20 @@ async function resolveJobApproval(jobId, resolution) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(resolution || {}),
+  });
+}
+
+async function openCodexApp() {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson('/api/session/open', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
 }
 

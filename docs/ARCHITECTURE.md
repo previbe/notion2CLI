@@ -1,90 +1,128 @@
 # notion2CLI 架构说明
 
-## 当前目标
+## MVP 目标
 
-当前版本只解决一件事：
+当前 MVP 只做一件事：
 
-**把 Notion 页面内容先收敛成统一的 page bundle，再把 bundle 里的文本和图片工件交给 `Claude Code` / `Codex CLI`。**
+**把 Notion 页面变成 Codex CLI 的富文本输入框。**
 
-当前不再保留这些旧概念：
+用户在 Notion 页面点击插件按钮后，系统把当前选区或当前整页作为下一条用户输入交给 Codex，并直接开始处理。终端界面只用于可选观察，不是必需操作步骤。
 
-- `Claude legacy channel`
-- browser-only 图片主路径
-- `pageImages` fallback
-- “整页正文在 runtime 里现取、图片在浏览器旁路传”的双轨设计
+## 不做的事
+
+MVP 暂不做：
+
+- “只附加到当前会话、等待用户稍后追问”的模式
+- `/api/session/deliver` 这类 context-only 投递接口
+- bridge 自己直连 Notion API / MCP 读取页面
+- bridge 自己确定性写回 Notion
+- 完整文件附件支持
+- Claude Code 与 Codex 的同等 live session 体验
+- Chrome Native Messaging
 
 ## 第一性原理
 
-模型真正能消费的是：
+Notion 输入框能承载：
+
+- 文本
+- 图片
+- 文件
+
+Codex 当前 MVP 实际稳定消费的是：
 
 - 文本
 - 本地图片工件
 
-Notion MCP 真正能提供的是：
-
-- 页面 markdown
-- 页面中的文件 / 图片链接
-
-所以中间必须有一层 bridge 来做两件事：
-
-1. 把整页内容变成统一的 `McpPageBundle`
-2. 把 bundle 里的附件链接物化成本地工件
-
-这就是当前架构的核心。
+所以 bridge 的核心职责是把 Notion 页面整理成 Codex 能消费的输入，而不是让浏览器模拟复制粘贴，也不是让用户回终端手动确认。
 
 ## 总体架构
 
 ```mermaid
 flowchart LR
   A["Notion 页面"] --> B["Chrome 扩展"]
-  B --> C["Bridge HTTP API"]
-  C --> D["RuntimeBackedNotionPageBundleProvider"]
-  D --> E["McpPageBundle"]
-  E --> F["ArtifactResolver / ArtifactStore"]
-  F --> G["InputBundle"]
-  G --> H["Claude Runtime"]
-  G --> I["Codex Runtime"]
-  H --> J["Claude CLI"]
-  I --> K["Codex App Server"]
-  J --> L["Notion MCP"]
-  K --> L
-  L --> M["Notion 页面 / 文件"]
+  B --> C["Bridge HTTP API /api/jobs"]
+  C --> D["JobStore"]
+  C --> E["RuntimeBackedNotionPageBundleProvider"]
+  E --> F["McpPageBundle"]
+  F --> G["ArtifactResolver / ArtifactStore"]
+  G --> H["InputBundle"]
+  H --> I["CodexRuntime"]
+  I --> J["CodexLiveSession"]
+  J --> K["Codex app-server turn/start"]
+  K --> L["Codex CLI"]
+  L --> M["插件 Activity 面板"]
+  L --> N["Notion MCP"]
+  N --> O["Notion 页面"]
 ```
 
-## 分层
+## 主流程
 
-### 1. 浏览器扩展
+### 1. 运行选中内容
 
-浏览器只负责：
+1. 内容脚本读取当前选区、页面标题和页面 URL
+2. background 调 `/api/jobs`
+3. bridge 创建 job
+4. bridge 生成 `InputBundle`
+5. `CodexRuntime` 把输入放入 `CodexLiveSession` 队列
+6. `CodexLiveSession` 调 Codex app-server 的 `turn/start`
+7. 插件轮询 `/api/jobs/:id`，展示最终回复
 
-- 当前页面 URL
-- 当前页面标题
-- 当前选区
-- 任务发起和结果展示
+### 2. 运行当前页
 
-浏览器不再负责：
+1. 内容脚本发送页面标题和页面 URL
+2. bridge 通过 `RuntimeBackedNotionPageBundleProvider` 借 Codex 的 Notion MCP 读取整页
+3. bridge 规范化为 `McpPageBundle`
+4. `ArtifactResolver` 从 bundle 中找图片附件
+5. `ArtifactStore` 下载并缓存本地图片工件
+6. `InputBundle` 合并页面正文、图片工件和警告信息
+7. `CodexLiveSession` 通过 `turn/start` 直接启动处理
+8. 插件显示 Codex 最新回复
 
-- 整页正文抓取
-- 页面图片发现
-- 图片下载
+如果 page bundle 准备失败，整页运行直接失败，不回退到浏览器 DOM 抓取。
+
+### 3. 写回 Notion
+
+1. 插件面板已有最新 Codex 回复
+2. 用户点击“写回 Notion”
+3. 插件再次创建 `write_reply_to_notion` job
+4. Codex 通过 Notion MCP 执行追加、替换选区或覆盖正文
+5. 需要授权时，插件面板显示 approval 操作
+
+MVP 默认建议只使用非破坏性的“追加到页面末尾”。
+
+## 分层职责
+
+### Chrome 扩展
+
+负责：
+
+- 显示页面内 Activity 面板
+- 发起“运行选中内容 / 运行当前页”
+- 展示 job 状态、approval、最新回复
+- 发起手动写回
+
+不负责：
+
+- 抓整页 DOM 正文
+- 从 DOM 发现图片
+- 下载图片
 - OCR
 
 相关代码：
 
 - [extension/content-script.js](/Users/morrow/coding/notion2CLI/extension/content-script.js)
+- [extension/background.js](/Users/morrow/coding/notion2CLI/extension/background.js)
 - [extension/popup.js](/Users/morrow/coding/notion2CLI/extension/popup.js)
 
-### 2. Bridge Core
+### Bridge Core
 
-bridge 是当前产品的主中心。
-
-它负责：
+负责：
 
 - pairing
-- job 生命周期
 - HTTP API
+- job 生命周期
 - page bundle 预取
-- artifact 下载与缓存
+- 图片 artifact 下载与缓存
 - runtime 输入装配
 
 相关代码：
@@ -99,32 +137,29 @@ bridge 是当前产品的主中心。
 - [server/core/artifact-store.mjs](/Users/morrow/coding/notion2CLI/server/core/artifact-store.mjs)
 - [server/core/input-bundle.mjs](/Users/morrow/coding/notion2CLI/server/core/input-bundle.mjs)
 
-### 3. Runtime
+### Codex Runtime
 
-runtime 只负责消费 bridge 已经准备好的输入。
+负责：
 
-它不再负责：
+- 启动 Codex app-server
+- 持有可恢复的 Codex thread
+- 将每个插件请求作为新 turn 执行
+- 捕获最新 assistant final answer
+- 支持 approval 回调
+- 为 thread 设置稳定标题 `notion2CLI - <项目名>`
+- 每个 turn 完成后用 `thread/read` 和 `thread/list` 校验同一个 Codex App 可见 session
 
-- 自己重新拉整页正文
-- 自己决定整页图片来源
-
-#### Claude
-
-- [server/runtimes/claude-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-runtime.mjs)
-- [server/runtimes/claude-cli-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-cli-session.mjs)
-
-#### Codex
+相关代码：
 
 - [server/runtimes/codex-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-runtime.mjs)
+- [server/runtimes/codex-live-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-live-session.mjs)
 - [server/runtimes/codex-app-server-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-app-server-session.mjs)
 
 ## 核心对象
 
-### 1. McpPageBundle
+### McpPageBundle
 
-bridge 对整页内容的统一表达。
-
-当前主要包含：
+整页 Notion 内容的统一表达：
 
 - `pageUrl`
 - `pageTitle`
@@ -135,15 +170,9 @@ bridge 对整页内容的统一表达。
 - `provider`
 - `runtimeId`
 
-相关代码：
+### Artifact
 
-- [server/core/mcp-page-bundle.mjs](/Users/morrow/coding/notion2CLI/server/core/mcp-page-bundle.mjs)
-
-### 2. Artifact
-
-从 bundle 的附件链接落地出来的本地工件。
-
-当前最重要的是图片工件，字段包括：
+从 bundle 附件链接落地出来的本地工件。MVP 主要处理图片：
 
 - `sourceUrl`
 - `cachePath`
@@ -153,15 +182,9 @@ bridge 对整页内容的统一表达。
 - `width`
 - `height`
 
-相关代码：
+### InputBundle
 
-- [server/core/artifact-store.mjs](/Users/morrow/coding/notion2CLI/server/core/artifact-store.mjs)
-
-### 3. InputBundle
-
-最终交给 runtime 的统一输入对象。
-
-当前包含：
+最终交给 Codex 的输入对象：
 
 - `pageContext`
 - `request`
@@ -171,78 +194,50 @@ bridge 对整页内容的统一表达。
 - `artifactSource`
 - `cacheDir`
 
-相关代码：
+## API 边界
 
-- [server/core/input-bundle.mjs](/Users/morrow/coding/notion2CLI/server/core/input-bundle.mjs)
+MVP 主 API：
 
-## Full-page 主路径
+- `GET /api/status`
+- `POST /api/pair/create`
+- `POST /api/pair/confirm`
+- `POST /api/jobs`
+- `GET /api/jobs/:id`
+- `POST /api/jobs/:id/approval`
+- `POST /api/session/open`
 
-当前 `forward_full_page_via_mcp` 的真实流程是：
+`GET /api/status` 会返回当前 Codex session 信息，包括 `threadId`、`threadName`、`turnCount`、`appVisible`、最近用户输入和最近助手回复。`notion2cli codex inspect` 用这些字段检查插件是否仍在复用同一个 Codex App session。`POST /api/session/open` 只负责打开 Codex App，不依赖私有 deep link。
 
-1. 浏览器发出 full-page 请求
-2. bridge 调 `RuntimeBackedNotionPageBundleProvider`
-3. provider 借当前 runtime 的 Notion MCP 读取整页 markdown
-4. bridge 把返回结果规范化为 `McpPageBundle`
-5. `ArtifactResolver` 从 bundle 中提取图片候选
-6. `ArtifactStore` 下载并缓存本地图片工件
-7. `InputBundle` 把 page bundle 和图片工件统一交给 runtime
-8. runtime 只消费这份输入并返回结果
+MVP 已移除：
 
-这里最关键的约束是：
-
-**如果 page bundle 准备失败，整页请求直接失败。**
-
-当前不会再：
-
-- 让 runtime 自己重新读取整页
-- 让浏览器图片旁路补洞
+- `POST /api/session/deliver`
+- `thread/inject_items` context-only 投递路径
 
 ## 日志边界
 
-为了后续排错，当前主路径在 bridge 侧有 3 个关键日志点：
+关键日志点：
 
 1. `job created`
 2. `page bundle prepared`
 3. `input bundle prepared`
+4. `codex_live_session_queued`
+5. `codex_live_session_running`
+6. `codex_live_session_completed`
 
-其中 `input bundle prepared` 会输出：
+排错时优先看：
 
-- `artifactSource`
-- `imageCount`
-- `warnings`
-- 每张图片的 `sourceUrl / mimeType / cachePath / width / height`
-
-这让你可以快速分辨问题是在：
-
-- page bundle 预取
-- 附件解析
-- 工件下载
-- runtime 消费
-
-## 为什么当前不保留兼容层
-
-因为当前产品没有真实用户，继续保留旧路径只会引入两种问题：
-
-1. 代码边界继续模糊  
-   例如“正文到底来自 runtime 还是 bridge”“图片到底来自 bundle 还是浏览器”
-
-2. 排错成本继续升高  
-   一旦结果错误，你需要先判断系统到底走了哪条路径
-
-所以当前版本的策略是：
-
-**直接清掉旧兼容层，只保留一条真实主路径。**
+- page bundle 是否准备成功
+- `imageCount` 是否符合预期
+- artifact 下载是否有 `warnings`
+- Codex turn 是否进入 running / completed
 
 ## 当前边界
 
-当前仍然有这些明确边界：
+- 只正式支持 Codex MVP
+- 整页读取仍依赖 Codex runtime 的 Notion MCP
+- 图片只来自 `McpPageBundle` 中解析出的附件链接
+- 写回仍由 Codex 通过 Notion MCP 完成
+- 文件附件暂未完整支持
+- 插件和 bridge 之间仍使用 localhost HTTP
 
-- runtime 依然是 `runtime-backed` 的 page bundle provider  
-  也就是 bridge 还没有自己直连通用 MCP client
-- 图片主路径当前只处理 `McpPageBundle` 中解析出来的图片工件
-- dedicated daemon 仍然是唯一正式运行模式
-- “会话附着”还没有进入当前主路径
-
-这套结构的价值在于：
-
-后续如果要做真正的 attach 模式，变化应只发生在 transport 层，而不是重新拆 page bundle 或 artifact pipeline。
+这些边界是为了最快验证核心问题：Notion 能否成为 CLI Agent 的输入框。

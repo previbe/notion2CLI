@@ -4,6 +4,7 @@ import { parseClaudeMcpList, parseClaudeSessionInitNotionStatus } from '../serve
 import { buildClaudePrompt } from '../server/core/codex-prompt.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
+import { buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
 
 test('codex app-server args keep stdio transport and optional profile overrides', () => {
@@ -21,6 +22,31 @@ test('codex app-server args keep stdio transport and optional profile overrides'
     '--enable',
     'foo',
   ]);
+});
+
+test('codex live session args keep websocket transport and optional profile overrides', () => {
+  const args = buildCodexAppServerWsArgs({
+    listenUrl: 'ws://127.0.0.1:45678',
+    profile: 'default',
+    extraArgs: ['--enable', 'foo'],
+  });
+
+  assert.deepEqual(args, [
+    'app-server',
+    '--listen',
+    'ws://127.0.0.1:45678',
+    '-c',
+    'profile="default"',
+    '--enable',
+    'foo',
+  ]);
+});
+
+test('codex live session uses a stable user-facing thread name', () => {
+  assert.equal(
+    buildCodexThreadName('/Users/morrow/coding/notion2CLI'),
+    'notion2CLI - notion2CLI',
+  );
 });
 
 test('parseNotionMcpList detects configured and unauthenticated codex MCP states', () => {

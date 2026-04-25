@@ -30,7 +30,6 @@
             <div class="step-title" data-step-title>正在检查你需要做什么</div>
             <div class="runtime-switch hidden" data-runtime-switch>
               <button class="runtime-toggle active" data-runtime-button="codex" type="button" aria-pressed="true">codex</button>
-              <button class="runtime-toggle" data-runtime-button="claude" type="button" aria-pressed="false">claude</button>
             </div>
           </div>
           <p class="step-body" data-step-body>如果需要运行命令，这里会直接给出最短路径。</p>
@@ -56,7 +55,7 @@
       <section class="pair-card" data-pair-card>
         <div class="pair-setup" data-pair-setup>
           <div class="section-title">浏览器连接</div>
-          <p class="section-copy">当上面的状态提示你输入 6 位配对码时，再在这里完成连接。</p>
+          <p class="section-copy">先启动 Codex daemon，再生成 6 位配对码，把当前浏览器绑到这个本地会话。</p>
           <label class="field">
             <span>6 位配对码</span>
             <input data-code-input type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位数字" />
@@ -83,7 +82,7 @@
             <option value="replace_content">覆盖页面正文</option>
           </select>
         </label>
-        <p class="config-note" data-write-mode-hint>会把结果追加到当前页末尾，不改动原文。</p>
+        <p class="config-note" data-write-mode-hint>这只影响你点击“写回 Notion”时的行为，不会影响 Notion 内容作为新问题运行。</p>
       </section>
     </main>
     <script type="module" src="popup.js"></script>

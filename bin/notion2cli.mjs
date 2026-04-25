@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { parseArgv } from '../cli/argv.mjs';
@@ -15,7 +16,12 @@ const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
 
-await main(process.argv.slice(2));
+try {
+  await main(process.argv.slice(2));
+} catch (error) {
+  process.stderr.write(`Error: ${error?.message || 'Unknown error'}\n`);
+  process.exit(1);
+}
 
 async function main(argv) {
   const [command, ...rest] = argv;
@@ -43,6 +49,9 @@ async function main(argv) {
       return;
     case 'daemon':
       await handleDaemon(rest);
+      return;
+    case 'codex':
+      await handleCodex(rest);
       return;
     case 'mcp':
       await handleMcp(rest);
@@ -227,6 +236,131 @@ async function handleMcp(argv) {
   process.stdout.write(`${report.summary}\n`);
 }
 
+async function handleCodex(argv) {
+  const [subcommand, ...rest] = argv;
+
+  switch (subcommand) {
+    case 'attach':
+      await handleCodexAttach(rest);
+      return;
+    case 'inspect':
+      await handleCodexInspect(rest);
+      return;
+    case 'open':
+      await handleCodexOpen(rest);
+      return;
+    default:
+      throw new Error('用法：notion2cli codex attach|inspect|open');
+  }
+}
+
+async function handleCodexAttach(argv) {
+  const options = parseArgv(argv);
+  const target = await resolveBridgeTarget(options);
+  const status = await fetchBridgeStatus(target);
+
+  if (status.runtime?.id !== 'codex') {
+    throw new Error('当前 daemon 不是 Codex runtime。先运行 `notion2cli daemon start --runtime codex`。');
+  }
+
+  if (!status.runtime?.ready) {
+    throw new Error(status.runtime?.statusMessage || 'Codex runtime 未就绪。');
+  }
+
+  if (!status.session?.threadId || !status.session?.wsUrl) {
+    throw new Error('当前 Codex 会话还没有准备好。请先重新启动 daemon。');
+  }
+
+  const args = options.remoteOnly || !status.session.latestAssistantAt
+    ? ['--remote', status.session.wsUrl]
+    : ['resume', status.session.threadId, '--remote', status.session.wsUrl];
+
+  if (options.json) {
+    printJson({
+      ok: true,
+      command: ['codex', ...args],
+      session: status.session,
+    });
+    return;
+  }
+
+  if (options.print) {
+    process.stdout.write(`codex ${args.map(quoteShellArg).join(' ')}\n`);
+    return;
+  }
+
+  const result = await runInteractiveCommand('codex', args, {
+    cwd: status.runtime?.cwd || process.cwd(),
+  });
+  if (result.code !== 0) {
+    throw new Error([
+      `Codex attach 退出（code=${result.code ?? 'unknown'}${result.signal ? `, signal=${result.signal}` : ''}）。`,
+      args[0] === 'resume'
+        ? '如果错误来自 Codex resume session 文件缺失，可以先用 `notion2cli codex attach --remote-only` 直接连接当前 daemon。'
+        : null,
+    ].filter(Boolean).join('\n'));
+  }
+}
+
+async function handleCodexInspect(argv) {
+  const options = parseArgv(argv);
+  const target = await resolveBridgeTarget(options);
+  const status = await fetchBridgeStatus(target);
+
+  if (status.runtime?.id !== 'codex') {
+    throw new Error('当前 daemon 不是 Codex runtime。先运行 `notion2cli daemon start --runtime codex`。');
+  }
+
+  if (options.json) {
+    printJson({
+      ok: true,
+      runtime: status.runtime,
+      session: status.session || null,
+    });
+    return;
+  }
+
+  process.stdout.write(formatCodexSession(status));
+}
+
+async function handleCodexOpen(argv) {
+  const options = parseArgv(argv);
+  const target = await resolveBridgeTarget(options);
+  const status = await fetchBridgeStatus(target);
+
+  if (status.runtime?.id !== 'codex') {
+    throw new Error('当前 daemon 不是 Codex runtime。先运行 `notion2cli daemon start --runtime codex`。');
+  }
+
+  if (process.platform !== 'darwin') {
+    throw new Error('当前自动打开 Codex App 只支持 macOS。请手动打开 Codex App 后查看 notion2CLI session。');
+  }
+
+  const result = await runCommand('open', ['-b', 'com.openai.codex'], {
+    cwd: status.runtime?.cwd || process.cwd(),
+    timeoutMs: 8000,
+  });
+  const output = compactCommandOutput(result);
+  if (result.code !== 0) {
+    throw new Error(output || '无法打开 Codex App。');
+  }
+
+  if (options.json) {
+    printJson({
+      ok: true,
+      session: status.session || null,
+    });
+    return;
+  }
+
+  process.stdout.write([
+    '已打开 Codex App。',
+    status.session?.threadName ? `会话：${status.session.threadName}` : null,
+    status.session?.threadId ? `Thread ID：${status.session.threadId}` : null,
+    '如果 Codex App 已经打开但没有立即跳到该会话，请在最近会话里查看 notion2CLI session。',
+  ].filter(Boolean).join('\n') + '\n');
+}
+
 async function installCodexNotionMcp() {
   const notes = [];
   let status = await probeCodexNotionMcp();
@@ -396,6 +530,12 @@ function formatDaemonStatus(status) {
       'notion2cli daemon 正在运行。',
       `地址：http://${status.host}:${status.port}`,
       `运行时：${status.bridge?.runtime?.label || status.metadata?.runtime || 'unknown'}`,
+      status.bridge?.runtime?.id === 'codex' && status.bridge?.session?.threadId
+        ? `Attach：notion2cli codex attach`
+        : null,
+      status.bridge?.runtime?.id === 'codex' && status.bridge?.session?.threadId
+        ? `Codex App：${status.bridge.session.threadName || status.bridge.session.threadId}（${status.bridge.session.appVisible ? 'App 可见' : '等待同步'}）`
+        : null,
       status.metadata?.cwd ? `工作目录：${status.metadata.cwd}` : null,
       status.metadata?.pid ? `PID：${status.metadata.pid}` : null,
     ].filter(Boolean).join('\n') + '\n';
@@ -422,6 +562,10 @@ function printHelp() {
     '  notion2cli daemon start --runtime standalone --foreground',
     '  notion2cli daemon stop',
     '  notion2cli daemon status',
+    '  notion2cli codex attach',
+    '  notion2cli codex attach --remote-only',
+    '  notion2cli codex inspect',
+    '  notion2cli codex open',
     '  notion2cli pair',
     '  notion2cli status',
     '  notion2cli doctor',
@@ -433,10 +577,67 @@ function printHelp() {
   ].join('\n') + '\n');
 }
 
+function formatCodexSession(status) {
+  const session = status.session || null;
+  if (!session?.threadId) {
+    return [
+      '当前没有已准备好的 Codex App session。',
+      status.runtime?.statusMessage ? `状态：${status.runtime.statusMessage}` : null,
+    ].filter(Boolean).join('\n') + '\n';
+  }
+
+  return [
+    'Codex App session',
+    `名称：${session.threadName || 'notion2CLI'}`,
+    `Thread ID：${session.threadId}`,
+    session.threadPath ? `历史文件：${session.threadPath}` : null,
+    `App 可见：${session.appVisible ? '是' : '未确认'}`,
+    `Turns：${session.turnCount ?? 0}`,
+    session.lastVerifiedAt ? `上次校验：${session.lastVerifiedAt}` : null,
+    session.lastVerificationError ? `校验提示：${session.lastVerificationError}` : null,
+    session.latestUserMessage ? `最近用户输入：${compactOneLine(session.latestUserMessage)}` : null,
+    session.latestAssistantMessage ? `最近 Codex 回复：${compactOneLine(session.latestAssistantMessage)}` : null,
+    '打开：notion2cli codex open',
+  ].filter(Boolean).join('\n') + '\n';
+}
+
+function compactOneLine(value, maxLength = 160) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
 function buildUsageHint() {
   return '运行 `notion2cli --help` 查看可用命令。';
 }
 
 function printJson(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function quoteShellArg(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:-]+$/.test(text)) {
+    return text;
+  }
+
+  return `'${text.replaceAll("'", "'\"'\"'")}'`;
+}
+
+function runInteractiveCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env || process.env,
+      stdio: 'inherit',
+    });
+
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      resolve({ code, signal });
+    });
+  });
 }
