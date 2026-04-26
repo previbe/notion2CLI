@@ -1,7 +1,9 @@
 import { buildCommonActionRules } from './instructions.mjs';
+import { PROMPT_PROFILE_RAW } from './prompt-profiles.mjs';
 
 export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {}) {
   const pageBundle = job.inputBundle?.pageBundle || null;
+  const promptProfile = normalizePromptProfile(job.promptProfile);
   const payload = {
     jobId: job.id,
     action: job.action,
@@ -14,6 +16,11 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
     sourceReplyJobId: job.sourceReplyJobId,
     installPrompt: job.installPrompt,
     officialDocUrl: job.officialDocUrl,
+    promptProfile: {
+      id: promptProfile.id,
+      name: promptProfile.name,
+      hasInstruction: Boolean(String(promptProfile.instruction || '').trim()),
+    },
     source: job.source,
     requestedAt: job.createdAt,
     attachedImageCount: Array.isArray(job.inputBundle?.images) ? job.inputBundle.images.length : 0,
@@ -31,6 +38,7 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
   const runtimeLabel = options.runtimeLabel || 'the local runtime';
   const localImageArtifacts = Array.isArray(job.inputBundle?.images) ? job.inputBundle.images : [];
   const primaryUserText = resolvePrimaryUserText(job);
+  const promptProfileLines = buildPromptProfileLines(promptProfile);
   const imageArtifactLines = localImageArtifacts.length
     ? [
       'Inspect these exact local image files directly as images whenever visual content might matter:',
@@ -70,8 +78,10 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
     primaryUserText ? `Current browser user message: ${JSON.stringify(primaryUserText)}` : null,
     localImageArtifacts.length ? `Current page image file count: ${localImageArtifacts.length}.` : null,
     ...replyLines,
-    'For content-forwarding and write-back actions, do not edit local repository files and do not run shell commands unless they are strictly necessary to explain a concrete error.',
+    'Do not edit local repository files and do not run shell commands unless the current browser request or selected prompt profile requires local code or terminal work.',
     runtimeInfo?.notionMcpHint ? `Runtime hint: ${runtimeInfo.notionMcpHint}` : null,
+    '',
+    ...promptProfileLines,
     '',
     'Action payload:',
     '```json',
@@ -84,7 +94,7 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
     ...(warningLines.length ? [''] : []),
     ...pageBundleLines,
     ...(pageBundleLines.length ? [''] : []),
-    'Return only the final user-facing reply text.',
+    'Return only the final user-facing Brief text.',
   ].filter(Boolean).join('\n');
 }
 
@@ -121,4 +131,32 @@ function resolvePrimaryUserText(job) {
   }
 
   return '';
+}
+
+function normalizePromptProfile(promptProfile) {
+  return promptProfile || {
+    id: PROMPT_PROFILE_RAW,
+    name: '原样运行',
+    instruction: '',
+  };
+}
+
+function buildPromptProfileLines(promptProfile) {
+  const profile = normalizePromptProfile(promptProfile);
+  const instruction = String(profile.instruction || '').trim();
+
+  if (!instruction) {
+    return [
+      `Selected prompt profile: ${profile.name || '原样运行'} (${profile.id || PROMPT_PROFILE_RAW}).`,
+      'No additional prompt profile instruction is attached. Interpret the Notion input as the direct user request.',
+    ];
+  }
+
+  return [
+    `Selected prompt profile: ${profile.name} (${profile.id}).`,
+    'Prompt profile instruction follows. Use it as the task intent for this run:',
+    '<<<N2C_PROMPT_PROFILE_INSTRUCTION',
+    instruction,
+    'N2C_PROMPT_PROFILE_INSTRUCTION',
+  ];
 }

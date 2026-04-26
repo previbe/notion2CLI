@@ -119,6 +119,13 @@ export class JobStore {
       updatedAt: job.updatedAt,
       pageUrl: job.pageUrl,
       pageTitle: job.pageTitle,
+      promptProfileId: job.promptProfileId,
+      promptProfile: job.promptProfile
+        ? {
+          id: job.promptProfile.id,
+          name: job.promptProfile.name,
+        }
+        : null,
       replyText: job.replyText,
       error: job.error,
       selectionPreview: truncate(job.selectionText, 320),

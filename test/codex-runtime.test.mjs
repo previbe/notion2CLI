@@ -100,6 +100,8 @@ test('job schema enforces action-specific required fields', () => {
 
   assert.equal(payload.writeSectionTitle, 'notion2CLI');
   assert.equal(payload.writeMode, 'append_markdown_section');
+  assert.equal(payload.promptProfileId, 'raw');
+  assert.equal(payload.promptProfile.name, '原样运行');
 
   const updatePayload = parseJobRequest({
     action: 'write_reply_to_notion',
@@ -122,6 +124,28 @@ test('job schema enforces action-specific required fields', () => {
       selectionText: '',
     });
   }, /selectionText is required for update_content/);
+});
+
+test('job schema accepts the official Build prompt profile and rejects unknown profiles', () => {
+  const buildPayload = parseJobRequest({
+    action: 'forward_full_page_via_mcp',
+    pageUrl: 'https://www.notion.so/example',
+    pageTitle: 'Example',
+    promptProfileId: 'Build',
+  });
+
+  assert.equal(buildPayload.promptProfileId, 'build');
+  assert.equal(buildPayload.promptProfile.name, 'Build');
+  assert.match(buildPayload.promptProfile.instruction, /PreVibe/);
+
+  assert.throws(() => {
+    parseJobRequest({
+      action: 'forward_full_page_via_mcp',
+      pageUrl: 'https://www.notion.so/example',
+      pageTitle: 'Example',
+      promptProfileId: 'missing-profile',
+    });
+  }, /Unknown promptProfileId/);
 });
 
 test('codex input items prepend local images before prompt text', () => {
@@ -204,6 +228,12 @@ test('claude write-back prompt uses the shared structured action rules', () => {
     sourceReplyJobId: 'job-123',
     installPrompt: '',
     officialDocUrl: '',
+    promptProfileId: 'raw',
+    promptProfile: {
+      id: 'raw',
+      name: '原样运行',
+      instruction: '',
+    },
     source: 'test',
     createdAt: '2026-04-20T00:00:00.000Z',
     inputBundle: {
@@ -220,7 +250,8 @@ test('claude write-back prompt uses the shared structured action rules', () => {
   assert.match(prompt, /If action is "write_reply_to_notion", first resolve the target page from pageUrl using Notion MCP/);
   assert.match(prompt, /For "write_reply_to_notion" with writeMode "append_markdown_section", append replyTextToWrite/);
   assert.match(prompt, /"writeSectionTitle": "notion2CLI"/);
-  assert.match(prompt, /Return only the final user-facing reply text\./);
+  assert.match(prompt, /Selected prompt profile: 原样运行 \(raw\)\./);
+  assert.match(prompt, /Return only the final user-facing Brief text\./);
 });
 
 test('claude channel prompt asks the session to reply through the browser tool', () => {
@@ -236,6 +267,12 @@ test('claude channel prompt asks the session to reply through the browser tool',
     sourceReplyJobId: '',
     installPrompt: '',
     officialDocUrl: '',
+    promptProfileId: 'raw',
+    promptProfile: {
+      id: 'raw',
+      name: '原样运行',
+      instruction: '',
+    },
     source: 'test',
     createdAt: '2026-04-20T00:00:00.000Z',
     inputBundle: {
@@ -252,5 +289,51 @@ test('claude channel prompt asks the session to reply through the browser tool',
   assert.match(prompt, /browser reply tool named "reply"/);
   assert.match(prompt, /call "reply" exactly once with chat_id "job-456"/);
   assert.match(prompt, /"jobId": "job-456"/);
-  assert.match(prompt, /Return only the final user-facing reply text\./);
+  assert.match(prompt, /Return only the final user-facing Brief text\./);
+});
+
+test('Build prompt profile is injected as task intent', () => {
+  const prompt = buildClaudeChannelPrompt({
+    id: 'job-build',
+    action: 'forward_full_page_via_mcp',
+    pageUrl: 'https://www.notion.so/build-page',
+    pageTitle: 'Build Page',
+    selectionText: '',
+    replyTextToWrite: '',
+    writeMode: 'append_markdown_section',
+    writeSectionTitle: 'notion2CLI',
+    sourceReplyJobId: '',
+    installPrompt: '',
+    officialDocUrl: '',
+    promptProfileId: 'build',
+    promptProfile: {
+      id: 'build',
+      name: 'Build',
+      instruction: 'PreVibe 是一套将文档推进到软件的开发系统。最终输出 Brief。',
+    },
+    source: 'test',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    inputBundle: {
+      images: [],
+      warnings: [],
+      artifactSource: 'none',
+      pageBundle: {
+        provider: 'test',
+        runtimeId: 'test',
+        truncated: false,
+        warnings: [],
+        stats: {},
+        markdown: '# Build Page\n\n实现一个功能。',
+      },
+    },
+  }, {
+    notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
+  });
+
+  assert.match(prompt, /Selected prompt profile: Build \(build\)\./);
+  assert.match(prompt, /<<<N2C_PROMPT_PROFILE_INSTRUCTION/);
+  assert.match(prompt, /PreVibe 是一套将文档推进到软件的开发系统/);
+  assert.match(prompt, /If promptProfile\.id is not "raw", treat the prompt profile instruction as the task intent/);
+  assert.match(prompt, /"promptProfile": \{\n    "id": "build"/);
+  assert.match(prompt, /<<<N2C_PAGE_BUNDLE_MARKDOWN/);
 });

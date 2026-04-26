@@ -90,6 +90,7 @@ export class BridgeApp {
       action: job.action,
       runtime: this.runtime.id,
       pageTitle: job.pageTitle,
+      promptProfileId: job.promptProfileId,
       selectionChars: job.selectionText.length,
       writeChars: job.replyTextToWrite.length,
     });

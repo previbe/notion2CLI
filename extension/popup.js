@@ -19,6 +19,7 @@ const popupRoot = document.querySelector('[data-popup-root]');
 const statusDot = document.querySelector('[data-status-dot]');
 const statusValue = document.querySelector('[data-status-value]');
 const statusHint = document.querySelector('[data-status-hint]');
+const historyHint = document.querySelector('[data-history-hint]');
 const stepCard = document.querySelector('[data-step-card]');
 const stepTitle = document.querySelector('[data-step-title]');
 const stepBody = document.querySelector('[data-step-body]');
@@ -87,6 +88,7 @@ function renderStatus(status) {
   statusDot.classList.toggle('ready', connected);
   statusValue.textContent = buildStatusValue(status);
   statusHint.textContent = buildStatusHint(status);
+  renderHistoryHint(status);
   updateVisualState(status, access, connected);
   updateRuntimeSwitch(nextStep.showRuntimeSwitch);
   updatePairSection(connected);
@@ -108,6 +110,8 @@ function renderDisconnectedState(message) {
   statusDot.classList.remove('ready');
   statusValue.textContent = '没有连接本地 runtime';
   statusHint.textContent = message;
+  historyHint.textContent = '';
+  historyHint.classList.add('hidden');
   popupRoot.dataset.state = 'offline';
   stepCard.classList.remove('hidden');
   updateRuntimeSwitch(true);
@@ -184,6 +188,22 @@ function buildStatusHint(status) {
   }
 
   return '运行配对命令生成 6 位码，再在下方完成浏览器连接。';
+}
+
+function renderHistoryHint(status) {
+  const runtime = status.runtime || {};
+  let text = '';
+
+  if (status.paired && runtime.ready && !runtime.standalone) {
+    if (runtime.id === 'codex') {
+      text = '你可以通过打开 Codex App 查看历史对话记录，刷新需要重启。';
+    } else if (runtime.id === 'claude') {
+      text = '你可以在 Claude Code 中实时查看历史对话记录。';
+    }
+  }
+
+  historyHint.textContent = text;
+  historyHint.classList.toggle('hidden', !text);
 }
 
 function getNextStep(status) {

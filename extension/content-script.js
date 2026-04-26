@@ -3,6 +3,8 @@ const PANEL_POSITION_STORAGE_KEY = 'notion2cli.panelPosition';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
 const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
+const PROMPT_PROFILE_RAW = 'raw';
+const PROMPT_PROFILE_BUILD = 'build';
 
 const ACTION_FORWARD_SELECTION = 'forward_selection_text';
 const ACTION_FORWARD_FULL_PAGE = 'forward_full_page_via_mcp';
@@ -22,6 +24,7 @@ const state = {
   latestReply: '',
   latestBrief: '',
   latestReplyJobId: null,
+  promptProfileId: PROMPT_PROFILE_RAW,
   drag: null,
   panelPosition: null,
   panelClampFrame: null,
@@ -72,6 +75,13 @@ root.innerHTML = `
             <div class="n2c-meta-label">当前页面</div>
             <div class="n2c-page-title" data-page-title>读取中…</div>
           </div>
+          <label class="n2c-task-picker">
+            <span class="n2c-meta-label">任务</span>
+            <select class="n2c-task-select" data-prompt-profile>
+              <option value="raw">原样运行</option>
+              <option value="build">Build</option>
+            </select>
+          </label>
           <button class="n2c-send" type="button" data-send>作为新问题运行</button>
           <div class="n2c-send-hint n2c-hidden" data-send-hint></div>
           <div class="n2c-section-divider"></div>
@@ -92,7 +102,7 @@ root.innerHTML = `
             </div>
           </div>
           <div class="n2c-brief-head">
-            <div class="n2c-meta-label">LATEST REPLY</div>
+            <div class="n2c-meta-label">BRIEF</div>
             <div class="n2c-brief-actions">
               <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
               <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
@@ -127,6 +137,7 @@ menu.id = 'n2c-activity-sheet';
 const sheetHeader = root.querySelector('.n2c-sheet-header');
 const closeSheetButton = root.querySelector('[data-close-sheet]');
 const pageTitleNode = root.querySelector('[data-page-title]');
+const promptProfileNode = root.querySelector('[data-prompt-profile]');
 const sendButton = root.querySelector('[data-send]');
 const sendHintNode = root.querySelector('[data-send-hint]');
 const openAppButton = root.querySelector('[data-open-app]');
@@ -177,6 +188,11 @@ function bindEvents() {
   sheetHeader.addEventListener('pointerdown', (event) => startDrag(event, 'header'));
   closeSheetButton.addEventListener('click', () => setExpanded(false));
   sendButton.addEventListener('click', () => startAction());
+  promptProfileNode.addEventListener('change', () => {
+    state.promptProfileId = normalizePromptProfileId(promptProfileNode.value);
+    promptProfileNode.value = state.promptProfileId;
+    updateActionCopy();
+  });
   openAppButton.addEventListener('click', () => openCodexAppFromPanel());
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
@@ -456,6 +472,7 @@ async function refreshBridgeStatus() {
 function updateActionCopy() {
   const selected = getSelectionText();
   const runtimeLabel = getRuntimeLabel();
+  const task = getSelectedPromptProfile();
 
   if (!state.runtime.ready) {
     sendButton.textContent = '作为新问题运行';
@@ -478,8 +495,10 @@ function updateActionCopy() {
   }
 
   if (selected) {
-    sendButton.textContent = '运行选中内容';
-    sendHintNode.textContent = `会把选中内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
+    sendButton.textContent = task.id === PROMPT_PROFILE_BUILD ? 'Build 选中内容' : '运行选中内容';
+    sendHintNode.textContent = task.id === PROMPT_PROFILE_BUILD
+      ? `会把选中内容作为 Build 输入发给 ${runtimeLabel}，并直接开始处理。`
+      : `会把选中内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
     return;
   }
 
@@ -489,14 +508,33 @@ function updateActionCopy() {
     return;
   }
 
-  sendButton.textContent = '运行当前页';
-  sendHintNode.textContent = `会把整页内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
+  sendButton.textContent = task.id === PROMPT_PROFILE_BUILD ? 'Build 当前页' : '运行当前页';
+  sendHintNode.textContent = task.id === PROMPT_PROFILE_BUILD
+    ? `会把整页内容作为 Build 输入发给 ${runtimeLabel}，并直接开始处理。`
+    : `会把整页内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
+}
+
+function buildSubmitText({ target, runtimeLabel, task }) {
+  if (task.id === PROMPT_PROFILE_BUILD) {
+    return `正在把${target}作为 Build 输入提交给 ${runtimeLabel}…`;
+  }
+
+  return `正在把${target}作为新问题提交给 ${runtimeLabel}…`;
+}
+
+function buildSubmittedText({ target, runtimeLabel, task }) {
+  if (task.id === PROMPT_PROFILE_BUILD) {
+    return `${target}已作为 Build 输入提交给 ${runtimeLabel}，正在等待处理结果。`;
+  }
+
+  return `${target}已作为新问题提交给 ${runtimeLabel}，正在等待处理结果。`;
 }
 
 async function startAction() {
   const selectionText = getSelectionText();
   const action = selectionText ? ACTION_FORWARD_SELECTION : ACTION_FORWARD_FULL_PAGE;
   const runtimeLabel = getRuntimeLabel();
+  const task = getSelectedPromptProfile();
 
   clearPolling();
   setExpanded(true);
@@ -510,13 +548,14 @@ async function startAction() {
     pageUrl: window.location.href,
     pageTitle: getPageTitle(),
     selectionText,
+    promptProfileId: state.promptProfileId,
   };
 
   renderJobState({
     status: 'sending',
     text: selectionText
-      ? `正在把选中内容作为新问题提交给 ${runtimeLabel}…`
-      : `正在把当前页作为新问题提交给 ${runtimeLabel}…`,
+      ? buildSubmitText({ target: '选中内容', runtimeLabel, task })
+      : buildSubmitText({ target: '当前页', runtimeLabel, task }),
     jobId: '',
     action,
   });
@@ -529,6 +568,7 @@ async function startAction() {
         pageUrl: state.lastSubmission.pageUrl,
         pageTitle: state.lastSubmission.pageTitle,
         selectionText,
+        promptProfileId: state.promptProfileId,
         source: 'chrome-extension',
       },
     });
@@ -537,8 +577,8 @@ async function startAction() {
     renderJobState({
       status: response.status,
       text: selectionText
-        ? `选中内容已作为新问题提交给 ${runtimeLabel}，正在等待处理结果。`
-        : `当前页已作为新问题提交给 ${runtimeLabel}，正在等待处理结果。`,
+        ? buildSubmittedText({ target: '选中内容', runtimeLabel, task })
+        : buildSubmittedText({ target: '当前页', runtimeLabel, task }),
       jobId: response.jobId,
       action,
     });
@@ -699,7 +739,7 @@ function buildJobStateText(job) {
   }
 
   if (isReplyAction(job.action)) {
-    return buildForwardStatusText(job.status, job.action);
+    return buildForwardStatusText(job.status, job.action, job);
   }
 
   return job.replyText || statusLabel(job.status, job.action);
@@ -708,31 +748,35 @@ function buildJobStateText(job) {
 function buildReplyCompletedText(job) {
   const meta = job.runtimeMeta || {};
   if (state.runtime.id === 'codex' && meta.appVisible) {
-    return '这条结果已经进入同一个 Codex App session，并显示在面板里。';
+    return '这条 Brief 已经进入同一个 Codex App session，并显示在面板里。';
   }
 
   if (state.runtime.id === 'claude') {
-    return '这条结果已经显示在当前 Claude Code 终端会话和面板里，你可以继续手动写回 Notion。';
+    return '这条 Brief 已经显示在当前 Claude Code 终端会话和面板里。';
   }
 
-  return '这条结果已经显示在面板里，你可以继续手动写回 Notion。';
+  return '这条 Brief 已经显示在面板里。';
 }
 
-function buildForwardStatusText(status, action) {
+function buildForwardStatusText(status, action, job = {}) {
   const target = action === ACTION_FORWARD_SELECTION ? '选中内容' : '当前页';
   const runtimeLabel = getRuntimeLabel();
+  const task = resolveJobPromptProfile(job);
+  const taskPrefix = task.id === PROMPT_PROFILE_BUILD ? 'Build ' : '';
 
   switch (status) {
     case 'queued':
-      return `${target} 已提交，正在排队处理…`;
+      return `${taskPrefix}${target}已提交，正在排队处理…`;
     case 'dispatched':
-      return `${target} 已送达 ${runtimeLabel}，正在等待开始处理…`;
+      return `${taskPrefix}${target}已送达 ${runtimeLabel}，正在等待开始处理…`;
     case 'running':
-      return `${runtimeLabel} 正在处理${target}…`;
+      return task.id === PROMPT_PROFILE_BUILD
+        ? `${runtimeLabel} 正在执行 Build（${target}）…`
+        : `${runtimeLabel} 正在处理${target}…`;
     case 'sending':
-      return `正在提交${target}…`;
+      return `正在提交${taskPrefix}${target}…`;
     default:
-      return `${target} 处理中…`;
+      return `${taskPrefix}${target}处理中…`;
   }
 }
 
@@ -813,7 +857,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
 
 function renderBrief() {
   const brief = state.latestBrief || '';
-  outputNode.textContent = brief || '最新回复会显示在这里，写回时会使用这段内容。';
+  outputNode.textContent = brief || '最终 Brief 会显示在这里。';
   outputNode.classList.toggle('n2c-empty', !brief);
   copyButton.disabled = !brief && !state.latestReply;
 
@@ -862,6 +906,28 @@ function getPageTitle() {
 
 function getRuntimeLabel() {
   return state.runtime.label || '本地 Agent';
+}
+
+function getSelectedPromptProfile() {
+  const id = normalizePromptProfileId(state.promptProfileId);
+  return {
+    id,
+    name: id === PROMPT_PROFILE_BUILD ? 'Build' : '原样运行',
+  };
+}
+
+function resolveJobPromptProfile(job) {
+  const id = normalizePromptProfileId(job?.promptProfileId || job?.promptProfile?.id || state.promptProfileId);
+  return {
+    id,
+    name: job?.promptProfile?.name || (id === PROMPT_PROFILE_BUILD ? 'Build' : '原样运行'),
+  };
+}
+
+function normalizePromptProfileId(value) {
+  return String(value || '').trim().toLowerCase() === PROMPT_PROFILE_BUILD
+    ? PROMPT_PROFILE_BUILD
+    : PROMPT_PROFILE_RAW;
 }
 
 function isSupportedRuntime() {

@@ -39,11 +39,12 @@
 
 .n2c-fab,
 .n2c-strip-toggle,
-  .n2c-send,
-  .n2c-approve,
-  .n2c-decline,
-  .n2c-copy,
-  .n2c-open-app {
+.n2c-send,
+.n2c-task-select,
+.n2c-approve,
+.n2c-decline,
+.n2c-copy,
+.n2c-open-app {
   font-family: inherit;
 }
 
@@ -239,6 +240,26 @@
   line-height: 1.5;
   color: var(--n2c-ink-strong);
   word-break: break-word;
+}
+
+.n2c-task-picker {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.n2c-task-select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 38px 0 12px;
+  border: 1px solid var(--n2c-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--n2c-ink-strong);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
 }
 
 .n2c-send {

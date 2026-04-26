@@ -122,12 +122,21 @@ code {
 }
 
 .status-hint,
+.history-hint,
 .section-copy,
 .access-status {
   margin: 12px 0 0;
   font-size: 12px;
   line-height: 1.6;
   color: var(--ink-body);
+}
+
+.history-hint {
+  color: var(--ink-soft);
+}
+
+.history-hint.hidden {
+  display: none;
 }
 
 .config-note {

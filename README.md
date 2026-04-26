@@ -77,8 +77,9 @@ notion2cli pair
 1. 点击浏览器工具栏里的 `notion2CLI`
 2. 粘贴 6 位配对码
 3. 打开一个 Notion 页面
-4. 选中文字时点击“运行选中内容”
-5. 不选中文字时点击“运行当前页”
+4. 选择任务：`原样运行` 或 `Build`
+5. 选中文字时点击“运行选中内容”或“Build 选中内容”
+6. 不选中文字时点击“运行当前页”或“Build 当前页”
 
 需要检查或打开同一个 Codex App session：
 
@@ -132,6 +133,12 @@ bridge 会创建 job，把选区当作下一条用户输入交给当前 runtime�
 5. 把 `page bundle + 本地图片工件` 作为下一条用户输入交给当前 runtime
 
 如果 page bundle 准备失败，本次运行会失败，不回退到浏览器 DOM 抓取。
+
+### Build
+
+`Build` 是内置的官方预制 prompt。它会把选中内容或当前页全文当作需求文档，让当前 Codex / Claude runtime 直接按文档要求执行开发。
+
+执行完成后，最终结果会作为 Brief 显示在插件面板。Agent 只有在任务确实要求修改当前 Notion 页面时，才应该通过 Notion MCP 修改页面；普通 Build 任务通常只改本地代码，不改 Notion 正文。
 
 ### 写回 Notion
 

@@ -11,6 +11,7 @@ import {
   WRITE_MODES,
   createHttpError,
 } from './constants.mjs';
+import { getPromptProfile, isPromptProfileId, normalizePromptProfileId } from './prompt-profiles.mjs';
 
 const requestShape = z.object({
   action: z.string().optional(),
@@ -23,6 +24,7 @@ const requestShape = z.object({
   sourceReplyJobId: z.string().optional(),
   installPrompt: z.string().optional(),
   officialDocUrl: z.string().optional(),
+  promptProfileId: z.string().optional(),
   source: z.string().optional(),
 }).passthrough();
 
@@ -61,6 +63,11 @@ function trimOrDefault(value, fallback = '') {
 
 export function parseJobRequest(body) {
   const raw = requestShape.parse(body ?? {});
+  const promptProfileId = normalizePromptProfileId(raw.promptProfileId);
+  if (!isPromptProfileId(promptProfileId)) {
+    throw invalidPayload(`Unknown promptProfileId: ${promptProfileId}`);
+  }
+
   const payload = {
     action: normalizeAction(raw.action),
     pageUrl: trimOrDefault(raw.pageUrl),
@@ -72,6 +79,8 @@ export function parseJobRequest(body) {
     sourceReplyJobId: trimOrDefault(raw.sourceReplyJobId),
     installPrompt: trimOrDefault(raw.installPrompt),
     officialDocUrl: trimOrDefault(raw.officialDocUrl),
+    promptProfileId,
+    promptProfile: getPromptProfile(promptProfileId),
     source: trimOrDefault(raw.source, 'browser-extension') || 'browser-extension',
   };
 
