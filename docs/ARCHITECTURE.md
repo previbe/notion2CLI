@@ -4,9 +4,9 @@
 
 当前 MVP 只做一件事：
 
-**把 Notion 页面变成 Codex CLI 的富文本输入框。**
+**把 Notion 页面变成本地 AI CLI 会话的富文本输入框。**
 
-用户在 Notion 页面点击插件按钮后，系统把当前选区或当前整页作为下一条用户输入交给 Codex，并直接开始处理。终端界面只用于可选观察，不是必需操作步骤。
+用户在 Notion 页面点击插件按钮后，系统把当前选区或当前整页作为下一条用户输入交给当前 runtime，并直接开始处理。回复先回到插件 Activity 面板，再由用户决定是否写回 Notion。
 
 ## 不做的事
 
@@ -17,8 +17,9 @@ MVP 暂不做：
 - bridge 自己直连 Notion API / MCP 读取页面
 - bridge 自己确定性写回 Notion
 - 完整文件附件支持
-- Claude Code 与 Codex 的同等 live session 体验
+- Claude Desktop 输入注入
 - Chrome Native Messaging
+- Codex App、Claude 终端、插件之间的全双向历史同步
 
 ## 第一性原理
 
@@ -28,12 +29,12 @@ Notion 输入框能承载：
 - 图片
 - 文件
 
-Codex 当前 MVP 实际稳定消费的是：
+当前 MVP 稳定消费的是：
 
 - 文本
 - 本地图片工件
 
-所以 bridge 的核心职责是把 Notion 页面整理成 Codex 能消费的输入，而不是让浏览器模拟复制粘贴，也不是让用户回终端手动确认。
+所以 bridge 的核心职责是把 Notion 页面整理成 runtime 能消费的输入，而不是让浏览器模拟复制粘贴，也不是让用户回终端手动按 Enter。
 
 ## 总体架构
 
@@ -43,16 +44,27 @@ flowchart LR
   B --> C["Bridge HTTP API /api/jobs"]
   C --> D["JobStore"]
   C --> E["RuntimeBackedNotionPageBundleProvider"]
-  E --> F["McpPageBundle"]
-  F --> G["ArtifactResolver / ArtifactStore"]
-  G --> H["InputBundle"]
-  H --> I["CodexRuntime"]
-  I --> J["CodexLiveSession"]
-  J --> K["Codex app-server turn/start"]
-  K --> L["Codex CLI"]
-  L --> M["插件 Activity 面板"]
-  L --> N["Notion MCP"]
-  N --> O["Notion 页面"]
+  E --> F["runtime Notion MCP"]
+  F --> G["McpPageBundle"]
+  G --> H["ArtifactResolver / ArtifactStore"]
+  H --> I["InputBundle"]
+  I --> J{"RuntimeAdapter"}
+  J --> K["CodexRuntime"]
+  K --> L["CodexLiveSession"]
+  L --> M["Codex app-server turn/start"]
+  M --> N["Codex App visible session"]
+  J --> O["ClaudeChannelRuntime"]
+  O --> P["notifications/claude/channel"]
+  P --> Q["当前 Claude Code 终端会话"]
+  O --> R["ClaudeRuntime worker"]
+  R --> F
+  Q --> S["reply tool"]
+  S --> C
+  N --> C
+  C --> T["插件 Activity 面板"]
+  Q --> U["Notion MCP 写回"]
+  N --> U
+  U --> A
 ```
 
 ## 主流程
@@ -63,30 +75,33 @@ flowchart LR
 2. background 调 `/api/jobs`
 3. bridge 创建 job
 4. bridge 生成 `InputBundle`
-5. `CodexRuntime` 把输入放入 `CodexLiveSession` 队列
-6. `CodexLiveSession` 调 Codex app-server 的 `turn/start`
-7. 插件轮询 `/api/jobs/:id`，展示最终回复
+5. 当前 runtime 把输入作为新问题执行
+6. 插件轮询 `/api/jobs/:id`，展示最终回复
+
+Codex 路径会进入固定 Codex App thread。Claude 路径会进入 `notion2cli claude launch` 启动的当前 Claude Code channel 会话。
 
 ### 2. 运行当前页
 
 1. 内容脚本发送页面标题和页面 URL
-2. bridge 通过 `RuntimeBackedNotionPageBundleProvider` 借 Codex 的 Notion MCP 读取整页
+2. bridge 通过 `RuntimeBackedNotionPageBundleProvider` 借 runtime 的 Notion MCP 读取整页
 3. bridge 规范化为 `McpPageBundle`
 4. `ArtifactResolver` 从 bundle 中找图片附件
 5. `ArtifactStore` 下载并缓存本地图片工件
 6. `InputBundle` 合并页面正文、图片工件和警告信息
-7. `CodexLiveSession` 通过 `turn/start` 直接启动处理
-8. 插件显示 Codex 最新回复
+7. 当前 runtime 直接启动处理
+8. 插件显示最新回复
+
+Claude 的整页读取由隐藏的 `ClaudeRuntime worker` 完成，目的是避免“预取整页”这一步污染用户正在看的 Claude channel 会话。真正的用户问题仍会投递到当前 Claude channel 会话。
 
 如果 page bundle 准备失败，整页运行直接失败，不回退到浏览器 DOM 抓取。
 
 ### 3. 写回 Notion
 
-1. 插件面板已有最新 Codex 回复
+1. 插件面板已有最新回复
 2. 用户点击“写回 Notion”
 3. 插件再次创建 `write_reply_to_notion` job
-4. Codex 通过 Notion MCP 执行追加、替换选区或覆盖正文
-5. 需要授权时，插件面板显示 approval 操作
+4. 当前 runtime 通过 Notion MCP 执行追加、替换选区或覆盖正文
+5. 需要授权时，Codex approval 走 Activity；Claude 整页读取授权走 Activity，写回授权可能出现在 Claude 终端里
 
 MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 
@@ -100,6 +115,7 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 - 发起“运行选中内容 / 运行当前页”
 - 展示 job 状态、approval、最新回复
 - 发起手动写回
+- 允许用户在弹窗里选择 Codex 或 Claude 启动流程
 
 不负责：
 
@@ -155,6 +171,23 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 - [server/runtimes/codex-live-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-live-session.mjs)
 - [server/runtimes/codex-app-server-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-app-server-session.mjs)
 
+### Claude Channel Runtime
+
+负责：
+
+- 作为 Claude MCP server 加载进 `notion2cli claude launch` 启动的 Claude Code 会话
+- 通过 `notifications/claude/channel` 把插件 job 投递到当前 Claude 终端会话
+- 提供 `reply` tool，让 Claude 把最终回复回传给插件面板
+- 使用隐藏的 `ClaudeRuntime worker` 做整页 Notion MCP 预取
+- 生成并使用 notion2CLI 专用的 Claude MCP 配置文件
+
+相关代码：
+
+- [server/runtimes/claude-channel-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-channel-runtime.mjs)
+- [server/channel-server.mjs](/Users/morrow/coding/notion2CLI/server/channel-server.mjs)
+- [server/runtimes/claude-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-runtime.mjs)
+- [server/runtimes/claude-cli-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-cli-session.mjs)
+
 ## 核心对象
 
 ### McpPageBundle
@@ -184,7 +217,7 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 
 ### InputBundle
 
-最终交给 Codex 的输入对象：
+最终交给 runtime 的输入对象：
 
 - `pageContext`
 - `request`
@@ -206,7 +239,7 @@ MVP 主 API：
 - `POST /api/jobs/:id/approval`
 - `POST /api/session/open`
 
-`GET /api/status` 会返回当前 Codex session 信息，包括 `threadId`、`threadName`、`turnCount`、`appVisible`、最近用户输入和最近助手回复。`notion2cli codex inspect` 用这些字段检查插件是否仍在复用同一个 Codex App session。`POST /api/session/open` 只负责打开 Codex App，不依赖私有 deep link。
+`GET /api/status` 会返回当前 runtime 和 session 信息。Codex 下包括 `threadId`、`threadName`、`turnCount`、`appVisible`；Claude 下包括 channel session 名称、transport、turnCount 和最近输入/回复。`POST /api/session/open` 只支持 Codex，用于打开 Codex App。
 
 MVP 已移除：
 
@@ -220,24 +253,23 @@ MVP 已移除：
 1. `job created`
 2. `page bundle prepared`
 3. `input bundle prepared`
-4. `codex_live_session_queued`
-5. `codex_live_session_running`
-6. `codex_live_session_completed`
+4. runtime queued / running / completed
 
 排错时优先看：
 
 - page bundle 是否准备成功
 - `imageCount` 是否符合预期
 - artifact 下载是否有 `warnings`
-- Codex turn 是否进入 running / completed
+- runtime job 是否进入 running / completed
 
 ## 当前边界
 
-- 只正式支持 Codex MVP
-- 整页读取仍依赖 Codex runtime 的 Notion MCP
+- Codex 使用 Codex App session
+- Claude 使用 Claude Code Channels，不支持 Claude Desktop 输入注入
+- 整页读取仍依赖 runtime 的 Notion MCP
 - 图片只来自 `McpPageBundle` 中解析出的附件链接
-- 写回仍由 Codex 通过 Notion MCP 完成
+- 写回仍由 runtime 通过 Notion MCP 完成
 - 文件附件暂未完整支持
 - 插件和 bridge 之间仍使用 localhost HTTP
 
-这些边界是为了最快验证核心问题：Notion 能否成为 CLI Agent 的输入框。
+这些边界是为了最快验证核心问题：Notion 能否成为本地 CLI Agent 的输入框。

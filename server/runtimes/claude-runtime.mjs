@@ -19,7 +19,9 @@ export class ClaudeRuntime {
     this.context = null;
     this.cwd = options.cwd || process.cwd();
     this.model = process.env.NOTION2CLI_CLAUDE_MODEL || '';
-    this.extraArgs = parseArgs(process.env.NOTION2CLI_CLAUDE_EXTRA_ARGS || '');
+    this.extraArgs = Array.isArray(options.extraArgs)
+      ? options.extraArgs
+      : parseArgs(process.env.NOTION2CLI_CLAUDE_EXTRA_ARGS || '');
     this.ready = false;
     this.statusMessage = '等待检查 Claude Code。';
     this.runningJobs = new Map();
@@ -183,7 +185,7 @@ export class ClaudeRuntime {
         ready: this.ready,
         standalone: false,
         pairingCommand: 'notion2cli pair',
-        launchCommand: 'notion2cli daemon start --runtime claude',
+        launchCommand: 'notion2cli claude launch',
         statusMessage: this.statusMessage,
       },
       notionMcp: await this.getNotionMcpStatus(),

@@ -36,12 +36,12 @@ const state = {
   session: null,
   runtime: {
     id: 'unknown',
-    label: 'Codex CLI',
+    label: '本地 Agent',
     ready: false,
     standalone: false,
     pairingCommand: 'notion2cli pair',
     launchCommand: '',
-    attachCommand: 'notion2cli codex attach',
+    attachCommand: '',
     statusMessage: '',
   },
   notionMcp: {
@@ -73,10 +73,10 @@ root.innerHTML = `
             <div class="n2c-page-title" data-page-title>读取中…</div>
           </div>
           <button class="n2c-send" type="button" data-send>作为新问题运行</button>
-          <div class="n2c-send-hint" data-send-hint>会把当前页作为下一条用户输入发给 Codex，并直接开始处理。</div>
+          <div class="n2c-send-hint" data-send-hint>会把当前页作为下一条用户输入发给当前 Agent，并直接开始处理。</div>
           <div class="n2c-session-bar">
-            <div class="n2c-session-text" data-session-text>Codex App session 尚未准备好</div>
-            <button class="n2c-open-app" type="button" data-open-app disabled>打开 Codex App</button>
+            <div class="n2c-session-text" data-session-text>当前会话尚未准备好</div>
+            <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
           </div>
           <div class="n2c-section-divider"></div>
           <div class="n2c-meta">
@@ -86,10 +86,10 @@ root.innerHTML = `
             </span>
             <span class="n2c-job-id" data-job-id></span>
           </div>
-          <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态、Codex 回复和手动写回结果会显示在这里。</div>
+          <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态、Agent 回复和手动写回结果会显示在这里。</div>
           <div class="n2c-approval n2c-hidden" data-approval>
             <div class="n2c-approval-title">需要你的确认</div>
-            <div class="n2c-approval-message" data-approval-message>Codex 需要确认后才能继续。</div>
+            <div class="n2c-approval-message" data-approval-message>当前执行需要确认后才能继续。</div>
             <div class="n2c-approval-actions">
               <button class="n2c-approve" type="button" data-approve>允许继续</button>
               <button class="n2c-decline" type="button" data-decline>拒绝</button>
@@ -102,7 +102,7 @@ root.innerHTML = `
               <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
             </div>
           </div>
-          <div class="n2c-output n2c-empty" data-output>最新 Codex 回复会显示在这里，写回时会使用这段内容。</div>
+          <div class="n2c-output n2c-empty" data-output>最新回复会显示在这里，写回时会使用这段内容。</div>
         </div>
       </div>
     </section>
@@ -457,6 +457,7 @@ async function refreshBridgeStatus() {
 
 function updateActionCopy() {
   const selected = getSelectionText();
+  const runtimeLabel = getRuntimeLabel();
 
   if (!state.runtime.ready) {
     sendButton.textContent = '作为新问题运行';
@@ -472,15 +473,15 @@ function updateActionCopy() {
     return;
   }
 
-  if (state.runtime.id !== 'codex' || state.runtime.standalone) {
-    sendButton.textContent = '请切换到 Codex runtime';
-    sendHintNode.textContent = '当前模式只支持 Codex。请在扩展弹窗里启动 Codex daemon，再回来运行。';
+  if (!isSupportedRuntime() || state.runtime.standalone) {
+    sendButton.textContent = '请切换到可用 runtime';
+    sendHintNode.textContent = '当前模式不支持真实运行。请在扩展弹窗里启动 Codex 或 Claude，再回来运行。';
     return;
   }
 
   if (selected) {
     sendButton.textContent = '运行选中内容';
-    sendHintNode.textContent = '会把选中内容作为下一条用户输入发给 Codex，并直接开始处理。';
+    sendHintNode.textContent = `会把选中内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
     return;
   }
 
@@ -491,13 +492,13 @@ function updateActionCopy() {
   }
 
   sendButton.textContent = '运行当前页';
-  sendHintNode.textContent = '会把整页内容作为下一条用户输入发给 Codex，并直接开始处理。';
+  sendHintNode.textContent = `会把整页内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
 }
 
 async function startAction() {
   const selectionText = getSelectionText();
   const action = selectionText ? ACTION_FORWARD_SELECTION : ACTION_FORWARD_FULL_PAGE;
-  const runtimeLabel = state.runtime.label || 'Codex CLI';
+  const runtimeLabel = getRuntimeLabel();
 
   clearPolling();
   setExpanded(true);
@@ -563,7 +564,7 @@ async function startManualWriteBack() {
   if (!replyText) {
     renderJobState({
       status: 'failed',
-      text: '当前没有可写回的 Codex 回复。',
+      text: '当前没有可写回的回复。',
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
@@ -581,7 +582,7 @@ async function startManualWriteBack() {
     return;
   }
 
-  const runtimeLabel = state.runtime.label || 'Codex CLI';
+  const runtimeLabel = getRuntimeLabel();
   state.busy = true;
   state.currentAction = ACTION_WRITE_REPLY;
   renderJobState({
@@ -646,9 +647,7 @@ function pollJob(jobId) {
         renderBrief();
         renderJobState({
           status: 'completed',
-          text: job.runtimeMeta?.appVisible
-            ? '这条结果已经进入同一个 Codex App session，并显示在面板里。'
-            : '这条结果已经显示在面板里，你可以继续手动写回 Notion。',
+          text: buildReplyCompletedText(job),
           jobId: job.id,
           action: job.action,
           runtimeMeta: job.runtimeMeta || {},
@@ -708,16 +707,30 @@ function buildJobStateText(job) {
   return job.replyText || statusLabel(job.status, job.action);
 }
 
+function buildReplyCompletedText(job) {
+  const meta = job.runtimeMeta || {};
+  if (state.runtime.id === 'codex' && meta.appVisible) {
+    return '这条结果已经进入同一个 Codex App session，并显示在面板里。';
+  }
+
+  if (state.runtime.id === 'claude') {
+    return '这条结果已经显示在当前 Claude Code 终端会话和面板里，你可以继续手动写回 Notion。';
+  }
+
+  return '这条结果已经显示在面板里，你可以继续手动写回 Notion。';
+}
+
 function buildForwardStatusText(status, action) {
   const target = action === ACTION_FORWARD_SELECTION ? '选中内容' : '当前页';
+  const runtimeLabel = getRuntimeLabel();
 
   switch (status) {
     case 'queued':
       return `${target} 已提交，正在排队处理…`;
     case 'dispatched':
-      return `${target} 已送达 Codex，正在等待开始处理…`;
+      return `${target} 已送达 ${runtimeLabel}，正在等待开始处理…`;
     case 'running':
-      return `Codex 正在处理${target}…`;
+      return `${runtimeLabel} 正在处理${target}…`;
     case 'sending':
       return `正在提交${target}…`;
     default:
@@ -729,12 +742,13 @@ function buildWriteStatusText(status, writeMode) {
   if (status === 'completed') {
     return buildWriteCompletedText(writeMode);
   }
+  const runtimeLabel = getRuntimeLabel();
 
   switch (status) {
     case 'queued':
       return '写回请求已发出，正在排队…';
     case 'dispatched':
-      return '写回请求已送达 Codex，正在等待执行…';
+      return `写回请求已送达 ${runtimeLabel}，正在等待执行…`;
     case 'running':
       return buildWriteRunningText(writeMode);
     case 'sending':
@@ -789,7 +803,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
       : `<span class="n2c-spinner"></span><span>${statusLabel(status, action)}</span>`;
   runStatusNode.innerHTML = statusMarkup;
 
-  activityNoteNode.textContent = text || '运行状态、Codex 回复和手动写回结果会显示在这里。';
+  activityNoteNode.textContent = text || '运行状态、Agent 回复和手动写回结果会显示在这里。';
   activityNoteNode.classList.toggle('n2c-empty', !text);
   syncApprovalState(status, runtimeMeta.pendingApproval || null);
   updateControls();
@@ -801,7 +815,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
 
 function renderBrief() {
   const brief = state.latestBrief || '';
-  outputNode.textContent = brief || '最新 Codex 回复会显示在这里，写回时会使用这段内容。';
+  outputNode.textContent = brief || '最新回复会显示在这里，写回时会使用这段内容。';
   outputNode.classList.toggle('n2c-empty', !brief);
   copyButton.disabled = !brief && !state.latestReply;
 
@@ -848,12 +862,24 @@ function getPageTitle() {
   return document.title.replace(/\s+\|\s+Notion$/, '').trim() || 'Untitled Notion Page';
 }
 
+function getRuntimeLabel() {
+  return state.runtime.label || '本地 Agent';
+}
+
+function isSupportedRuntime() {
+  return state.runtime.id === 'codex' || state.runtime.id === 'claude';
+}
+
+function canOpenRuntimeView() {
+  return state.runtime.id === 'codex' && Boolean(state.session?.threadId);
+}
+
 function updateControls() {
   const selectionText = getSelectionText();
   const canSendCurrentState = canStartAction(selectionText);
 
   sendButton.disabled = state.busy || !state.bridgeReady || !canSendCurrentState;
-  openAppButton.disabled = state.openAppBusy || !state.session?.threadId || state.runtime.id !== 'codex';
+  openAppButton.disabled = state.openAppBusy || !canOpenRuntimeView();
   copyButton.disabled = !(state.latestBrief || state.latestReply);
   writeBackButton.disabled = state.busy || !canWriteBack(selectionText);
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
@@ -895,7 +921,7 @@ function isUrlApprovalReadyToContinue() {
 }
 
 function canStartAction(selectionText) {
-  if (state.runtime.id !== 'codex' || state.runtime.standalone) {
+  if (!isSupportedRuntime() || state.runtime.standalone) {
     return false;
   }
 
@@ -912,7 +938,7 @@ function isReplyAction(action) {
 
 function formatBridgeMessage(response) {
   const runtime = response.runtime || {};
-  const runtimeLabel = runtime.label || 'Codex CLI';
+  const runtimeLabel = runtime.label || '本地 Agent';
 
   if (response.paired && runtime.ready) {
     if (runtime.standalone) {
@@ -927,14 +953,14 @@ function formatBridgeMessage(response) {
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || 'Codex CLI 未就绪';
+    return runtime.statusMessage || '本地 Agent 未就绪';
   }
 
   return '打开扩展完成连接';
 }
 
 function canAttemptFullPageDelivery() {
-  return state.notionMcp.status === 'configured' || state.notionMcp.status === 'unknown';
+  return ['configured', 'unknown', 'unauthenticated'].includes(state.notionMcp.status);
 }
 
 function canAttemptWriteBack() {
@@ -942,7 +968,7 @@ function canAttemptWriteBack() {
 }
 
 function canWriteBack(selectionText) {
-  if (state.runtime.id !== 'codex' || state.runtime.standalone) {
+  if (!isSupportedRuntime() || state.runtime.standalone) {
     return false;
   }
 
@@ -973,21 +999,33 @@ function syncLatestReplyFromSession(session) {
 }
 
 function renderSessionState() {
-  if (!state.runtime.ready || state.runtime.id !== 'codex') {
-    sessionTextNode.textContent = 'Codex App session 尚未准备好';
+  if (!state.runtime.ready) {
+    sessionTextNode.textContent = '当前会话尚未准备好';
+    openAppButton.textContent = '打开会话';
+    openAppButton.title = '';
     return;
   }
 
   const threadId = String(state.session?.threadId || '').trim();
   if (!threadId) {
-    sessionTextNode.textContent = '正在准备 Codex App session';
+    sessionTextNode.textContent = `正在准备 ${getRuntimeLabel()} 会话`;
+    openAppButton.textContent = state.runtime.id === 'codex' ? '打开 Codex App' : 'Claude 已在终端中';
+    openAppButton.title = state.runtime.id === 'claude'
+      ? 'Claude Code channel 会话就在启动 notion2cli claude launch 的终端里'
+      : '';
     return;
   }
 
-  const name = String(state.session?.threadName || '').trim() || 'notion2CLI';
+  const name = String(state.session?.threadName || state.session?.sessionName || '').trim() || 'notion2CLI';
   const turnCount = Number(state.session?.turnCount || 0);
-  const visibility = state.session?.appVisible ? 'App 可见' : '等待 App 同步';
+  const visibility = state.runtime.id === 'claude'
+    ? 'Claude 终端会话可见'
+    : state.session?.appVisible ? 'App 可见' : '等待 App 同步';
   sessionTextNode.textContent = `${name} · ${visibility} · ${turnCount} turns`;
+  openAppButton.textContent = state.runtime.id === 'codex' ? '打开 Codex App' : 'Claude 已在终端中';
+  openAppButton.title = state.runtime.id === 'claude'
+    ? 'Claude Code channel 会话就在启动 notion2cli claude launch 的终端里'
+    : '';
 }
 
 function sendMessage(message) {
@@ -1057,7 +1095,7 @@ async function submitApproval(action) {
       status: 'running',
       text: action === 'accept'
         ? '已允许继续执行，正在等待最新进度…'
-        : '已拒绝当前请求，正在等待 Codex 结束本次执行…',
+        : `已拒绝当前请求，正在等待 ${getRuntimeLabel()} 结束本次执行…`,
       jobId: state.currentJobId,
       action: state.currentAction,
       runtimeMeta: {},

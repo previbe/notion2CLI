@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseClaudeMcpList, parseClaudeSessionInitNotionStatus } from '../server/runtimes/claude-runtime.mjs';
-import { buildClaudePrompt } from '../server/core/codex-prompt.mjs';
+import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/codex-prompt.mjs';
+import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
 import { buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
@@ -45,6 +46,13 @@ test('codex live session args keep websocket transport and optional profile over
 test('codex live session uses a stable user-facing thread name', () => {
   assert.equal(
     buildCodexThreadName('/Users/morrow/coding/notion2CLI'),
+    'notion2CLI - notion2CLI',
+  );
+});
+
+test('claude channel uses a stable user-facing session name', () => {
+  assert.equal(
+    buildClaudeChannelName('/Users/morrow/coding/notion2CLI'),
     'notion2CLI - notion2CLI',
   );
 });
@@ -212,5 +220,37 @@ test('claude write-back prompt uses the shared structured action rules', () => {
   assert.match(prompt, /If action is "write_reply_to_notion", first resolve the target page from pageUrl using Notion MCP/);
   assert.match(prompt, /For "write_reply_to_notion" with writeMode "append_markdown_section", append replyTextToWrite/);
   assert.match(prompt, /"writeSectionTitle": "notion2CLI"/);
+  assert.match(prompt, /Return only the final user-facing reply text\./);
+});
+
+test('claude channel prompt asks the session to reply through the browser tool', () => {
+  const prompt = buildClaudeChannelPrompt({
+    id: 'job-456',
+    action: 'forward_selection_text',
+    pageUrl: 'https://www.notion.so/example',
+    pageTitle: 'Example',
+    selectionText: '只回答 OK',
+    replyTextToWrite: '',
+    writeMode: 'append_markdown_section',
+    writeSectionTitle: 'notion2CLI',
+    sourceReplyJobId: '',
+    installPrompt: '',
+    officialDocUrl: '',
+    source: 'test',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    inputBundle: {
+      images: [],
+      warnings: [],
+      artifactSource: 'none',
+      pageBundle: null,
+    },
+  }, {
+    notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
+  });
+
+  assert.match(prompt, /the active Claude Code channel session/);
+  assert.match(prompt, /browser reply tool named "reply"/);
+  assert.match(prompt, /call "reply" exactly once with chat_id "job-456"/);
+  assert.match(prompt, /"jobId": "job-456"/);
   assert.match(prompt, /Return only the final user-facing reply text\./);
 });

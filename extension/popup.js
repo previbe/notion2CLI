@@ -76,6 +76,9 @@ function renderStatus(status) {
   const connected = Boolean(status.paired) && Boolean(runtime.ready);
   const access = getAccessState(status);
   const nextStep = getNextStep(status);
+  if (runtime.id === 'codex' || runtime.id === 'claude') {
+    popupState.selectedRuntime = runtime.id;
+  }
 
   statusDot.classList.toggle('ready', connected);
   statusValue.textContent = buildStatusValue(status);
@@ -98,13 +101,13 @@ function renderDisconnectedState(message) {
   popupState.status = null;
   popupState.lastErrorMessage = message;
   statusDot.classList.remove('ready');
-  statusValue.textContent = '没有连接本地 Codex daemon';
+  statusValue.textContent = '没有连接本地 runtime';
   statusHint.textContent = message;
   popupRoot.dataset.state = 'offline';
   updateRuntimeSwitch(true);
   updatePairSection(false);
   stepTitle.textContent = '启动 CLI';
-  stepBody.textContent = '按顺序运行下面两条命令：启动 CLI 后，再生成 6 位配对码。';
+  stepBody.textContent = '按顺序运行下面两条命令：启动目标 runtime 后，再生成 6 位配对码。';
   renderCommands({
     commandLabel: '启动命令',
     command: getSelectedRuntimeLaunchCommand(),
@@ -140,7 +143,7 @@ function updateVisualState(status, access, connected) {
 
 function buildStatusValue(status) {
   const runtime = status.runtime || {};
-  const runtimeLabel = runtime.label || 'Codex CLI';
+  const runtimeLabel = runtime.label || '本地 Agent';
 
   if (status.paired && runtime.ready) {
     return runtime.standalone ? '已连接调试模式' : `已连接 ${runtimeLabel}`;
@@ -151,7 +154,7 @@ function buildStatusValue(status) {
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || 'Codex CLI 未就绪';
+    return runtime.statusMessage || '本地 Agent 未就绪';
   }
 
   return '浏览器尚未连接';
@@ -163,11 +166,11 @@ function buildStatusHint(status) {
   if (status.paired && runtime.ready) {
     return runtime.standalone
       ? '当前是调试模式：页面内操作会返回模拟结果，不会调用真实 Notion。'
-      : '浏览器已经连到当前 Codex 会话。回到 Notion 页面点击“运行当前页”即可直接开始处理；需要看终端细节时再打开可见 CLI。';
+      : `浏览器已经连到当前 ${runtime.label || 'Agent'} 会话。回到 Notion 页面点击“运行当前页”即可直接开始处理。`;
   }
 
   if (status.awaitingPairCode) {
-    return '已经生成 6 位配对码。把数字贴到下方，就能把当前浏览器连到本地 Codex daemon。';
+    return '已经生成 6 位配对码。把数字贴到下方，就能把当前浏览器连到本地会话。';
   }
 
   if (!runtime.ready) {
@@ -184,12 +187,12 @@ function getNextStep(status) {
   if (!runtime.ready) {
     return {
       title: '启动 CLI',
-      body: '按顺序运行下面两条命令：先启动 Codex daemon，再生成 6 位配对码。',
+      body: '按顺序运行下面两条命令：先启动目标 runtime，再生成 6 位配对码。',
       commandLabel: '启动命令',
       command: getSelectedRuntimeLaunchCommand(),
       secondaryCommandLabel: '生成配对码',
       secondaryCommand: 'notion2cli pair',
-      showRuntimeSwitch: false,
+      showRuntimeSwitch: true,
     };
   }
 
@@ -206,7 +209,7 @@ function getNextStep(status) {
   if (!runtime.standalone && access.canInstall) {
     return {
       title: '启用 Notion MCP',
-      body: '浏览器已经连上当前 Codex 会话。接下来只要把 Notion MCP 配好，运行整页和手动写回就能正常工作。',
+      body: `浏览器已经连上当前 ${runtime.label || 'Agent'} 会话。接下来只要把 Notion MCP 配好，运行整页和手动写回就能正常工作。`,
       command: '',
       showRuntimeSwitch: false,
     };
@@ -214,9 +217,9 @@ function getNextStep(status) {
 
   return {
     title: '可以运行 Notion 输入',
-    body: 'daemon 和浏览器都已就绪。回到 Notion 页点击“运行当前页”会直接启动 Codex 处理；下面的命令只用于你想查看同一个可见 CLI 会话时。',
+    body: `${runtime.label || 'Agent'} 和浏览器都已就绪。回到 Notion 页点击“运行当前页”会直接开始处理。`,
     commandLabel: '查看会话',
-    command: runtime.attachCommand || 'notion2cli codex attach',
+    command: runtime.attachCommand || (runtime.id === 'claude' ? 'notion2cli claude inspect' : 'notion2cli codex attach'),
     showRuntimeSwitch: false,
   };
 }
@@ -268,7 +271,7 @@ function getAccessState(status) {
       if (runtime.id === 'claude') {
         return {
           detail: notionMcp.detail || '已经检测到 Claude Code 的 Notion MCP 配置，但还没有完成授权。',
-          status: '整页读取或写回时，会直接在 Activity 里弹出浏览器授权链接。',
+          status: '整页读取时会在 Activity 里弹出浏览器授权链接；写回授权也可能出现在 Claude 终端里。',
           button: '按需授权',
           disabled: true,
           canInstall: false,
@@ -282,7 +285,7 @@ function getAccessState(status) {
         disabled: false,
         canInstall: true,
         pendingText: '正在发起授权请求…',
-        waitText: '授权请求已发出，等待 Codex 完成…',
+        waitText: `授权请求已发出，等待 ${runtime.label || 'Agent'} 完成…`,
       };
     case 'missing':
       return {
@@ -292,7 +295,7 @@ function getAccessState(status) {
         disabled: false,
         canInstall: true,
         pendingText: '正在启用 Notion MCP…',
-        waitText: '启用请求已发出，等待 Codex 完成…',
+        waitText: `启用请求已发出，等待 ${runtime.label || 'Agent'} 完成…`,
       };
     case 'unavailable':
       return {
@@ -310,7 +313,7 @@ function getAccessState(status) {
         disabled: false,
         canInstall: true,
         pendingText: '正在尝试修复 Notion MCP…',
-        waitText: '修复请求已发出，等待 Codex 处理…',
+        waitText: `修复请求已发出，等待 ${runtime.label || 'Agent'} 处理…`,
       };
   }
 }
@@ -424,7 +427,7 @@ async function sendInstallRequest() {
     });
 
     popupState.installJobId = response.jobId;
-    popupState.installMessage = access.waitText || '请求已发出，等待 Codex 处理…';
+    popupState.installMessage = access.waitText || '请求已发出，等待 Agent 处理…';
     renderStatus(status);
     pollInstallJob(response.jobId);
   } catch (error) {
@@ -490,7 +493,7 @@ function selectRuntime(runtimeId) {
 }
 
 function updateRuntimeSwitch(visible) {
-  runtimeSwitch.classList.toggle('hidden', true);
+  runtimeSwitch.classList.toggle('hidden', !visible);
   runtimeButtons.forEach((button) => {
     const active = button.dataset.runtimeButton === popupState.selectedRuntime;
     button.classList.toggle('active', active);
@@ -499,6 +502,10 @@ function updateRuntimeSwitch(visible) {
 }
 
 function getSelectedRuntimeLaunchCommand() {
+  if (popupState.selectedRuntime === 'claude') {
+    return 'notion2cli claude launch';
+  }
+
   return 'notion2cli daemon start --runtime codex';
 }
 

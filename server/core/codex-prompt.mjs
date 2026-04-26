@@ -3,6 +3,7 @@ import { buildCommonActionRules } from './instructions.mjs';
 export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {}) {
   const pageBundle = job.inputBundle?.pageBundle || null;
   const payload = {
+    jobId: job.id,
     action: job.action,
     pageUrl: job.pageUrl,
     pageTitle: job.pageTitle,
@@ -53,12 +54,22 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
     ]
     : [];
 
+  const replyLines = options.replyToolName
+    ? [
+      `A browser reply tool named "${options.replyToolName}" is available in this Claude Code channel session.`,
+      `After you determine the final user-facing reply, call "${options.replyToolName}" exactly once with chat_id ${JSON.stringify(job.id || '')} and text equal to that reply.`,
+      'If the task fails, call the reply tool with status "failed" and a concise error explanation.',
+    ]
+    : [
+      'There is no browser reply tool in this run. The last assistant message you produce will be shown directly in the browser panel.',
+    ];
+
   return [
     `You are handling a notion2cli browser action for ${runtimeLabel}.`,
     ...buildCommonActionRules(),
     primaryUserText ? `Current browser user message: ${JSON.stringify(primaryUserText)}` : null,
     localImageArtifacts.length ? `Current page image file count: ${localImageArtifacts.length}.` : null,
-    'There is no browser reply tool in this run. The last assistant message you produce will be shown directly in the browser panel.',
+    ...replyLines,
     'For content-forwarding and write-back actions, do not edit local repository files and do not run shell commands unless they are strictly necessary to explain a concrete error.',
     runtimeInfo?.notionMcpHint ? `Runtime hint: ${runtimeInfo.notionMcpHint}` : null,
     '',
@@ -86,6 +97,13 @@ export function buildCodexPrompt(job, runtimeInfo) {
 export function buildClaudePrompt(job, runtimeInfo) {
   return buildDedicatedRuntimePrompt(job, runtimeInfo, {
     runtimeLabel: 'the local Claude Code runtime',
+  });
+}
+
+export function buildClaudeChannelPrompt(job, runtimeInfo) {
+  return buildDedicatedRuntimePrompt(job, runtimeInfo, {
+    runtimeLabel: 'the active Claude Code channel session',
+    replyToolName: 'reply',
   });
 }
 

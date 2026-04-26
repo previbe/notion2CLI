@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A local-first bridge that runs Notion page content as the next input in a local Codex CLI session.",
+  "description": "A local-first bridge that runs Notion page content as the next input in a local Codex or Claude Code session.",
   "bin": {
     "notion2cli": "./bin/notion2cli.mjs",
     "notion2cli-bridge": "./bin/notion2cli-bridge",
@@ -14,6 +14,7 @@
     "check": "node ./scripts/check.mjs",
     "test": "node --test",
     "bridge:codex": "node ./bin/notion2cli.mjs daemon start --runtime codex --foreground",
+    "bridge:claude": "node ./bin/notion2cli.mjs claude launch",
     "dev:standalone": "node ./bin/notion2cli.mjs daemon start --runtime standalone --foreground",
     "pair": "node ./bin/notion2cli.mjs pair",
     "status": "node ./bin/notion2cli.mjs status",

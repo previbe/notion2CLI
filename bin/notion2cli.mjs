@@ -3,12 +3,21 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
+import path from 'node:path';
 import { parseArgv } from '../cli/argv.mjs';
 import { inspectDaemon, runManagedDaemon, startDaemon, stopDaemon } from '../cli/daemon.mjs';
 import { createPairCode, fetchBridgeStatus } from '../cli/http-client.mjs';
 import { formatDoctorReport, runDoctor } from '../cli/doctor.mjs';
+import {
+  ensureAppDirs,
+  getAppPaths,
+  getClaudeChannelServerPath,
+  resolveWorkspaceCwd,
+  writeJsonFile,
+} from '../cli/paths.mjs';
 import { DEFAULT_PORT, HOST } from '../server/core/constants.mjs';
 import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
+import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { runCommand } from '../server/runtimes/exec-utils.mjs';
 
@@ -52,6 +61,9 @@ async function main(argv) {
       return;
     case 'codex':
       await handleCodex(rest);
+      return;
+    case 'claude':
+      await handleClaude(rest);
       return;
     case 'mcp':
       await handleMcp(rest);
@@ -198,7 +210,6 @@ async function handleDaemon(argv) {
     default:
       throw new Error([
         '用法：',
-        '  notion2cli daemon start --runtime claude',
         '  notion2cli daemon start --runtime codex',
         '  notion2cli daemon start --runtime standalone --foreground',
         '  notion2cli daemon stop',
@@ -359,6 +370,110 @@ async function handleCodexOpen(argv) {
     status.session?.threadId ? `Thread ID：${status.session.threadId}` : null,
     '如果 Codex App 已经打开但没有立即跳到该会话，请在最近会话里查看 notion2CLI session。',
   ].filter(Boolean).join('\n') + '\n');
+}
+
+async function handleClaude(argv) {
+  const [subcommand, ...rest] = argv;
+
+  switch (subcommand) {
+    case 'launch':
+      await handleClaudeLaunch(rest);
+      return;
+    case 'inspect':
+      await handleClaudeInspect(rest);
+      return;
+    case 'config-path':
+      await handleClaudeConfigPath(rest);
+      return;
+    default:
+      throw new Error('用法：notion2cli claude launch|inspect|config-path');
+  }
+}
+
+async function handleClaudeLaunch(argv) {
+  const options = parseArgv(argv);
+  const cwd = resolveWorkspaceCwd(options.cwd);
+  const host = options.host || HOST;
+  const port = Number(options.port || DEFAULT_PORT);
+  const configs = await ensureClaudeChannelConfigs({ cwd, host, port });
+  const passthrough = options['--'] || [];
+  const artifactDir = getAppPaths().artifactsDir;
+  const command = [
+    'claude',
+    '--mcp-config',
+    configs.channelConfigPath,
+    '--dangerously-load-development-channels',
+    'server:notion2cli_bridge',
+    '--add-dir',
+    artifactDir,
+    ...(!hasClaudeOption(passthrough, '--name', '-n') ? ['--name', buildClaudeChannelName(cwd)] : []),
+    ...passthrough,
+  ];
+
+  if (options.json) {
+    printJson({
+      ok: true,
+      command,
+      cwd,
+      host,
+      port,
+      ...configs,
+    });
+    return;
+  }
+
+  if (options.print) {
+    process.stdout.write(`${command.map(quoteShellArg).join(' ')}\n`);
+    return;
+  }
+
+  const result = await runInteractiveCommand(command[0], command.slice(1), { cwd });
+  process.exit(result.code ?? 0);
+}
+
+async function handleClaudeInspect(argv) {
+  const options = parseArgv(argv);
+  const target = await resolveBridgeTarget(options);
+  const status = await fetchBridgeStatus(target);
+
+  if (status.runtime?.id !== 'claude') {
+    throw new Error('当前 bridge 不是 Claude runtime。先运行 `notion2cli claude launch`。');
+  }
+
+  if (options.json) {
+    printJson({
+      ok: true,
+      runtime: status.runtime,
+      session: status.session || null,
+      notionMcp: status.notionMcp || null,
+    });
+    return;
+  }
+
+  process.stdout.write(formatClaudeSession(status));
+}
+
+async function handleClaudeConfigPath(argv) {
+  const options = parseArgv(argv);
+  const cwd = resolveWorkspaceCwd(options.cwd);
+  const configs = await ensureClaudeChannelConfigs({
+    cwd,
+    host: options.host || HOST,
+    port: Number(options.port || DEFAULT_PORT),
+  });
+
+  if (options.json) {
+    printJson({
+      ok: true,
+      ...configs,
+    });
+    return;
+  }
+
+  process.stdout.write([
+    `channel：${configs.channelConfigPath}`,
+    `worker：${configs.workerConfigPath}`,
+  ].join('\n') + '\n');
 }
 
 async function installCodexNotionMcp() {
@@ -536,6 +651,9 @@ function formatDaemonStatus(status) {
       status.bridge?.runtime?.id === 'codex' && status.bridge?.session?.threadId
         ? `Codex App：${status.bridge.session.threadName || status.bridge.session.threadId}（${status.bridge.session.appVisible ? 'App 可见' : '等待同步'}）`
         : null,
+      status.bridge?.runtime?.id === 'claude' && status.bridge?.session?.threadId
+        ? `Claude Channel：${status.bridge.session.threadName || status.bridge.session.threadId}`
+        : null,
       status.metadata?.cwd ? `工作目录：${status.metadata.cwd}` : null,
       status.metadata?.pid ? `PID：${status.metadata.pid}` : null,
     ].filter(Boolean).join('\n') + '\n';
@@ -557,7 +675,6 @@ function printHelp() {
     'notion2cli',
     '',
     '命令：',
-    '  notion2cli daemon start --runtime claude',
     '  notion2cli daemon start --runtime codex',
     '  notion2cli daemon start --runtime standalone --foreground',
     '  notion2cli daemon stop',
@@ -566,6 +683,9 @@ function printHelp() {
     '  notion2cli codex attach --remote-only',
     '  notion2cli codex inspect',
     '  notion2cli codex open',
+    '  notion2cli claude launch',
+    '  notion2cli claude inspect',
+    '  notion2cli claude config-path',
     '  notion2cli pair',
     '  notion2cli status',
     '  notion2cli doctor',
@@ -573,7 +693,8 @@ function printHelp() {
     '  notion2cli mcp install notion --runtime claude',
     '',
     '说明：',
-    '  - `claude`、`codex` 和 `standalone` 都支持本地 daemon。',
+    '  - `codex` 主流程使用本地 daemon 和 Codex App session。',
+    '  - `claude` 主流程使用 `notion2cli claude launch` 附着当前 Claude Code channel session。',
   ].join('\n') + '\n');
 }
 
@@ -599,6 +720,83 @@ function formatCodexSession(status) {
     session.latestAssistantMessage ? `最近 Codex 回复：${compactOneLine(session.latestAssistantMessage)}` : null,
     '打开：notion2cli codex open',
   ].filter(Boolean).join('\n') + '\n';
+}
+
+function formatClaudeSession(status) {
+  const session = status.session || null;
+  if (!session?.sessionId && !session?.threadId) {
+    return [
+      '当前没有已附着的 Claude Code channel session。',
+      status.runtime?.statusMessage ? `状态：${status.runtime.statusMessage}` : null,
+      '启动：notion2cli claude launch',
+    ].filter(Boolean).join('\n') + '\n';
+  }
+
+  return [
+    'Claude Code channel session',
+    `名称：${session.sessionName || session.threadName || 'notion2CLI'}`,
+    `Session ID：${session.sessionId || session.threadId}`,
+    `Transport：${session.transport || 'claude-channel'}`,
+    `当前会话可见：${session.visibleInNativeClient || session.appVisible ? '是' : '未确认'}`,
+    `Turns：${session.turnCount ?? 0}`,
+    status.notionMcp?.status ? `Notion MCP：${status.notionMcp.status}` : null,
+    status.notionMcp?.detail ? `Notion MCP 详情：${status.notionMcp.detail}` : null,
+    session.latestUserMessage ? `最近用户输入：${compactOneLine(session.latestUserMessage)}` : null,
+    session.latestAssistantMessage ? `最近 Claude 回复：${compactOneLine(session.latestAssistantMessage)}` : null,
+    '启动：notion2cli claude launch',
+  ].filter(Boolean).join('\n') + '\n';
+}
+
+async function ensureClaudeChannelConfigs({ cwd, host, port }) {
+  await ensureAppDirs();
+  const paths = getAppPaths();
+  const workerConfigPath = paths.claudeWorkerMcpConfigFile;
+  const channelConfigPath = paths.claudeChannelMcpConfigFile;
+
+  await writeJsonFile(workerConfigPath, {
+    mcpServers: {
+      notion: {
+        type: 'http',
+        url: NOTION_MCP_URL,
+      },
+    },
+  });
+
+  await writeJsonFile(channelConfigPath, {
+    mcpServers: {
+      notion2cli_bridge: {
+        command: process.execPath,
+        args: [getClaudeChannelServerPath()],
+        cwd,
+        env: {
+          NOTION2CLI_HOST: host,
+          NOTION2CLI_PORT: String(port),
+          NOTION2CLI_WORKSPACE_CWD: cwd,
+          NOTION2CLI_CLAUDE_WORKER_MCP_CONFIG: workerConfigPath,
+        },
+      },
+      notion: {
+        type: 'http',
+        url: NOTION_MCP_URL,
+      },
+    },
+  });
+
+  return {
+    channelConfigPath,
+    workerConfigPath,
+  };
+}
+
+function hasClaudeOption(args, longName, shortName) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === longName || arg === shortName || arg.startsWith(`${longName}=`)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function compactOneLine(value, maxLength = 160) {

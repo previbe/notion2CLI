@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { BridgeApp } from './core/bridge-app.mjs';
 import { DEFAULT_PORT, HOST } from './core/constants.mjs';
 import { createBridgeHttpServer } from './core/http-server.mjs';
+import { ClaudeChannelRuntime } from './runtimes/claude-channel-runtime.mjs';
 import { ClaudeRuntime } from './runtimes/claude-runtime.mjs';
 import { CodexRuntime } from './runtimes/codex-runtime.mjs';
 import { StandaloneRuntime } from './runtimes/standalone-runtime.mjs';
@@ -57,6 +58,8 @@ export async function startBridgeServer(options = {}) {
 
 function createRuntime(id, logger, options = {}) {
   switch (id) {
+    case 'claude-channel':
+      return new ClaudeChannelRuntime(logger, { cwd: options.cwd });
     case 'claude':
       return new ClaudeRuntime(logger, { cwd: options.cwd });
     case 'codex':
