@@ -73,11 +73,7 @@ root.innerHTML = `
             <div class="n2c-page-title" data-page-title>读取中…</div>
           </div>
           <button class="n2c-send" type="button" data-send>作为新问题运行</button>
-          <div class="n2c-send-hint" data-send-hint>会把当前页作为下一条用户输入发给当前 Agent，并直接开始处理。</div>
-          <div class="n2c-session-bar">
-            <div class="n2c-session-text" data-session-text>当前会话尚未准备好</div>
-            <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
-          </div>
+          <div class="n2c-send-hint n2c-hidden" data-send-hint></div>
           <div class="n2c-section-divider"></div>
           <div class="n2c-meta">
             <span class="n2c-status" data-run-status>
@@ -103,6 +99,9 @@ root.innerHTML = `
             </div>
           </div>
           <div class="n2c-output n2c-empty" data-output>最新回复会显示在这里，写回时会使用这段内容。</div>
+          <div class="n2c-footer-actions">
+            <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
+          </div>
         </div>
       </div>
     </section>
@@ -130,7 +129,6 @@ const closeSheetButton = root.querySelector('[data-close-sheet]');
 const pageTitleNode = root.querySelector('[data-page-title]');
 const sendButton = root.querySelector('[data-send]');
 const sendHintNode = root.querySelector('[data-send-hint]');
-const sessionTextNode = root.querySelector('[data-session-text]');
 const openAppButton = root.querySelector('[data-open-app]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
@@ -1000,7 +998,6 @@ function syncLatestReplyFromSession(session) {
 
 function renderSessionState() {
   if (!state.runtime.ready) {
-    sessionTextNode.textContent = '当前会话尚未准备好';
     openAppButton.textContent = '打开会话';
     openAppButton.title = '';
     return;
@@ -1008,7 +1005,6 @@ function renderSessionState() {
 
   const threadId = String(state.session?.threadId || '').trim();
   if (!threadId) {
-    sessionTextNode.textContent = `正在准备 ${getRuntimeLabel()} 会话`;
     openAppButton.textContent = state.runtime.id === 'codex' ? '打开 Codex App' : 'Claude 已在终端中';
     openAppButton.title = state.runtime.id === 'claude'
       ? 'Claude Code channel 会话就在启动 notion2cli claude launch 的终端里'
@@ -1016,12 +1012,6 @@ function renderSessionState() {
     return;
   }
 
-  const name = String(state.session?.threadName || state.session?.sessionName || '').trim() || 'notion2CLI';
-  const turnCount = Number(state.session?.turnCount || 0);
-  const visibility = state.runtime.id === 'claude'
-    ? 'Claude 终端会话可见'
-    : state.session?.appVisible ? 'App 可见' : '等待 App 同步';
-  sessionTextNode.textContent = `${name} · ${visibility} · ${turnCount} turns`;
   openAppButton.textContent = state.runtime.id === 'codex' ? '打开 Codex App' : 'Claude 已在终端中';
   openAppButton.title = state.runtime.id === 'claude'
     ? 'Claude Code channel 会话就在启动 notion2cli claude launch 的终端里'

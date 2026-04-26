@@ -74,7 +74,8 @@ code {
 .status-card,
 .pair-card,
 .access-card,
-.config-card {
+.config-card,
+.stop-card {
   margin-top: 14px;
   padding: 18px;
   border: 1px solid var(--line-soft);
@@ -144,6 +145,10 @@ code {
   margin-top: 0;
 }
 
+.stop-card .command-row {
+  margin-top: 12px;
+}
+
 .step-card {
   margin-top: 18px;
   padding: 18px 0 0;
@@ -154,6 +159,10 @@ code {
   border-bottom: 0;
   border-left: 0;
   box-shadow: none;
+}
+
+.step-card.hidden {
+  display: none;
 }
 
 .step-topbar {

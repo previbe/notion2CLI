@@ -274,26 +274,16 @@
   color: var(--n2c-ink-body);
 }
 
-.n2c-session-bar {
-  margin-top: 12px;
+.n2c-footer-actions {
   display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.n2c-session-text {
-  min-width: 0;
-  flex: 1;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--n2c-ink-soft);
-  overflow-wrap: anywhere;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 .n2c-open-app {
   flex: none;
   min-height: 32px;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--n2c-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.62);

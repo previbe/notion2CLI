@@ -19,6 +19,7 @@ const popupRoot = document.querySelector('[data-popup-root]');
 const statusDot = document.querySelector('[data-status-dot]');
 const statusValue = document.querySelector('[data-status-value]');
 const statusHint = document.querySelector('[data-status-hint]');
+const stepCard = document.querySelector('[data-step-card]');
 const stepTitle = document.querySelector('[data-step-title]');
 const stepBody = document.querySelector('[data-step-body]');
 const runtimeSwitch = document.querySelector('[data-runtime-switch]');
@@ -33,6 +34,8 @@ const pairCommandBlock = document.querySelector('[data-pair-command-block]');
 const pairCommandLabel = document.querySelector('[data-pair-command-label]');
 const pairCommand = document.querySelector('[data-pair-command]');
 const copyPairCommandButton = document.querySelector('[data-copy-pair-command]');
+const stopCommand = document.querySelector('[data-stop-command]');
+const copyStopCommandButton = document.querySelector('[data-copy-stop-command]');
 const codeInput = document.querySelector('[data-code-input]');
 const connectButton = document.querySelector('[data-connect-button]');
 const clearButton = document.querySelector('[data-clear-button]');
@@ -48,6 +51,7 @@ connectButton.addEventListener('click', connectBridge);
 clearButton.addEventListener('click', clearBridge);
 copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyCommandButton));
 copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
+copyStopCommandButton.addEventListener('click', () => copyCommand(stopCommand, copyStopCommandButton));
 installButton.addEventListener('click', sendInstallRequest);
 writeModeSelect.addEventListener('change', handleWriteModeChange);
 runtimeButtons.forEach((button) => {
@@ -86,6 +90,7 @@ function renderStatus(status) {
   updateVisualState(status, access, connected);
   updateRuntimeSwitch(nextStep.showRuntimeSwitch);
   updatePairSection(connected);
+  stepCard.classList.toggle('hidden', Boolean(nextStep.hideStepCard));
 
   stepTitle.textContent = nextStep.title;
   stepBody.textContent = nextStep.body;
@@ -104,6 +109,7 @@ function renderDisconnectedState(message) {
   statusValue.textContent = '没有连接本地 runtime';
   statusHint.textContent = message;
   popupRoot.dataset.state = 'offline';
+  stepCard.classList.remove('hidden');
   updateRuntimeSwitch(true);
   updatePairSection(false);
   stepTitle.textContent = '启动 CLI';
@@ -216,11 +222,11 @@ function getNextStep(status) {
   }
 
   return {
-    title: '可以运行 Notion 输入',
-    body: `${runtime.label || 'Agent'} 和浏览器都已就绪。回到 Notion 页点击“运行当前页”会直接开始处理。`,
-    commandLabel: '查看会话',
-    command: runtime.attachCommand || (runtime.id === 'claude' ? 'notion2cli claude inspect' : 'notion2cli codex attach'),
+    title: '',
+    body: '',
+    command: '',
     showRuntimeSwitch: false,
+    hideStepCard: true,
   };
 }
 

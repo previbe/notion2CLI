@@ -25,7 +25,7 @@
 
         <p class="status-hint" data-status-hint>正在读取本地状态。</p>
 
-        <div class="step-card">
+        <div class="step-card" data-step-card>
           <div class="step-topbar">
             <div class="step-title" data-step-title>正在检查你需要做什么</div>
             <div class="runtime-switch hidden" data-runtime-switch>
@@ -84,6 +84,15 @@
           </select>
         </label>
         <p class="config-note" data-write-mode-hint>这只影响你点击“写回 Notion”时的行为，不会影响 Notion 内容作为新问题运行。</p>
+      </section>
+
+      <section class="stop-card">
+        <div class="section-title">终止后台进程</div>
+        <p class="section-copy">需要停止 Codex daemon 或清理后台 bridge 时运行。</p>
+        <div class="command-row">
+          <code data-stop-command>notion2cli daemon stop</code>
+          <button class="chip" data-copy-stop-command type="button">复制</button>
+        </div>
       </section>
     </main>
     <script type="module" src="popup.js"></script>
