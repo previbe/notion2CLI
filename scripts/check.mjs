@@ -21,6 +21,9 @@ const EXTENSIONLESS_TEXT_FILES = new Set([
   'notion2cli-connect',
   'notion2cli-status',
 ]);
+const CJK_ALLOWED_FILES = new Set([
+  'README.zh-CN.md',
+]);
 
 await checkEnglishOnlyText();
 
@@ -48,11 +51,16 @@ async function checkEnglishOnlyText() {
   const violations = [];
 
   for (const file of files) {
+    const relativePath = path.relative(root, file);
+    if (CJK_ALLOWED_FILES.has(relativePath)) {
+      continue;
+    }
+
     const raw = await readFile(file, 'utf8');
     const lines = raw.split(/\r?\n/);
     lines.forEach((line, index) => {
       if (/\p{Script=Han}|[\u3000-\u303f\uff00-\uffef]/u.test(line)) {
-        violations.push(`${path.relative(root, file)}:${index + 1}: ${line.trim()}`);
+        violations.push(`${relativePath}:${index + 1}: ${line.trim()}`);
       }
     });
   }

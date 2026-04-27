@@ -1,6 +1,6 @@
 # notion2CLI
 
-[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Contributing](CONTRIBUTING.md)
+[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](README.zh-CN.md)
 
 Use a Notion page as the rich-text input surface for a local Codex or Claude Code session.
 
