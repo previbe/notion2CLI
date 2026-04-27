@@ -11,6 +11,7 @@ const popupState = {
   writeMode: WRITE_MODE_APPEND_SECTION,
   manualWritebackVisible: false,
   lastErrorMessage: '',
+  pairBusy: false,
   installBusy: false,
   installJobId: null,
   installMessage: '',
@@ -52,6 +53,7 @@ const writeModeSelect = document.querySelector('[data-write-mode-select]');
 const writeModeHint = document.querySelector('[data-write-mode-hint]');
 
 connectButton.addEventListener('click', connectBridge);
+codeInput.addEventListener('input', handleCodeInput);
 clearButton.addEventListener('click', clearBridge);
 copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyCommandButton));
 copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
@@ -349,6 +351,10 @@ function getAccessState(status) {
 }
 
 async function connectBridge() {
+  if (popupState.pairBusy) {
+    return;
+  }
+
   const code = codeInput.value.trim();
   if (!/^\d{6}$/.test(code)) {
     statusValue.textContent = '配对码格式不正确';
@@ -356,7 +362,9 @@ async function connectBridge() {
     return;
   }
 
+  popupState.pairBusy = true;
   connectButton.disabled = true;
+  codeInput.disabled = true;
   connectButton.textContent = '连接中…';
 
   try {
@@ -369,8 +377,21 @@ async function connectBridge() {
     statusValue.textContent = '连接失败';
     statusHint.textContent = error.message || '请重新生成配对码后再试一次。';
   } finally {
+    popupState.pairBusy = false;
     connectButton.disabled = false;
+    codeInput.disabled = false;
     connectButton.textContent = '连接浏览器';
+  }
+}
+
+function handleCodeInput() {
+  const normalized = codeInput.value.replace(/\D/g, '').slice(0, 6);
+  if (codeInput.value !== normalized) {
+    codeInput.value = normalized;
+  }
+
+  if (normalized.length === 6) {
+    connectBridge();
   }
 }
 

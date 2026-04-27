@@ -1,6 +1,7 @@
 const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
 const MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY = 'notion2cli.manualWritebackVisible';
 const PANEL_POSITION_STORAGE_KEY = 'notion2cli.panelPosition';
+const LAST_PROMPT_PROFILE_STORAGE_KEY = 'notion2cli.lastPromptProfileId';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
 const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
@@ -601,9 +602,22 @@ function renderPromptButtons() {
     button.dataset.promptProfileId = profile.id;
     button.disabled = disabled;
     button.classList.toggle('active', profile.id === state.promptProfileId);
-    button.addEventListener('click', () => startAction(profile.id));
+    button.addEventListener('click', () => handlePromptButtonClick(profile.id));
     promptListNode.appendChild(button);
   }
+}
+
+function handlePromptButtonClick(profileId) {
+  const task = resolvePromptProfile(profileId);
+  if (task.id !== state.promptProfileId) {
+    state.promptProfileId = task.id;
+    renderPromptButtons();
+    updateActionCopy();
+    updateControls();
+    return;
+  }
+
+  startAction(task.id);
 }
 
 function updateActionCopy() {
@@ -662,6 +676,7 @@ async function startAction(profileId = state.promptProfileId) {
   const runtimeLabel = getRuntimeLabel();
   const task = resolvePromptProfile(profileId);
   state.promptProfileId = task.id;
+  persistPromptProfilePreference(task.id);
 
   clearPolling();
   setExpanded(true);
@@ -1314,6 +1329,7 @@ async function deletePromptFromEditor() {
     updatePromptProfilesFromResponse(response);
     if (state.promptProfileId === profile.id) {
       state.promptProfileId = PROMPT_PROFILE_RAW;
+      persistPromptProfilePreference(state.promptProfileId);
     }
     state.promptEditorProfileId = state.promptProfileId;
     state.promptEditorMessage = '已删除。';
@@ -1669,16 +1685,25 @@ async function loadWriteSettingsPreference() {
     const data = await chrome.storage.local.get([
       WRITE_MODE_STORAGE_KEY,
       MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY,
+      LAST_PROMPT_PROFILE_STORAGE_KEY,
     ]);
     state.writeMode = normalizeWriteMode(data[WRITE_MODE_STORAGE_KEY]);
     state.manualWritebackVisible = data[MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY] === true;
+    state.promptProfileId = normalizePromptProfileId(data[LAST_PROMPT_PROFILE_STORAGE_KEY]);
   } catch {
     state.writeMode = WRITE_MODE_APPEND_SECTION;
     state.manualWritebackVisible = false;
+    state.promptProfileId = PROMPT_PROFILE_RAW;
   }
 
   updateActionCopy();
   updateControls();
+}
+
+function persistPromptProfilePreference(profileId) {
+  chrome.storage.local.set({
+    [LAST_PROMPT_PROFILE_STORAGE_KEY]: normalizePromptProfileId(profileId),
+  }).catch(() => {});
 }
 
 function normalizeWriteMode(mode) {
