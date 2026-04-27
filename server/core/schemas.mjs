@@ -11,7 +11,7 @@ import {
   WRITE_MODES,
   createHttpError,
 } from './constants.mjs';
-import { getPromptProfile, isPromptProfileId, normalizePromptProfileId } from './prompt-profiles.mjs';
+import { normalizePromptProfileId } from './prompt-profiles.mjs';
 
 const requestShape = z.object({
   action: z.string().optional(),
@@ -39,6 +39,11 @@ const approvalResolutionShape = z.object({
   _meta: z.unknown().optional(),
 }).passthrough();
 
+const promptProfileMutationShape = z.object({
+  name: z.string().optional(),
+  instruction: z.string().optional(),
+}).passthrough();
+
 function invalidPayload(message) {
   return createHttpError(400, message);
 }
@@ -64,10 +69,6 @@ function trimOrDefault(value, fallback = '') {
 export function parseJobRequest(body) {
   const raw = requestShape.parse(body ?? {});
   const promptProfileId = normalizePromptProfileId(raw.promptProfileId);
-  if (!isPromptProfileId(promptProfileId)) {
-    throw invalidPayload(`Unknown promptProfileId: ${promptProfileId}`);
-  }
-
   const payload = {
     action: normalizeAction(raw.action),
     pageUrl: trimOrDefault(raw.pageUrl),
@@ -80,7 +81,6 @@ export function parseJobRequest(body) {
     installPrompt: trimOrDefault(raw.installPrompt),
     officialDocUrl: trimOrDefault(raw.officialDocUrl),
     promptProfileId,
-    promptProfile: getPromptProfile(promptProfileId),
     source: trimOrDefault(raw.source, 'browser-extension') || 'browser-extension',
   };
 
@@ -105,6 +105,14 @@ export function parseJobRequest(body) {
   }
 
   return payload;
+}
+
+export function parsePromptProfileMutation(body) {
+  const raw = promptProfileMutationShape.parse(body ?? {});
+  return {
+    name: trimOrDefault(raw.name),
+    instruction: trimOrDefault(raw.instruction),
+  };
 }
 
 export function parsePairConfirm(body) {

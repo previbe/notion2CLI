@@ -39,8 +39,13 @@
 
 .n2c-fab,
 .n2c-strip-toggle,
-.n2c-send,
-.n2c-task-select,
+.n2c-task-button,
+.n2c-prompt-manage,
+.n2c-modal-close,
+.n2c-input,
+.n2c-textarea,
+.n2c-editor-list-item,
+.n2c-editor-button,
 .n2c-approve,
 .n2c-decline,
 .n2c-copy,
@@ -248,43 +253,60 @@
   margin-top: 14px;
 }
 
-.n2c-task-select {
-  width: 100%;
-  min-height: 40px;
-  padding: 0 38px 0 12px;
+.n2c-task-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.n2c-prompt-manage {
+  border: 0;
+  background: transparent;
+  color: var(--n2c-ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-task-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.n2c-task-button {
+  max-width: 120px;
+  min-height: 34px;
+  padding: 8px 12px;
   border: 1px solid var(--n2c-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.72);
   color: var(--n2c-ink-strong);
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.n2c-send {
-  width: 100%;
-  margin-top: 16px;
-  padding: 14px 16px;
-  border: 0;
-  border-radius: 16px;
+.n2c-task-button.active {
+  border-color: rgba(92, 122, 74, 0.58);
   background: var(--n2c-green);
   color: #f7f3ea;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
-.n2c-send:hover {
+.n2c-task-button:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 14px 24px rgba(92, 122, 74, 0.22);
 }
 
-.n2c-send:disabled {
-  background: rgba(92, 122, 74, 0.38);
+.n2c-task-button:disabled,
+.n2c-prompt-manage:disabled {
   cursor: default;
-  box-shadow: none;
+  opacity: 0.48;
   transform: none;
 }
 
@@ -297,7 +319,9 @@
 
 .n2c-footer-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-top: 14px;
 }
 
@@ -316,6 +340,178 @@
 
 .n2c-open-app:disabled {
   cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.n2c-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(25, 32, 43, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.n2c-modal.n2c-hidden {
+  display: none;
+}
+
+.n2c-modal-panel {
+  width: min(560px, calc(100vw - 28px));
+  max-height: min(82vh, 720px);
+  overflow: hidden;
+  border: 1px solid var(--n2c-border);
+  border-radius: 18px;
+  background: var(--n2c-paper-bg);
+  box-shadow: var(--n2c-shadow);
+}
+
+.n2c-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid var(--n2c-border-soft);
+}
+
+.n2c-modal-title {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--n2c-ink-strong);
+}
+
+.n2c-modal-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--n2c-border-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--n2c-ink-strong);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.n2c-prompt-editor {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+  max-height: calc(min(82vh, 720px) - 66px);
+  overflow: auto;
+}
+
+.n2c-prompt-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.n2c-editor-list-item {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--n2c-border-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--n2c-ink-strong);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.n2c-editor-list-item.active {
+  border-color: rgba(92, 122, 74, 0.48);
+  background: rgba(92, 122, 74, 0.12);
+}
+
+.n2c-prompt-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.n2c-field {
+  display: grid;
+  gap: 6px;
+}
+
+.n2c-field-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--n2c-ink-soft);
+}
+
+.n2c-input,
+.n2c-textarea {
+  width: 100%;
+  border: 1px solid var(--n2c-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--n2c-ink-strong);
+  font-size: 12px;
+}
+
+.n2c-input {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.n2c-textarea {
+  min-height: 220px;
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.5;
+}
+
+.n2c-editor-message {
+  min-height: 18px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--n2c-ink-body);
+}
+
+.n2c-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.n2c-editor-button {
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid var(--n2c-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--n2c-ink-strong);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.n2c-editor-primary {
+  border: 0;
+  background: var(--n2c-green);
+  color: #f7f3ea;
+}
+
+.n2c-editor-danger {
+  border-color: rgba(185, 83, 62, 0.26);
+  color: var(--n2c-red);
+}
+
+.n2c-editor-button:disabled,
+.n2c-input:disabled,
+.n2c-textarea:disabled {
+  cursor: default;
   opacity: 0.48;
 }
 
@@ -451,10 +647,40 @@
 .n2c-copy,
 .n2c-writeback {
   width: auto;
-  min-width: 92px;
   border: 1px solid var(--n2c-border);
   background: rgba(255, 255, 255, 0.72);
   color: var(--n2c-ink-strong);
+}
+
+.n2c-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+  color: var(--n2c-ink-body);
+}
+
+.n2c-copy-icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.n2c-copy.n2c-copied {
+  border-color: rgba(92, 122, 74, 0.58);
+  color: var(--n2c-green);
+}
+
+.n2c-writeback {
+  min-width: 92px;
 }
 
 .n2c-approve:disabled,
@@ -484,5 +710,9 @@
 
   .n2c-card-body {
     max-height: min(72vh, 680px);
+  }
+
+  .n2c-prompt-editor {
+    grid-template-columns: 1fr;
   }
 }

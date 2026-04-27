@@ -20,6 +20,16 @@ async function handleMessage(message) {
       return clearPairing();
     case 'submitNotionAction':
       return submitNotionAction(message.payload);
+    case 'getPromptProfiles':
+      return getPromptProfiles();
+    case 'createPromptProfile':
+      return createPromptProfile(message.profile);
+    case 'updatePromptProfile':
+      return updatePromptProfile(message.profileId, message.profile);
+    case 'deletePromptProfile':
+      return deletePromptProfile(message.profileId);
+    case 'resetPromptProfile':
+      return resetPromptProfile(message.profileId);
     case 'getJobStatus':
       return getJobStatus(message.jobId);
     case 'resolveJobApproval':
@@ -72,6 +82,79 @@ async function pairBridge(code) {
 async function clearPairing() {
   await chrome.storage.local.remove([STORAGE_KEY, LABEL_KEY]);
   return { ok: true };
+}
+
+async function getPromptProfiles() {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson('/api/prompt-profiles', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+async function createPromptProfile(profile) {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson('/api/prompt-profiles', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(profile || {}),
+  });
+}
+
+async function updatePromptProfile(profileId, profile) {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson(`/api/prompt-profiles/${encodeURIComponent(profileId || '')}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(profile || {}),
+  });
+}
+
+async function deletePromptProfile(profileId) {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson(`/api/prompt-profiles/${encodeURIComponent(profileId || '')}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+async function resetPromptProfile(profileId) {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson(`/api/prompt-profiles/${encodeURIComponent(profileId || '')}/reset`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 }
 
 async function submitNotionAction(payload) {

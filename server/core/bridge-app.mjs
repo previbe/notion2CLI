@@ -14,16 +14,18 @@ import { ArtifactStore } from './artifact-store.mjs';
 import { createInputBundle } from './input-bundle.mjs';
 import { RuntimeBackedNotionPageBundleProvider } from './page-bundle-provider.mjs';
 import { summarizePageBundle } from './mcp-page-bundle.mjs';
-import { parseApprovalResolution, parseJobRequest, parsePairConfirm } from './schemas.mjs';
+import { PromptProfileStore } from './prompt-profiles.mjs';
+import { parseApprovalResolution, parseJobRequest, parsePairConfirm, parsePromptProfileMutation } from './schemas.mjs';
 
 export class BridgeApp {
-  constructor({ runtime, log }) {
+  constructor({ runtime, log, promptProfileStore = new PromptProfileStore() }) {
     this.runtime = runtime;
     this.log = log;
     this.startedAt = new Date().toISOString();
     this.jobStore = new JobStore();
     this.pairingStore = new PairingStore();
     this.artifactStore = new ArtifactStore({ log });
+    this.promptProfileStore = promptProfileStore;
     this.pageBundleProvider = new RuntimeBackedNotionPageBundleProvider({ runtime, log });
     this.runtimeContext = this.createRuntimeContext();
   }
@@ -83,6 +85,11 @@ export class BridgeApp {
     this.assertToken(token);
     this.jobStore.prune();
     const payload = parseJobRequest(body);
+    const promptProfile = await this.promptProfileStore.resolve(payload.promptProfileId);
+    if (!promptProfile) {
+      throw createHttpError(400, `Unknown promptProfileId: ${payload.promptProfileId}`);
+    }
+    payload.promptProfile = promptProfile;
     const job = this.jobStore.create(payload);
 
     this.log('job created', {
@@ -112,6 +119,51 @@ export class BridgeApp {
       ok: true,
       jobId: job.id,
       status: this.jobStore.get(job.id)?.status || job.status,
+    };
+  }
+
+  async listPromptProfiles(token) {
+    this.assertToken(token);
+    return {
+      ok: true,
+      profiles: await this.promptProfileStore.list(),
+    };
+  }
+
+  async createPromptProfile(token, body) {
+    this.assertToken(token);
+    return {
+      ok: true,
+      profile: await this.promptProfileStore.create(parsePromptProfileMutation(body)),
+      profiles: await this.promptProfileStore.list(),
+    };
+  }
+
+  async updatePromptProfile(token, profileId, body) {
+    this.assertToken(token);
+    return {
+      ok: true,
+      profile: await this.promptProfileStore.update(profileId, parsePromptProfileMutation(body)),
+      profiles: await this.promptProfileStore.list(),
+    };
+  }
+
+  async deletePromptProfile(token, profileId) {
+    this.assertToken(token);
+    const result = await this.promptProfileStore.delete(profileId);
+    return {
+      ok: true,
+      ...result,
+      profiles: await this.promptProfileStore.list(),
+    };
+  }
+
+  async resetPromptProfile(token, profileId) {
+    this.assertToken(token);
+    return {
+      ok: true,
+      profile: await this.promptProfileStore.reset(profileId),
+      profiles: await this.promptProfileStore.list(),
     };
   }
 

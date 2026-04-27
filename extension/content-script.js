@@ -1,10 +1,11 @@
 const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
+const MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY = 'notion2cli.manualWritebackVisible';
 const PANEL_POSITION_STORAGE_KEY = 'notion2cli.panelPosition';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
 const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
 const PROMPT_PROFILE_RAW = 'raw';
-const PROMPT_PROFILE_BUILD = 'build';
+const PROMPT_EDITOR_NEW = '__new__';
 
 const ACTION_FORWARD_SELECTION = 'forward_selection_text';
 const ACTION_FORWARD_FULL_PAGE = 'forward_full_page_via_mcp';
@@ -25,11 +26,34 @@ const state = {
   latestBrief: '',
   latestReplyJobId: null,
   promptProfileId: PROMPT_PROFILE_RAW,
+  promptProfiles: [
+    {
+      id: PROMPT_PROFILE_RAW,
+      name: '原文',
+      instruction: '',
+      editable: false,
+      deletable: false,
+      resettable: false,
+    },
+    {
+      id: 'build',
+      name: 'Build',
+      instruction: '',
+      editable: true,
+      deletable: true,
+      resettable: true,
+    },
+  ],
+  promptEditorOpen: false,
+  promptEditorProfileId: PROMPT_PROFILE_RAW,
+  promptEditorBusy: false,
+  promptEditorMessage: '',
   drag: null,
   panelPosition: null,
   panelClampFrame: null,
   suppressFabClick: false,
   writeMode: WRITE_MODE_APPEND_SECTION,
+  manualWritebackVisible: false,
   lastSubmission: {
     action: '',
     pageUrl: '',
@@ -76,13 +100,12 @@ root.innerHTML = `
             <div class="n2c-page-title" data-page-title>读取中…</div>
           </div>
           <label class="n2c-task-picker">
-            <span class="n2c-meta-label">任务</span>
-            <select class="n2c-task-select" data-prompt-profile>
-              <option value="raw">原样运行</option>
-              <option value="build">Build</option>
-            </select>
+            <span class="n2c-task-head">
+              <span class="n2c-meta-label">任务</span>
+              <button class="n2c-prompt-manage" type="button" data-manage-prompts>管理</button>
+            </span>
+            <span class="n2c-task-list" data-prompt-list></span>
           </label>
-          <button class="n2c-send" type="button" data-send>作为新问题运行</button>
           <div class="n2c-send-hint n2c-hidden" data-send-hint></div>
           <div class="n2c-section-divider"></div>
           <div class="n2c-meta">
@@ -92,7 +115,7 @@ root.innerHTML = `
             </span>
             <span class="n2c-job-id" data-job-id></span>
           </div>
-          <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态、Agent 回复和手动写回结果会显示在这里。</div>
+          <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态和 Agent 回复会显示在这里。</div>
           <div class="n2c-approval n2c-hidden" data-approval>
             <div class="n2c-approval-title">需要你的确认</div>
             <div class="n2c-approval-message" data-approval-message>当前执行需要确认后才能继续。</div>
@@ -104,12 +127,17 @@ root.innerHTML = `
           <div class="n2c-brief-head">
             <div class="n2c-meta-label">BRIEF</div>
             <div class="n2c-brief-actions">
-              <button class="n2c-copy" type="button" data-copy disabled>复制结果</button>
               <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
             </div>
           </div>
-          <div class="n2c-output n2c-empty" data-output>最新回复会显示在这里，写回时会使用这段内容。</div>
+          <div class="n2c-output n2c-empty" data-output>最新回复会显示在这里。</div>
           <div class="n2c-footer-actions">
+            <button class="n2c-copy" type="button" data-copy disabled aria-label="复制结果" title="复制结果">
+              <svg class="n2c-copy-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+                <path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15"></path>
+              </svg>
+            </button>
             <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
           </div>
         </div>
@@ -125,6 +153,37 @@ root.innerHTML = `
         <span class="n2c-chevron n2c-chevron-up"></span>
       </span>
     </button>
+    <div class="n2c-modal n2c-hidden" data-prompt-modal role="dialog" aria-modal="true" aria-label="管理提示词">
+      <div class="n2c-modal-panel">
+        <div class="n2c-modal-head">
+          <div>
+            <div class="n2c-meta-label">提示词</div>
+            <div class="n2c-modal-title">管理任务</div>
+          </div>
+          <button class="n2c-modal-close" type="button" data-close-prompts aria-label="关闭">×</button>
+        </div>
+        <div class="n2c-prompt-editor">
+          <div class="n2c-prompt-list" data-prompt-editor-list></div>
+          <div class="n2c-prompt-form">
+            <label class="n2c-field">
+              <span class="n2c-field-label">名称</span>
+              <input class="n2c-input" data-prompt-name maxlength="48" />
+            </label>
+            <label class="n2c-field">
+              <span class="n2c-field-label">提示词</span>
+              <textarea class="n2c-textarea" data-prompt-instruction spellcheck="false"></textarea>
+            </label>
+            <div class="n2c-editor-message" data-prompt-editor-message></div>
+            <div class="n2c-editor-actions">
+              <button class="n2c-editor-button" type="button" data-new-prompt>新建</button>
+              <button class="n2c-editor-button n2c-editor-primary" type="button" data-save-prompt>保存</button>
+              <button class="n2c-editor-button" type="button" data-reset-prompt>恢复默认</button>
+              <button class="n2c-editor-button n2c-editor-danger" type="button" data-delete-prompt>删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 `;
 
@@ -137,9 +196,19 @@ menu.id = 'n2c-activity-sheet';
 const sheetHeader = root.querySelector('.n2c-sheet-header');
 const closeSheetButton = root.querySelector('[data-close-sheet]');
 const pageTitleNode = root.querySelector('[data-page-title]');
-const promptProfileNode = root.querySelector('[data-prompt-profile]');
-const sendButton = root.querySelector('[data-send]');
+const promptListNode = root.querySelector('[data-prompt-list]');
 const sendHintNode = root.querySelector('[data-send-hint]');
+const managePromptsButton = root.querySelector('[data-manage-prompts]');
+const promptModalNode = root.querySelector('[data-prompt-modal]');
+const closePromptsButton = root.querySelector('[data-close-prompts]');
+const promptEditorListNode = root.querySelector('[data-prompt-editor-list]');
+const promptNameInput = root.querySelector('[data-prompt-name]');
+const promptInstructionInput = root.querySelector('[data-prompt-instruction]');
+const promptEditorMessageNode = root.querySelector('[data-prompt-editor-message]');
+const newPromptButton = root.querySelector('[data-new-prompt]');
+const savePromptButton = root.querySelector('[data-save-prompt]');
+const resetPromptButton = root.querySelector('[data-reset-prompt]');
+const deletePromptButton = root.querySelector('[data-delete-prompt]');
 const openAppButton = root.querySelector('[data-open-app]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
@@ -162,7 +231,8 @@ shellResizeObserver?.observe(shell);
 bindEvents();
 pageTitleNode.textContent = getPageTitle();
 renderBrief();
-loadWriteModePreference();
+renderPromptButtons();
+loadWriteSettingsPreference();
 loadPanelPositionPreference();
 updateActionCopy();
 updateControls();
@@ -187,12 +257,20 @@ function bindEvents() {
   fab.addEventListener('pointerdown', (event) => startDrag(event, 'fab'));
   sheetHeader.addEventListener('pointerdown', (event) => startDrag(event, 'header'));
   closeSheetButton.addEventListener('click', () => setExpanded(false));
-  sendButton.addEventListener('click', () => startAction());
-  promptProfileNode.addEventListener('change', () => {
-    state.promptProfileId = normalizePromptProfileId(promptProfileNode.value);
-    promptProfileNode.value = state.promptProfileId;
-    updateActionCopy();
+  managePromptsButton.addEventListener('click', () => openPromptManager());
+  closePromptsButton.addEventListener('click', () => closePromptManager());
+  promptModalNode.addEventListener('click', (event) => {
+    if (event.target === promptModalNode) {
+      closePromptManager();
+    }
   });
+  for (const eventName of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'copy', 'cut']) {
+    promptModalNode.addEventListener(eventName, stopModalEventPropagation, true);
+  }
+  newPromptButton.addEventListener('click', () => createPromptFromEditor());
+  savePromptButton.addEventListener('click', () => savePromptFromEditor());
+  resetPromptButton.addEventListener('click', () => resetPromptFromEditor());
+  deletePromptButton.addEventListener('click', () => deletePromptFromEditor());
   openAppButton.addEventListener('click', () => openCodexAppFromPanel());
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
@@ -203,11 +281,16 @@ function bindEvents() {
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !Object.hasOwn(changes, WRITE_MODE_STORAGE_KEY)) {
+    if (areaName !== 'local') {
       return;
     }
 
-    state.writeMode = normalizeWriteMode(changes[WRITE_MODE_STORAGE_KEY].newValue);
+    if (Object.hasOwn(changes, WRITE_MODE_STORAGE_KEY)) {
+      state.writeMode = normalizeWriteMode(changes[WRITE_MODE_STORAGE_KEY].newValue);
+    }
+    if (Object.hasOwn(changes, MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY)) {
+      state.manualWritebackVisible = changes[MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY].newValue === true;
+    }
     updateActionCopy();
     updateControls();
   });
@@ -227,9 +310,13 @@ function bindEvents() {
     }
 
     await navigator.clipboard.writeText(text);
-    copyButton.textContent = '已复制';
+    copyButton.classList.add('n2c-copied');
+    copyButton.setAttribute('aria-label', '已复制');
+    copyButton.title = '已复制';
     setTimeout(() => {
-      copyButton.textContent = '复制结果';
+      copyButton.classList.remove('n2c-copied');
+      copyButton.setAttribute('aria-label', '复制结果');
+      copyButton.title = '复制结果';
     }, 1400);
   });
 
@@ -447,6 +534,9 @@ async function refreshBridgeStatus() {
     state.bridgeReady = Boolean(response.paired) && Boolean(state.runtime.ready);
     state.bridgeMessage = formatBridgeMessage(response);
     syncLatestReplyFromSession(response.session || null);
+    if (state.bridgeReady) {
+      await refreshPromptProfiles();
+    }
   } catch (error) {
     state.bridgeReady = false;
     state.session = null;
@@ -465,76 +555,97 @@ async function refreshBridgeStatus() {
   });
   pageTitleNode.textContent = getPageTitle();
   renderSessionState();
+  renderPromptButtons();
   updateActionCopy();
   updateControls();
+}
+
+async function refreshPromptProfiles() {
+  try {
+    const response = await sendMessage({ type: 'getPromptProfiles' });
+    const profiles = normalizePromptProfiles(response.profiles);
+    if (profiles.length) {
+      state.promptProfiles = profiles;
+    }
+    if (!state.promptProfiles.some((profile) => profile.id === state.promptProfileId)) {
+      state.promptProfileId = PROMPT_PROFILE_RAW;
+    }
+  } catch {}
+}
+
+function renderPromptButtons() {
+  promptListNode.replaceChildren();
+  const disabled = state.busy || !state.bridgeReady || !canStartAction(getSelectionText());
+
+  for (const profile of state.promptProfiles) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'n2c-task-button';
+    button.textContent = profile.name;
+    button.title = profile.name;
+    button.dataset.promptProfileId = profile.id;
+    button.disabled = disabled;
+    button.classList.toggle('active', profile.id === state.promptProfileId);
+    button.addEventListener('click', () => startAction(profile.id));
+    promptListNode.appendChild(button);
+  }
 }
 
 function updateActionCopy() {
   const selected = getSelectionText();
   const runtimeLabel = getRuntimeLabel();
-  const task = getSelectedPromptProfile();
+  sendHintNode.classList.remove('n2c-hidden');
 
   if (!state.runtime.ready) {
-    sendButton.textContent = '作为新问题运行';
     sendHintNode.textContent = state.runtime.launchCommand
       ? `先在扩展弹窗里启动 CLI：${state.runtime.launchCommand}`
       : '先在扩展弹窗里启动 CLI。';
+    renderPromptButtons();
     return;
   }
 
   if (!state.bridgeReady) {
-    sendButton.textContent = '连接后可运行';
     sendHintNode.textContent = '先在扩展弹窗里生成并输入 6 位配对码，连接完成后再回来运行。';
+    renderPromptButtons();
     return;
   }
 
   if (!isSupportedRuntime() || state.runtime.standalone) {
-    sendButton.textContent = '请切换到可用 runtime';
     sendHintNode.textContent = '当前模式不支持真实运行。请在扩展弹窗里启动 Codex 或 Claude，再回来运行。';
+    renderPromptButtons();
     return;
   }
 
   if (selected) {
-    sendButton.textContent = task.id === PROMPT_PROFILE_BUILD ? 'Build 选中内容' : '运行选中内容';
-    sendHintNode.textContent = task.id === PROMPT_PROFILE_BUILD
-      ? `会把选中内容作为 Build 输入发给 ${runtimeLabel}，并直接开始处理。`
-      : `会把选中内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
+    sendHintNode.textContent = `会把选中内容作为任务输入发给 ${runtimeLabel}，并直接开始处理。`;
+    renderPromptButtons();
     return;
   }
 
   if (!canAttemptFullPageDelivery()) {
-    sendButton.textContent = '运行整页需要 Notion MCP';
     sendHintNode.textContent = '运行整页前需要先能读取 Notion 页面内容。请先在扩展弹窗里启用 Notion MCP。';
+    renderPromptButtons();
     return;
   }
 
-  sendButton.textContent = task.id === PROMPT_PROFILE_BUILD ? 'Build 当前页' : '运行当前页';
-  sendHintNode.textContent = task.id === PROMPT_PROFILE_BUILD
-    ? `会把整页内容作为 Build 输入发给 ${runtimeLabel}，并直接开始处理。`
-    : `会把整页内容作为下一条用户输入发给 ${runtimeLabel}，并直接开始处理。`;
+  sendHintNode.textContent = `会把当前页作为任务输入发给 ${runtimeLabel}，并直接开始处理。`;
+  renderPromptButtons();
 }
 
 function buildSubmitText({ target, runtimeLabel, task }) {
-  if (task.id === PROMPT_PROFILE_BUILD) {
-    return `正在把${target}作为 Build 输入提交给 ${runtimeLabel}…`;
-  }
-
-  return `正在把${target}作为新问题提交给 ${runtimeLabel}…`;
+  return `正在把${target}作为「${task.name}」输入提交给 ${runtimeLabel}…`;
 }
 
 function buildSubmittedText({ target, runtimeLabel, task }) {
-  if (task.id === PROMPT_PROFILE_BUILD) {
-    return `${target}已作为 Build 输入提交给 ${runtimeLabel}，正在等待处理结果。`;
-  }
-
-  return `${target}已作为新问题提交给 ${runtimeLabel}，正在等待处理结果。`;
+  return `${target}已作为「${task.name}」输入提交给 ${runtimeLabel}，正在等待处理结果。`;
 }
 
-async function startAction() {
+async function startAction(profileId = state.promptProfileId) {
   const selectionText = getSelectionText();
   const action = selectionText ? ACTION_FORWARD_SELECTION : ACTION_FORWARD_FULL_PAGE;
   const runtimeLabel = getRuntimeLabel();
-  const task = getSelectedPromptProfile();
+  const task = resolvePromptProfile(profileId);
+  state.promptProfileId = task.id;
 
   clearPolling();
   setExpanded(true);
@@ -548,7 +659,7 @@ async function startAction() {
     pageUrl: window.location.href,
     pageTitle: getPageTitle(),
     selectionText,
-    promptProfileId: state.promptProfileId,
+    promptProfileId: task.id,
   };
 
   renderJobState({
@@ -568,7 +679,7 @@ async function startAction() {
         pageUrl: state.lastSubmission.pageUrl,
         pageTitle: state.lastSubmission.pageTitle,
         selectionText,
-        promptProfileId: state.promptProfileId,
+        promptProfileId: task.id,
         source: 'chrome-extension',
       },
     });
@@ -595,6 +706,10 @@ async function startAction() {
 }
 
 async function startManualWriteBack() {
+  if (!state.manualWritebackVisible) {
+    return;
+  }
+
   const writeMode = normalizeWriteMode(state.writeMode);
   const selectionText = getSelectionText();
   const replyText = String(state.latestReply || '').trim();
@@ -762,7 +877,7 @@ function buildForwardStatusText(status, action, job = {}) {
   const target = action === ACTION_FORWARD_SELECTION ? '选中内容' : '当前页';
   const runtimeLabel = getRuntimeLabel();
   const task = resolveJobPromptProfile(job);
-  const taskPrefix = task.id === PROMPT_PROFILE_BUILD ? 'Build ' : '';
+  const taskPrefix = task.id === PROMPT_PROFILE_RAW ? '' : `${task.name} `;
 
   switch (status) {
     case 'queued':
@@ -770,9 +885,7 @@ function buildForwardStatusText(status, action, job = {}) {
     case 'dispatched':
       return `${taskPrefix}${target}已送达 ${runtimeLabel}，正在等待开始处理…`;
     case 'running':
-      return task.id === PROMPT_PROFILE_BUILD
-        ? `${runtimeLabel} 正在执行 Build（${target}）…`
-        : `${runtimeLabel} 正在处理${target}…`;
+      return `${runtimeLabel} 正在处理${taskPrefix}${target}…`;
     case 'sending':
       return `正在提交${taskPrefix}${target}…`;
     default:
@@ -845,7 +958,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
       : `<span class="n2c-spinner"></span><span>${statusLabel(status, action)}</span>`;
   runStatusNode.innerHTML = statusMarkup;
 
-  activityNoteNode.textContent = text || '运行状态、Agent 回复和手动写回结果会显示在这里。';
+  activityNoteNode.textContent = text || '运行状态和 Agent 回复会显示在这里。';
   activityNoteNode.classList.toggle('n2c-empty', !text);
   syncApprovalState(status, runtimeMeta.pendingApproval || null);
   updateControls();
@@ -908,26 +1021,237 @@ function getRuntimeLabel() {
   return state.runtime.label || '本地 Agent';
 }
 
-function getSelectedPromptProfile() {
-  const id = normalizePromptProfileId(state.promptProfileId);
-  return {
-    id,
-    name: id === PROMPT_PROFILE_BUILD ? 'Build' : '原样运行',
-  };
+function resolveJobPromptProfile(job) {
+  return resolvePromptProfile(job?.promptProfileId || job?.promptProfile?.id || state.promptProfileId, job?.promptProfile);
 }
 
-function resolveJobPromptProfile(job) {
-  const id = normalizePromptProfileId(job?.promptProfileId || job?.promptProfile?.id || state.promptProfileId);
+function resolvePromptProfile(value, fallbackProfile = null) {
+  const id = normalizePromptProfileId(value);
+  const profile = state.promptProfiles.find((item) => item.id === id);
+  if (profile) {
+    return profile;
+  }
+
+  if (fallbackProfile?.id) {
+    return {
+      ...fallbackProfile,
+      id: normalizePromptProfileId(fallbackProfile.id),
+      name: String(fallbackProfile.name || fallbackProfile.id).trim() || fallbackProfile.id,
+    };
+  }
+
   return {
-    id,
-    name: job?.promptProfile?.name || (id === PROMPT_PROFILE_BUILD ? 'Build' : '原样运行'),
+    id: PROMPT_PROFILE_RAW,
+    name: '原文',
+    instruction: '',
   };
 }
 
 function normalizePromptProfileId(value) {
-  return String(value || '').trim().toLowerCase() === PROMPT_PROFILE_BUILD
-    ? PROMPT_PROFILE_BUILD
-    : PROMPT_PROFILE_RAW;
+  return String(value || PROMPT_PROFILE_RAW).trim().toLowerCase() || PROMPT_PROFILE_RAW;
+}
+
+function normalizePromptProfiles(value) {
+  const profiles = Array.isArray(value) ? value : [];
+  const normalized = profiles
+    .map((profile) => ({
+      id: normalizePromptProfileId(profile?.id),
+      name: String(profile?.name || '').trim(),
+      instruction: String(profile?.instruction || ''),
+      editable: profile?.editable !== false,
+      deletable: Boolean(profile?.deletable),
+      resettable: Boolean(profile?.resettable),
+      source: String(profile?.source || ''),
+    }))
+    .filter((profile) => profile.id && profile.name);
+
+  if (!normalized.some((profile) => profile.id === PROMPT_PROFILE_RAW)) {
+    normalized.unshift({
+      id: PROMPT_PROFILE_RAW,
+      name: '原文',
+      instruction: '',
+      editable: false,
+      deletable: false,
+      resettable: false,
+      source: 'fallback',
+    });
+  }
+
+  return normalized;
+}
+
+async function openPromptManager() {
+  state.promptEditorOpen = true;
+  state.promptEditorMessage = '';
+  if (!state.promptProfiles.some((profile) => profile.id === state.promptEditorProfileId)) {
+    state.promptEditorProfileId = state.promptProfileId;
+  }
+  promptModalNode.classList.remove('n2c-hidden');
+  if (state.bridgeReady) {
+    await refreshPromptProfiles();
+  }
+  renderPromptManager();
+}
+
+function closePromptManager() {
+  state.promptEditorOpen = false;
+  promptModalNode.classList.add('n2c-hidden');
+}
+
+function stopModalEventPropagation(event) {
+  event.stopPropagation();
+}
+
+function renderPromptManager() {
+  if (!state.promptEditorOpen) {
+    return;
+  }
+
+  promptEditorListNode.replaceChildren();
+  for (const profile of state.promptProfiles) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'n2c-editor-list-item';
+    button.textContent = profile.name;
+    button.classList.toggle('active', profile.id === state.promptEditorProfileId);
+    button.addEventListener('click', () => {
+      state.promptEditorProfileId = profile.id;
+      state.promptEditorMessage = '';
+      renderPromptManager();
+    });
+    promptEditorListNode.appendChild(button);
+  }
+
+  const selectedProfile = state.promptEditorProfileId === PROMPT_EDITOR_NEW
+    ? null
+    : state.promptProfiles.find((profile) => profile.id === state.promptEditorProfileId) || state.promptProfiles[0];
+  if (selectedProfile && state.promptEditorProfileId !== selectedProfile.id) {
+    state.promptEditorProfileId = selectedProfile.id;
+  }
+
+  promptNameInput.value = selectedProfile?.name || '';
+  promptInstructionInput.value = selectedProfile?.instruction || '';
+  promptNameInput.disabled = state.promptEditorBusy || Boolean(selectedProfile && !selectedProfile.editable);
+  promptInstructionInput.disabled = state.promptEditorBusy || Boolean(selectedProfile && !selectedProfile.editable);
+  promptEditorMessageNode.textContent = state.promptEditorMessage || '';
+  promptEditorMessageNode.classList.toggle('n2c-empty', !state.promptEditorMessage);
+  newPromptButton.disabled = state.promptEditorBusy || !state.bridgeReady;
+  savePromptButton.disabled = state.promptEditorBusy || !state.bridgeReady || Boolean(selectedProfile && !selectedProfile.editable);
+  deletePromptButton.disabled = state.promptEditorBusy || !state.bridgeReady || !selectedProfile?.deletable;
+  resetPromptButton.disabled = state.promptEditorBusy || !state.bridgeReady || !selectedProfile?.resettable;
+  savePromptButton.textContent = state.promptEditorProfileId === PROMPT_EDITOR_NEW ? '创建' : '保存';
+}
+
+function readPromptEditorDraft() {
+  return {
+    name: promptNameInput.value.trim(),
+    instruction: promptInstructionInput.value.trim(),
+  };
+}
+
+async function createPromptFromEditor() {
+  if (state.promptEditorProfileId !== PROMPT_EDITOR_NEW) {
+    state.promptEditorProfileId = PROMPT_EDITOR_NEW;
+    state.promptEditorMessage = '';
+    renderPromptManager();
+    promptNameInput.focus();
+    return;
+  }
+
+  const draft = readPromptEditorDraft();
+  await runPromptEditorMutation(async () => {
+    const response = await sendMessage({
+      type: 'createPromptProfile',
+      profile: draft,
+    });
+    updatePromptProfilesFromResponse(response);
+    state.promptEditorProfileId = response.profile?.id || state.promptProfiles.at(-1)?.id || PROMPT_PROFILE_RAW;
+    state.promptProfileId = state.promptEditorProfileId;
+    state.promptEditorMessage = '已创建。';
+  });
+}
+
+async function savePromptFromEditor() {
+  if (state.promptEditorProfileId === PROMPT_EDITOR_NEW) {
+    await createPromptFromEditor();
+    return;
+  }
+
+  const profileId = state.promptEditorProfileId;
+  const draft = readPromptEditorDraft();
+  await runPromptEditorMutation(async () => {
+    const response = await sendMessage({
+      type: 'updatePromptProfile',
+      profileId,
+      profile: draft,
+    });
+    updatePromptProfilesFromResponse(response);
+    state.promptProfileId = response.profile?.id || profileId;
+    state.promptEditorProfileId = state.promptProfileId;
+    state.promptEditorMessage = '已保存。';
+  });
+}
+
+async function deletePromptFromEditor() {
+  const profile = resolvePromptProfile(state.promptEditorProfileId);
+  if (!profile.deletable || !window.confirm(`删除“${profile.name}”？`)) {
+    return;
+  }
+
+  await runPromptEditorMutation(async () => {
+    const response = await sendMessage({
+      type: 'deletePromptProfile',
+      profileId: profile.id,
+    });
+    updatePromptProfilesFromResponse(response);
+    if (state.promptProfileId === profile.id) {
+      state.promptProfileId = PROMPT_PROFILE_RAW;
+    }
+    state.promptEditorProfileId = state.promptProfileId;
+    state.promptEditorMessage = '已删除。';
+  });
+}
+
+async function resetPromptFromEditor() {
+  const profile = resolvePromptProfile(state.promptEditorProfileId);
+  if (!profile.resettable) {
+    return;
+  }
+
+  await runPromptEditorMutation(async () => {
+    const response = await sendMessage({
+      type: 'resetPromptProfile',
+      profileId: profile.id,
+    });
+    updatePromptProfilesFromResponse(response);
+    state.promptProfileId = response.profile?.id || profile.id;
+    state.promptEditorProfileId = state.promptProfileId;
+    state.promptEditorMessage = '已恢复默认。';
+  });
+}
+
+async function runPromptEditorMutation(callback) {
+  state.promptEditorBusy = true;
+  state.promptEditorMessage = '';
+  renderPromptManager();
+
+  try {
+    await callback();
+  } catch (error) {
+    state.promptEditorMessage = error.message || '操作失败。';
+  } finally {
+    state.promptEditorBusy = false;
+    renderPromptButtons();
+    updateActionCopy();
+    renderPromptManager();
+  }
+}
+
+function updatePromptProfilesFromResponse(response) {
+  const profiles = normalizePromptProfiles(response?.profiles);
+  if (profiles.length) {
+    state.promptProfiles = profiles;
+  }
 }
 
 function isSupportedRuntime() {
@@ -940,12 +1264,13 @@ function canOpenRuntimeView() {
 
 function updateControls() {
   const selectionText = getSelectionText();
-  const canSendCurrentState = canStartAction(selectionText);
 
-  sendButton.disabled = state.busy || !state.bridgeReady || !canSendCurrentState;
+  renderPromptButtons();
+  managePromptsButton.disabled = state.promptEditorBusy || !state.bridgeReady;
   openAppButton.disabled = state.openAppBusy || !canOpenRuntimeView();
   copyButton.disabled = !(state.latestBrief || state.latestReply);
-  writeBackButton.disabled = state.busy || !canWriteBack(selectionText);
+  writeBackButton.classList.toggle('n2c-hidden', !state.manualWritebackVisible);
+  writeBackButton.disabled = !state.manualWritebackVisible || state.busy || !canWriteBack(selectionText);
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
   approveButton.textContent = state.pendingApproval?.mode === 'url' && !isUrlApprovalReadyToContinue()
@@ -1213,12 +1538,17 @@ function approvalRequestKey(pendingApproval) {
   return String(pendingApproval.requestId || pendingApproval.url || pendingApproval.message || '').trim();
 }
 
-async function loadWriteModePreference() {
+async function loadWriteSettingsPreference() {
   try {
-    const data = await chrome.storage.local.get([WRITE_MODE_STORAGE_KEY]);
+    const data = await chrome.storage.local.get([
+      WRITE_MODE_STORAGE_KEY,
+      MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY,
+    ]);
     state.writeMode = normalizeWriteMode(data[WRITE_MODE_STORAGE_KEY]);
+    state.manualWritebackVisible = data[MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY] === true;
   } catch {
     state.writeMode = WRITE_MODE_APPEND_SECTION;
+    state.manualWritebackVisible = false;
   }
 
   updateActionCopy();

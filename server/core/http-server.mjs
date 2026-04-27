@@ -30,6 +30,29 @@ export function createBridgeHttpServer(app, log, options = {}) {
         return sendJson(res, 200, await app.createJob(readBearer(req), await readJson(req)));
       }
 
+      if (req.method === 'GET' && url.pathname === '/api/prompt-profiles') {
+        return sendJson(res, 200, await app.listPromptProfiles(readBearer(req)));
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/prompt-profiles') {
+        return sendJson(res, 200, await app.createPromptProfile(readBearer(req), await readJson(req)));
+      }
+
+      if (req.method === 'PATCH' && url.pathname.startsWith('/api/prompt-profiles/')) {
+        const profileId = readPromptProfileId(url.pathname);
+        return sendJson(res, 200, await app.updatePromptProfile(readBearer(req), profileId, await readJson(req)));
+      }
+
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/prompt-profiles/')) {
+        const profileId = readPromptProfileId(url.pathname);
+        return sendJson(res, 200, await app.deletePromptProfile(readBearer(req), profileId));
+      }
+
+      if (req.method === 'POST' && url.pathname.startsWith('/api/prompt-profiles/') && url.pathname.endsWith('/reset')) {
+        const profileId = readPromptProfileId(url.pathname.replace(/\/reset$/, ''));
+        return sendJson(res, 200, await app.resetPromptProfile(readBearer(req), profileId));
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/session/open') {
         return sendJson(res, 200, await app.openCodexApp(readBearer(req)));
       }
@@ -93,7 +116,7 @@ export function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'access-control-allow-headers': 'content-type,authorization',
   });
   res.end(JSON.stringify(body));
@@ -102,10 +125,14 @@ export function sendJson(res, statusCode, body) {
 function sendEmpty(res, statusCode) {
   res.writeHead(statusCode, {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'access-control-allow-headers': 'content-type,authorization',
   });
   res.end();
+}
+
+function readPromptProfileId(pathname) {
+  return decodeURIComponent(pathname.replace('/api/prompt-profiles/', '').trim());
 }
 
 function readJson(req) {

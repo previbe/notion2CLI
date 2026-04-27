@@ -1,5 +1,6 @@
 const NOTION_MCP_DOC_URL = 'https://developers.notion.com/guides/mcp/get-started-with-mcp';
 const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
+const MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY = 'notion2cli.manualWritebackVisible';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
 const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
@@ -8,6 +9,7 @@ const popupState = {
   status: null,
   selectedRuntime: 'codex',
   writeMode: WRITE_MODE_APPEND_SECTION,
+  manualWritebackVisible: false,
   lastErrorMessage: '',
   installBusy: false,
   installJobId: null,
@@ -45,6 +47,7 @@ const pairSetup = document.querySelector('[data-pair-setup]');
 const accessDetail = document.querySelector('[data-access-detail]');
 const installButton = document.querySelector('[data-install-button]');
 const installStatus = document.querySelector('[data-install-status]');
+const manualWritebackToggle = document.querySelector('[data-manual-writeback-toggle]');
 const writeModeSelect = document.querySelector('[data-write-mode-select]');
 const writeModeHint = document.querySelector('[data-write-mode-hint]');
 
@@ -54,12 +57,13 @@ copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyC
 copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
 copyStopCommandButton.addEventListener('click', () => copyCommand(stopCommand, copyStopCommandButton));
 installButton.addEventListener('click', sendInstallRequest);
+manualWritebackToggle.addEventListener('change', handleManualWritebackVisibleChange);
 writeModeSelect.addEventListener('change', handleWriteModeChange);
 runtimeButtons.forEach((button) => {
   button.addEventListener('click', () => selectRuntime(button.dataset.runtimeButton));
 });
 
-loadWriteModePreference();
+loadWriteSettingsPreference();
 refreshStatus();
 setInterval(() => {
   refreshStatus().catch(() => {});
@@ -535,20 +539,36 @@ function getSelectedRuntimeLaunchCommand() {
   return 'notion2cli daemon start --runtime codex';
 }
 
-async function loadWriteModePreference() {
+async function loadWriteSettingsPreference() {
   try {
-    const data = await chrome.storage.local.get([WRITE_MODE_STORAGE_KEY]);
+    const data = await chrome.storage.local.get([
+      WRITE_MODE_STORAGE_KEY,
+      MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY,
+    ]);
     popupState.writeMode = normalizeWriteMode(data[WRITE_MODE_STORAGE_KEY]);
+    popupState.manualWritebackVisible = data[MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY] === true;
   } catch {
     popupState.writeMode = WRITE_MODE_APPEND_SECTION;
+    popupState.manualWritebackVisible = false;
   }
 
-  renderWriteModeUi();
+  renderWriteSettingsUi();
+}
+
+async function handleManualWritebackVisibleChange() {
+  popupState.manualWritebackVisible = Boolean(manualWritebackToggle.checked);
+  renderWriteSettingsUi();
+
+  try {
+    await chrome.storage.local.set({
+      [MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY]: popupState.manualWritebackVisible,
+    });
+  } catch {}
 }
 
 async function handleWriteModeChange() {
   popupState.writeMode = normalizeWriteMode(writeModeSelect.value);
-  renderWriteModeUi();
+  renderWriteSettingsUi();
 
   try {
     await chrome.storage.local.set({
@@ -557,13 +577,15 @@ async function handleWriteModeChange() {
   } catch {}
 }
 
-function renderWriteModeUi() {
+function renderWriteSettingsUi() {
   popupState.writeMode = normalizeWriteMode(popupState.writeMode);
+  manualWritebackToggle.checked = popupState.manualWritebackVisible;
   writeModeSelect.value = popupState.writeMode;
 
   const copy = getWriteModeCopy(popupState.writeMode);
-  writeModeHint.textContent = copy.hint;
-  writeModeHint.classList.toggle('config-note-danger', copy.tone === 'danger');
+  writeModeHint.hidden = !popupState.manualWritebackVisible;
+  writeModeHint.textContent = popupState.manualWritebackVisible ? copy.hint : '';
+  writeModeHint.classList.toggle('config-note-danger', popupState.manualWritebackVisible && copy.tone === 'danger');
 }
 
 function getWriteModeCopy(mode) {

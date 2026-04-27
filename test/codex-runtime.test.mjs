@@ -101,7 +101,7 @@ test('job schema enforces action-specific required fields', () => {
   assert.equal(payload.writeSectionTitle, 'notion2CLI');
   assert.equal(payload.writeMode, 'append_markdown_section');
   assert.equal(payload.promptProfileId, 'raw');
-  assert.equal(payload.promptProfile.name, '原样运行');
+  assert.equal(Object.hasOwn(payload, 'promptProfile'), false);
 
   const updatePayload = parseJobRequest({
     action: 'write_reply_to_notion',
@@ -126,7 +126,7 @@ test('job schema enforces action-specific required fields', () => {
   }, /selectionText is required for update_content/);
 });
 
-test('job schema accepts the official Build prompt profile and rejects unknown profiles', () => {
+test('job schema normalizes prompt profile ids without resolving storage', () => {
   const buildPayload = parseJobRequest({
     action: 'forward_full_page_via_mcp',
     pageUrl: 'https://www.notion.so/example',
@@ -135,17 +135,15 @@ test('job schema accepts the official Build prompt profile and rejects unknown p
   });
 
   assert.equal(buildPayload.promptProfileId, 'build');
-  assert.equal(buildPayload.promptProfile.name, 'Build');
-  assert.match(buildPayload.promptProfile.instruction, /Turn the requirements in the input document into concrete changes/);
 
-  assert.throws(() => {
-    parseJobRequest({
-      action: 'forward_full_page_via_mcp',
-      pageUrl: 'https://www.notion.so/example',
-      pageTitle: 'Example',
-      promptProfileId: 'missing-profile',
-    });
-  }, /Unknown promptProfileId/);
+  const customPayload = parseJobRequest({
+    action: 'forward_full_page_via_mcp',
+    pageUrl: 'https://www.notion.so/example',
+    pageTitle: 'Example',
+    promptProfileId: 'CUSTOM-123',
+  });
+
+  assert.equal(customPayload.promptProfileId, 'custom-123');
 });
 
 test('codex input items prepend local images before prompt text', () => {

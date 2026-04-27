@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
 import http from 'node:http';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { BridgeApp } from '../server/core/bridge-app.mjs';
 import { createBridgeHttpServer } from '../server/core/http-server.mjs';
+import { PromptProfileStore } from '../server/core/prompt-profiles.mjs';
 
 const PNG_BUFFER = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAAiz+n/AAAAvklEQVR4nO3QQREAIAzAMMC/5yFjRxMFPXpm5gZ+5wH8yliEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWIRYhFiEWMQF7RkB95SVyIgAAAAASUVORK5CYII=',
@@ -273,6 +277,91 @@ test('bridge app pairs and completes a browser job through the runtime contract'
   }
 });
 
+test('bridge app exposes prompt profile CRUD and stores job profile snapshots', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'notion2cli-bridge-prompts-'));
+  const runtime = new FakeRuntime();
+  let dispatchedPromptName = '';
+  runtime.dispatchJob = async (job) => {
+    dispatchedPromptName = job.promptProfile?.name || '';
+    runtime.context.markJobDispatched(job.id, { type: 'fake_dispatched' });
+    runtime.context.markJobRunning(job.id, { type: 'fake_running' });
+    setTimeout(() => {
+      runtime.context.completeJob(job.id, `Profile: ${job.promptProfile?.name || ''}`, {
+        type: 'fake_completed',
+      });
+    }, 20);
+  };
+
+  const app = new BridgeApp({
+    runtime,
+    log: () => {},
+    promptProfileStore: new PromptProfileStore({
+      filePath: path.join(dir, 'prompts.json'),
+    }),
+  });
+  const httpServer = createBridgeHttpServer(app, () => {}, { port: 0 });
+
+  await app.start();
+  const address = await httpServer.listen();
+  const baseUrl = `http://${address.host}:${address.port}`;
+
+  try {
+    const pairResponse = await postJson(`${baseUrl}/api/pair/create`, {});
+    const confirmResponse = await postJson(`${baseUrl}/api/pair/confirm`, {
+      code: pairResponse.code,
+      clientLabel: 'Prompt Browser',
+    });
+
+    const initialProfiles = await getJson(`${baseUrl}/api/prompt-profiles`, confirmResponse.token);
+    assert.deepEqual(initialProfiles.profiles.map((profile) => profile.id), ['raw', 'build']);
+
+    const createResponse = await postJson(`${baseUrl}/api/prompt-profiles`, {
+      name: 'Translate',
+      instruction: 'Translate this input.',
+    }, confirmResponse.token);
+    assert.equal(createResponse.profile.name, 'Translate');
+
+    const updateResponse = await patchJson(`${baseUrl}/api/prompt-profiles/build`, {
+      name: 'Ship',
+      instruction: 'Implement this input.',
+    }, confirmResponse.token);
+    assert.equal(updateResponse.profile.name, 'Ship');
+
+    const jobResponse = await postJson(`${baseUrl}/api/jobs`, {
+      action: 'forward_selection_text',
+      pageUrl: 'https://www.notion.so/example',
+      pageTitle: 'Example Page',
+      selectionText: 'hello world',
+      promptProfileId: 'build',
+      source: 'test',
+    }, confirmResponse.token);
+
+    let job;
+    for (let index = 0; index < 20; index += 1) {
+      const snapshot = await getJson(`${baseUrl}/api/jobs/${jobResponse.jobId}`, confirmResponse.token);
+      job = snapshot.job;
+      if (job.status === 'completed') {
+        break;
+      }
+      await sleep(20);
+    }
+
+    assert.equal(job.status, 'completed');
+    assert.equal(job.promptProfile.name, 'Ship');
+    assert.equal(dispatchedPromptName, 'Ship');
+
+    const deleteResponse = await deleteJson(`${baseUrl}/api/prompt-profiles/${createResponse.profile.id}`, confirmResponse.token);
+    assert.equal(deleteResponse.deleted, true);
+
+    const resetResponse = await postJson(`${baseUrl}/api/prompt-profiles/build/reset`, {}, confirmResponse.token);
+    assert.equal(resetResponse.profile.name, 'Build');
+  } finally {
+    await httpServer.close();
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('bridge app can resolve an approval request through the runtime contract', async () => {
   const app = new BridgeApp({
     runtime: new FakeRuntime(),
@@ -479,6 +568,28 @@ async function postJson(url, body, token = '') {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+  });
+
+  return response.json();
+}
+
+async function patchJson(url, body, token = '') {
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  return response.json();
+}
+
+async function deleteJson(url, token = '') {
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
   return response.json();

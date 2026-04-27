@@ -1,5 +1,13 @@
+import { randomUUID } from 'node:crypto';
+import { getAppPaths, readJsonFile, writeJsonFile } from '../../cli/paths.mjs';
+import { createHttpError, nowIso } from './constants.mjs';
+
 export const PROMPT_PROFILE_RAW = 'raw';
 export const PROMPT_PROFILE_BUILD = 'build';
+
+const STORE_VERSION = 1;
+const MAX_NAME_LENGTH = 48;
+const MAX_INSTRUCTION_LENGTH = 50000;
 
 const BUILD_INSTRUCTION = `Turn the requirements in the input document into concrete changes in the current codebase, then finish with a Brief.
 Match the output language to the document's primary language.
@@ -36,42 +44,328 @@ The Brief must include:
   2. Verification completed.
   3. Known limitations and follow-up work.`;
 
-const PROMPT_PROFILES = new Map([
-  [
-    PROMPT_PROFILE_RAW,
-    {
-      id: PROMPT_PROFILE_RAW,
-      name: '原样运行',
-      instruction: '',
-    },
-  ],
-  [
-    PROMPT_PROFILE_BUILD,
-    {
-      id: PROMPT_PROFILE_BUILD,
-      name: 'Build',
-      instruction: BUILD_INSTRUCTION,
-    },
-  ],
-]);
+const BUILTIN_PROFILES = [
+  {
+    id: PROMPT_PROFILE_RAW,
+    name: '原文',
+    instruction: '',
+    source: 'builtin',
+    builtin: true,
+    editable: false,
+    deletable: false,
+    resettable: false,
+    order: 10,
+  },
+  {
+    id: PROMPT_PROFILE_BUILD,
+    name: 'Build',
+    instruction: BUILD_INSTRUCTION,
+    source: 'builtin',
+    builtin: true,
+    editable: true,
+    deletable: true,
+    resettable: true,
+    order: 20,
+  },
+];
 
-export function listPromptProfiles() {
-  return [...PROMPT_PROFILES.values()].map(clonePromptProfile);
-}
-
-export function isPromptProfileId(value) {
-  return PROMPT_PROFILES.has(normalizePromptProfileId(value));
-}
+const BUILTIN_PROFILE_IDS = new Set(BUILTIN_PROFILES.map((profile) => profile.id));
 
 export function normalizePromptProfileId(value) {
   const candidate = String(value || PROMPT_PROFILE_RAW).trim().toLowerCase();
   return candidate || PROMPT_PROFILE_RAW;
 }
 
-export function getPromptProfile(value) {
-  const id = normalizePromptProfileId(value);
-  const profile = PROMPT_PROFILES.get(id);
+export function getBuiltinPromptProfile(id) {
+  const normalizedId = normalizePromptProfileId(id);
+  const profile = BUILTIN_PROFILES.find((item) => item.id === normalizedId);
   return profile ? clonePromptProfile(profile) : null;
+}
+
+export function listBuiltinPromptProfiles() {
+  return BUILTIN_PROFILES.map(clonePromptProfile);
+}
+
+export class PromptProfileStore {
+  constructor({ filePath = getAppPaths().promptProfilesFile } = {}) {
+    this.filePath = filePath;
+  }
+
+  async list() {
+    const data = await this.readStore();
+    return this.mergeProfiles(data);
+  }
+
+  async resolve(id) {
+    const normalizedId = normalizePromptProfileId(id);
+    return (await this.list()).find((profile) => profile.id === normalizedId) || null;
+  }
+
+  async create(input) {
+    const data = await this.readStore();
+    const now = nowIso();
+    const order = nextProfileOrder(data.profiles);
+    const profile = {
+      id: `custom-${randomUUID()}`,
+      name: normalizePromptName(input?.name),
+      instruction: normalizePromptInstruction(input?.instruction),
+      source: 'user',
+      order,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    data.profiles.push(profile);
+    await this.writeStore(data);
+    return this.resolve(profile.id);
+  }
+
+  async update(id, input) {
+    const normalizedId = normalizePromptProfileId(id);
+    if (normalizedId === PROMPT_PROFILE_RAW) {
+      throw createHttpError(400, 'The raw prompt profile cannot be edited');
+    }
+
+    const name = normalizePromptName(input?.name);
+    const instruction = normalizePromptInstruction(input?.instruction);
+    const data = await this.readStore();
+    const now = nowIso();
+    const existingIndex = data.profiles.findIndex((profile) => normalizePromptProfileId(profile.id) === normalizedId);
+
+    if (BUILTIN_PROFILE_IDS.has(normalizedId)) {
+      const builtin = getBuiltinPromptProfile(normalizedId);
+      if (!builtin?.editable) {
+        throw createHttpError(400, `Prompt profile ${normalizedId} cannot be edited`);
+      }
+
+      const previous = existingIndex >= 0 ? data.profiles[existingIndex] : {};
+      const profile = {
+        id: normalizedId,
+        name,
+        instruction,
+        source: 'builtin_override',
+        order: Number.isFinite(Number(previous.order)) ? Number(previous.order) : builtin.order,
+        createdAt: previous.createdAt || now,
+        updatedAt: now,
+      };
+      if (existingIndex >= 0) {
+        data.profiles[existingIndex] = profile;
+      } else {
+        data.profiles.push(profile);
+      }
+      data.hiddenBuiltinIds = data.hiddenBuiltinIds.filter((hiddenId) => hiddenId !== normalizedId);
+      await this.writeStore(data);
+      return this.resolve(normalizedId);
+    }
+
+    if (existingIndex < 0) {
+      throw createHttpError(404, `Unknown prompt profile: ${normalizedId}`);
+    }
+
+    const previous = data.profiles[existingIndex];
+    data.profiles[existingIndex] = {
+      ...previous,
+      id: normalizedId,
+      name,
+      instruction,
+      source: 'user',
+      updatedAt: now,
+    };
+    await this.writeStore(data);
+    return this.resolve(normalizedId);
+  }
+
+  async delete(id) {
+    const normalizedId = normalizePromptProfileId(id);
+    if (normalizedId === PROMPT_PROFILE_RAW) {
+      throw createHttpError(400, 'The raw prompt profile cannot be deleted');
+    }
+
+    const data = await this.readStore();
+    const existingIndex = data.profiles.findIndex((profile) => normalizePromptProfileId(profile.id) === normalizedId);
+
+    if (BUILTIN_PROFILE_IDS.has(normalizedId)) {
+      const builtin = getBuiltinPromptProfile(normalizedId);
+      if (!builtin?.deletable) {
+        throw createHttpError(400, `Prompt profile ${normalizedId} cannot be deleted`);
+      }
+
+      data.profiles = data.profiles.filter((profile) => normalizePromptProfileId(profile.id) !== normalizedId);
+      if (!data.hiddenBuiltinIds.includes(normalizedId)) {
+        data.hiddenBuiltinIds.push(normalizedId);
+      }
+      await this.writeStore(data);
+      return { deleted: true, id: normalizedId };
+    }
+
+    if (existingIndex < 0) {
+      throw createHttpError(404, `Unknown prompt profile: ${normalizedId}`);
+    }
+
+    data.profiles.splice(existingIndex, 1);
+    await this.writeStore(data);
+    return { deleted: true, id: normalizedId };
+  }
+
+  async reset(id) {
+    const normalizedId = normalizePromptProfileId(id);
+    const builtin = getBuiltinPromptProfile(normalizedId);
+    if (!builtin || !builtin.resettable) {
+      throw createHttpError(400, `Prompt profile ${normalizedId} cannot be reset`);
+    }
+
+    const data = await this.readStore();
+    data.profiles = data.profiles.filter((profile) => normalizePromptProfileId(profile.id) !== normalizedId);
+    data.hiddenBuiltinIds = data.hiddenBuiltinIds.filter((hiddenId) => hiddenId !== normalizedId);
+    await this.writeStore(data);
+    return this.resolve(normalizedId);
+  }
+
+  async readStore() {
+    const raw = await readJsonFile(this.filePath);
+    if (!raw) {
+      return emptyStore();
+    }
+
+    return normalizeStore(raw);
+  }
+
+  async writeStore(data) {
+    await writeJsonFile(this.filePath, normalizeStore(data));
+  }
+
+  mergeProfiles(data) {
+    const overrides = new Map();
+    const userProfiles = [];
+    const hidden = new Set(data.hiddenBuiltinIds);
+
+    for (const profile of data.profiles) {
+      const normalizedId = normalizePromptProfileId(profile.id);
+      if (BUILTIN_PROFILE_IDS.has(normalizedId)) {
+        overrides.set(normalizedId, profile);
+      } else {
+        userProfiles.push(profile);
+      }
+    }
+
+    const profiles = [];
+    for (const builtin of BUILTIN_PROFILES) {
+      if (hidden.has(builtin.id)) {
+        continue;
+      }
+
+      const override = overrides.get(builtin.id);
+      profiles.push(clonePromptProfile({
+        ...builtin,
+        ...override,
+        id: builtin.id,
+        source: override ? 'builtin_override' : 'builtin',
+        builtin: true,
+        editable: builtin.editable,
+        deletable: builtin.deletable,
+        resettable: builtin.resettable,
+        order: Number.isFinite(Number(override?.order)) ? Number(override.order) : builtin.order,
+      }));
+    }
+
+    for (const profile of userProfiles) {
+      profiles.push(clonePromptProfile({
+        ...profile,
+        source: 'user',
+        builtin: false,
+        editable: true,
+        deletable: true,
+        resettable: false,
+      }));
+    }
+
+    return profiles.sort(compareProfiles);
+  }
+}
+
+function emptyStore() {
+  return {
+    version: STORE_VERSION,
+    profiles: [],
+    hiddenBuiltinIds: [],
+  };
+}
+
+function normalizeStore(value) {
+  const profiles = Array.isArray(value?.profiles) ? value.profiles : [];
+  const hiddenBuiltinIds = Array.isArray(value?.hiddenBuiltinIds)
+    ? value.hiddenBuiltinIds.map(normalizePromptProfileId).filter((id) => BUILTIN_PROFILE_IDS.has(id))
+    : [];
+
+  return {
+    version: STORE_VERSION,
+    profiles: profiles.map(normalizeStoredProfile).filter(Boolean),
+    hiddenBuiltinIds: [...new Set(hiddenBuiltinIds)],
+  };
+}
+
+function normalizeStoredProfile(profile) {
+  const id = normalizePromptProfileId(profile?.id);
+  if (!id) {
+    return null;
+  }
+
+  try {
+    return {
+      id,
+      name: normalizePromptName(profile?.name),
+      instruction: normalizePromptInstruction(profile?.instruction),
+      source: profile?.source === 'builtin_override' && BUILTIN_PROFILE_IDS.has(id) ? 'builtin_override' : 'user',
+      order: Number.isFinite(Number(profile?.order)) ? Number(profile.order) : 100,
+      createdAt: String(profile?.createdAt || ''),
+      updatedAt: String(profile?.updatedAt || ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function normalizePromptName(value) {
+  const name = String(value || '').trim();
+  if (!name) {
+    throw createHttpError(400, 'Prompt name is required');
+  }
+
+  if (name.length > MAX_NAME_LENGTH) {
+    throw createHttpError(400, `Prompt name must be ${MAX_NAME_LENGTH} characters or fewer`);
+  }
+
+  return name;
+}
+
+function normalizePromptInstruction(value) {
+  const instruction = String(value || '').trim();
+  if (!instruction) {
+    throw createHttpError(400, 'Prompt instruction is required');
+  }
+
+  if (instruction.length > MAX_INSTRUCTION_LENGTH) {
+    throw createHttpError(400, `Prompt instruction must be ${MAX_INSTRUCTION_LENGTH} characters or fewer`);
+  }
+
+  return instruction;
+}
+
+function nextProfileOrder(profiles) {
+  const maxOrder = profiles.reduce((max, profile) => {
+    const order = Number(profile?.order);
+    return Number.isFinite(order) ? Math.max(max, order) : max;
+  }, 20);
+  return maxOrder + 10;
+}
+
+function compareProfiles(a, b) {
+  const orderDelta = Number(a.order || 0) - Number(b.order || 0);
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
+
+  return String(a.name || '').localeCompare(String(b.name || ''));
 }
 
 function clonePromptProfile(profile) {
@@ -79,5 +373,13 @@ function clonePromptProfile(profile) {
     id: profile.id,
     name: profile.name,
     instruction: profile.instruction,
+    source: profile.source,
+    builtin: Boolean(profile.builtin),
+    editable: profile.editable !== false,
+    deletable: Boolean(profile.deletable),
+    resettable: Boolean(profile.resettable),
+    order: Number.isFinite(Number(profile.order)) ? Number(profile.order) : 100,
+    createdAt: profile.createdAt || '',
+    updatedAt: profile.updatedAt || '',
   };
 }

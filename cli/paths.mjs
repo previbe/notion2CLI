@@ -34,6 +34,7 @@ export function getAppPaths() {
     logsDir: path.join(root, 'logs'),
     artifactsDir: path.join(root, 'state', 'artifacts'),
     daemonFile: path.join(root, 'state', 'daemon.json'),
+    promptProfilesFile: path.join(root, 'prompts.json'),
     claudeChannelMcpConfigFile: path.join(root, 'claude-channel.mcp.json'),
     claudeWorkerMcpConfigFile: path.join(root, 'claude-worker.mcp.json'),
     daemonOutLog: path.join(root, 'logs', 'daemon.log'),

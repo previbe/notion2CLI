@@ -15,7 +15,8 @@
 - 整页读取仍通过当前 runtime 的 Notion MCP 完成
 - Notion 页面里的图片会作为本地图片工件交给 runtime
 - 最新回复会回到插件面板
-- 用户可手动点击“写回 Notion”
+- Agent 可按任务提示词通过 Notion MCP 修改当前 Notion 页面
+- 用户也可在设置里选择显示手动“写回 Notion”按钮作为 fallback
 - Codex 会稳定复用同一个 Codex App 可见 session
 - Claude Code 会通过 Channels 投递到 `notion2cli claude launch` 启动的当前终端会话
 
@@ -77,9 +78,8 @@ notion2cli pair
 1. 点击浏览器工具栏里的 `notion2CLI`
 2. 粘贴 6 位配对码
 3. 打开一个 Notion 页面
-4. 选择任务：`原样运行` 或 `Build`
-5. 选中文字时点击“运行选中内容”或“Build 选中内容”
-6. 不选中文字时点击“运行当前页”或“Build 当前页”
+4. 点击 Activity 面板里的任务按钮，例如 `原文` 或 `Build`
+5. 有选区时会处理选区，没有选区时会处理当前页全文
 
 需要检查或打开同一个 Codex App session：
 
@@ -140,17 +140,29 @@ bridge 会创建 job，把选区当作下一条用户输入交给当前 runtime�
 
 执行完成后，最终结果会作为 Brief 显示在插件面板。Agent 只有在任务确实要求修改当前 Notion 页面时，才应该通过 Notion MCP 修改页面；普通 Build 任务通常只改本地代码，不改 Notion 正文。
 
+### 自定义提示词
+
+Activity 面板中的任务现在是按钮。点击 `原文`、`Build` 或自定义任务名会直接运行该任务；有选区时处理选区，没有选区时处理当前页全文。
+
+点击 `管理` 可以新增、编辑、删除提示词。`Build` 可以修改或删除，也可以恢复官方默认版本。`原文` 是系统基础入口，不允许编辑或删除。
+
+提示词由本地 bridge 统一管理，保存在：
+
+```text
+~/.notion2cli/prompts.json
+```
+
 ### 写回 Notion
 
-回复显示在插件面板后，可以手动点击“写回 Notion”。
+Agent 可以按当前任务提示词自行决定是否修改当前 Notion 页面。插件设置页的“写回设置”里可以控制是否显示手动“写回 Notion”按钮。
 
-当前写回仍由 runtime 通过 Notion MCP 执行。支持：
+手动写回仍由 runtime 通过 Notion MCP 执行，支持：
 
 - 追加到页面末尾
 - 替换当前选中文本
 - 覆盖页面正文
 
-MVP 默认建议使用“追加到页面末尾”。
+MVP 默认隐藏手动写回按钮。需要手动 fallback 时，可以在插件设置页打开它；写回模式默认建议使用“追加到页面末尾”。
 
 ## 常用命令
 
@@ -181,6 +193,7 @@ notion2cli mcp install notion --runtime claude
 
 - `~/.notion2cli/state/daemon.json`
 - `~/.notion2cli/state/artifacts/`
+- `~/.notion2cli/prompts.json`
 - `~/.notion2cli/claude-channel.mcp.json`
 - `~/.notion2cli/claude-worker.mcp.json`
 - `~/.notion2cli/logs/daemon.log`
@@ -201,7 +214,7 @@ npm run check
 4. 点击“运行当前页”
 5. 确认 runtime 直接开始处理
 6. 确认回复回到插件面板
-7. 点击“写回 Notion”，确认结果追加到页面末尾
+7. 如已开启手动写回按钮，点击“写回 Notion”，确认结果按设置模式写入页面
 
 ## 当前边界
 
