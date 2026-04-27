@@ -1,10 +1,13 @@
 import {
   ACTION_FORWARD_FULL_PAGE,
+  JOB_STATUS_CANCELLED,
+  JOB_STATUS_CANCELLING,
   JOB_STATUS_COMPLETED,
   JOB_STATUS_DISPATCHED,
   JOB_STATUS_FAILED,
   JOB_STATUS_RUNNING,
   JOB_STATUS_WAITING_FOR_APPROVAL,
+  TERMINAL_JOB_STATUSES,
   createHttpError,
   readBearer,
 } from './constants.mjs';
@@ -104,7 +107,7 @@ export class BridgeApp {
 
     this.processJob(job.id).catch((error) => {
       const snapshot = this.jobStore.get(job.id);
-      if (!snapshot || snapshot.status === JOB_STATUS_COMPLETED || snapshot.status === JOB_STATUS_FAILED) {
+      if (!snapshot || TERMINAL_JOB_STATUSES.has(snapshot.status) || snapshot.status === JOB_STATUS_CANCELLING) {
         return;
       }
 
@@ -190,6 +193,73 @@ export class BridgeApp {
     };
   }
 
+  async cancelJob(token, jobId) {
+    this.assertToken(token);
+    const job = this.jobStore.get(jobId);
+
+    if (!job) {
+      throw createHttpError(404, 'Unknown job id');
+    }
+
+    if (TERMINAL_JOB_STATUSES.has(job.status)) {
+      return {
+        ok: true,
+        job: this.jobStore.toPublic(job),
+      };
+    }
+
+    this.recordJobEvent(jobId, {
+      type: 'cancel_requested',
+      status: JOB_STATUS_CANCELLING,
+      note: '用户请求停止任务。',
+      runtimeMeta: {
+        cancelRequested: true,
+        pendingApproval: null,
+      },
+    });
+
+    let result = {
+      ok: true,
+      mode: 'soft',
+      message: '已停止等待这次结果；底层 Agent 可能仍在运行。',
+    };
+
+    if (typeof this.runtime.cancelJob === 'function') {
+      try {
+        result = await this.runtime.cancelJob(jobId, {
+          reason: 'user_requested',
+        }) || result;
+      } catch (error) {
+        result = {
+          ok: false,
+          mode: 'soft',
+          message: error?.message || '停止请求未被当前 runtime 确认，已停止等待这次结果。',
+        };
+      }
+    }
+
+    const cancelMode = normalizeCancelMode(result.mode);
+    this.recordJobEvent(jobId, {
+      type: 'cancelled',
+      status: JOB_STATUS_CANCELLED,
+      note: cancelMode === 'soft'
+        ? '已停止等待这次结果；底层 Agent 可能仍在运行。'
+        : '任务已停止。',
+      error: null,
+      runtimeMeta: {
+        cancelRequested: false,
+        cancelMode,
+        cancelMessage: result.message || '',
+        pendingApproval: null,
+      },
+    });
+
+    return {
+      ok: true,
+      job: this.jobStore.toPublic(this.jobStore.get(jobId)),
+    };
+  }
+
   async resolveJobApproval(token, jobId, body) {
     this.assertToken(token);
     const job = this.jobStore.get(jobId);
@@ -271,6 +341,22 @@ export class BridgeApp {
   }
 
   recordJobEvent(jobId, event) {
+    const snapshot = this.jobStore.get(jobId);
+    if (!snapshot) {
+      throw createHttpError(404, `Unknown job id: ${jobId}`);
+    }
+
+    if (shouldIgnoreJobEvent(snapshot, event)) {
+      const ignored = this.jobStore.applyEvent(jobId, {
+        type: `ignored_${event.type || 'event'}`,
+        note: `Ignored ${event.status || 'event'} after ${snapshot.status}.`,
+        extra: {
+          attemptedStatus: event.status || null,
+        },
+      });
+      return ignored || snapshot;
+    }
+
     const job = this.jobStore.applyEvent(jobId, event);
     if (!job) {
       throw createHttpError(404, `Unknown job id: ${jobId}`);
@@ -288,7 +374,15 @@ export class BridgeApp {
     let pageBundle = null;
     let pageBundleWarnings = [];
     if (job.action === ACTION_FORWARD_FULL_PAGE) {
+      if (this.shouldStopProcessing(job.id)) {
+        return;
+      }
+
       const pageBundleResult = await this.pageBundleProvider.fetchPageBundle(job);
+      if (this.shouldStopProcessing(job.id)) {
+        return;
+      }
+
       pageBundle = pageBundleResult.bundle;
       pageBundleWarnings = Array.isArray(pageBundleResult.warnings) ? pageBundleResult.warnings : [];
       if (!pageBundle) {
@@ -316,11 +410,19 @@ export class BridgeApp {
       });
     }
 
+    if (this.shouldStopProcessing(job.id)) {
+      return;
+    }
+
     const inputBundle = await createInputBundle(job, {
       artifactStore: this.artifactStore,
       pageBundle,
       log: this.log,
     });
+    if (this.shouldStopProcessing(job.id)) {
+      return;
+    }
+
     if (pageBundleWarnings.length) {
       inputBundle.warnings = [...pageBundleWarnings, ...inputBundle.warnings];
     }
@@ -354,6 +456,36 @@ export class BridgeApp {
         },
       },
     });
+    if (this.shouldStopProcessing(job.id)) {
+      return;
+    }
+
     await this.runtime.dispatchJob(job);
   }
+
+  shouldStopProcessing(jobId) {
+    const job = this.jobStore.get(jobId);
+    return !job || TERMINAL_JOB_STATUSES.has(job.status) || job.status === JOB_STATUS_CANCELLING;
+  }
+}
+
+function shouldIgnoreJobEvent(job, event) {
+  if (!event || !Object.hasOwn(event, 'status')) {
+    return false;
+  }
+
+  if (TERMINAL_JOB_STATUSES.has(job.status) && event.status !== job.status) {
+    return true;
+  }
+
+  if (job.status === JOB_STATUS_CANCELLING && ![JOB_STATUS_CANCELLING, JOB_STATUS_CANCELLED].includes(event.status)) {
+    return true;
+  }
+
+  return false;
+}
+
+function normalizeCancelMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  return ['hard', 'queued', 'soft', 'unsupported'].includes(value) ? value : 'soft';
 }

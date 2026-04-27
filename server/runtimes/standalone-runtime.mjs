@@ -12,6 +12,7 @@ export class StandaloneRuntime {
     this.label = 'Standalone Simulator';
     this.log = log;
     this.context = null;
+    this.timers = new Map();
   }
 
   async start(context) {
@@ -19,7 +20,12 @@ export class StandaloneRuntime {
     this.log('standalone mode enabled');
   }
 
-  async stop() {}
+  async stop() {
+    for (const timer of this.timers.values()) {
+      clearTimeout(timer);
+    }
+    this.timers.clear();
+  }
 
   async startPairing() {}
 
@@ -28,12 +34,33 @@ export class StandaloneRuntime {
       type: 'sent_to_standalone_simulator',
     });
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      this.timers.delete(job.id);
       this.context.completeJob(job.id, buildStandaloneReply(job), {
         type: 'standalone_reply',
       });
       this.log('standalone reply generated', { jobId: job.id });
     }, 1200);
+    this.timers.set(job.id, timer);
+  }
+
+  async cancelJob(jobId) {
+    const timer = this.timers.get(jobId);
+    if (!timer) {
+      return {
+        ok: true,
+        mode: 'unsupported',
+        message: 'No pending standalone timer was found for this job.',
+      };
+    }
+
+    clearTimeout(timer);
+    this.timers.delete(jobId);
+    return {
+      ok: true,
+      mode: 'hard',
+      message: 'Standalone timer was cleared.',
+    };
   }
 
   async respondToApproval() {

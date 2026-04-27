@@ -172,6 +172,85 @@ export class CodexLiveSession {
     };
   }
 
+  async cancelTurn(jobId) {
+    const id = String(jobId || '').trim();
+    const queueIndex = this.turnQueue.findIndex((task) => task.jobId === id);
+    if (queueIndex >= 0) {
+      this.turnQueue.splice(queueIndex, 1);
+      return {
+        ok: true,
+        mode: 'queued',
+        message: 'Queued Codex turn was removed before it started.',
+      };
+    }
+
+    let activeTask = null;
+    if (this.activeTask?.jobId === id) {
+      this.activeTask.cancelled = true;
+      activeTask = this.activeTask;
+    }
+
+    if (this.pendingApproval?.jobId === id) {
+      await this.respondToApproval(id, { action: 'cancel' });
+      const interruptResult = await this.interruptActiveTurn(activeTask);
+      return {
+        ok: true,
+        mode: interruptResult.mode,
+        message: interruptResult.message,
+      };
+    }
+
+    if (activeTask) {
+      const interruptResult = await this.interruptActiveTurn(activeTask);
+      return {
+        ok: true,
+        mode: interruptResult.mode,
+        message: interruptResult.message,
+      };
+    }
+
+    return {
+      ok: true,
+      mode: 'unsupported',
+      message: 'No queued or active Codex turn was found for this job.',
+    };
+  }
+
+  async interruptActiveTurn(task) {
+    if (!task?.turnId || !this.threadId) {
+      return {
+        ok: false,
+        mode: 'soft',
+        message: '已停止等待这次结果；Codex turn 尚未返回可中断的 turnId。',
+      };
+    }
+
+    try {
+      await this.request('turn/interrupt', {
+        threadId: this.threadId,
+        turnId: task.turnId,
+      });
+      return {
+        ok: true,
+        mode: 'hard',
+        message: '已向 Codex 发送 turn interrupt。',
+      };
+    } catch (error) {
+      const message = error?.message || 'Codex turn interrupt failed';
+      this.log('codex turn interrupt failed', {
+        threadId: this.threadId,
+        turnId: task.turnId,
+        jobId: task.jobId,
+        error: message,
+      });
+      return {
+        ok: false,
+        mode: 'soft',
+        message: `已停止等待这次结果；Codex interrupt 未成功：${message}`,
+      };
+    }
+  }
+
   async respondToApproval(jobId, resolution) {
     if (!this.pendingApproval || this.pendingApproval.jobId !== jobId) {
       throw new Error('No pending Codex approval for this job');
@@ -305,6 +384,24 @@ export class CodexLiveSession {
       return;
     }
 
+    if (this.activeTask?.cancelled) {
+      this.send({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          action: 'cancel',
+          content: null,
+          _meta: null,
+        },
+      });
+      this.log('codex approval auto-cancelled for cancelled turn', {
+        threadId: this.threadId,
+        turnId: this.activeTask.turnId || null,
+        jobId: this.activeTask.jobId || null,
+      });
+      return;
+    }
+
     const payload = buildPendingApproval(message.params || {});
     this.pendingApproval = {
       requestId: message.id,
@@ -365,7 +462,7 @@ export class CodexLiveSession {
 
     this.latestAssistantMessage = text;
     this.latestAssistantAt = new Date().toISOString();
-    if (!this.activeTask || this.activeTask.captureReply !== false) {
+    if (!this.activeTask || (!this.activeTask.cancelled && this.activeTask.captureReply !== false)) {
       this.latestSharableAssistantMessage = text;
       this.latestSharableAssistantAt = this.latestAssistantAt;
     }
@@ -396,6 +493,12 @@ export class CodexLiveSession {
     const task = this.activeTask;
     this.activeTask = null;
     this.pendingApproval = null;
+
+    if (task.cancelled) {
+      this.persistSnapshot().catch(() => {});
+      this.pumpQueue().catch(() => {});
+      return;
+    }
 
     if (turn.status === 'completed') {
       const finalMessage = task.finalMessage || extractFinalMessageFromTurn(turn);
@@ -477,6 +580,10 @@ export class CodexLiveSession {
         ...(this.model ? { model: this.model } : {}),
       });
       task.turnId = response?.turn?.id || null;
+      if (task.cancelled) {
+        await this.interruptActiveTurn(task);
+        return;
+      }
       task.onRunning?.({
         threadId: this.threadId,
         turnId: task.turnId,

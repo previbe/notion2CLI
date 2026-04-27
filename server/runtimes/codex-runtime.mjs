@@ -226,6 +226,30 @@ export class CodexRuntime {
     await this.liveSession.respondToApproval(jobId, resolution);
   }
 
+  async cancelJob(jobId) {
+    const id = String(jobId || '').trim();
+    const result = await this.liveSession?.cancelTurn(id);
+    if (result && result.mode !== 'unsupported') {
+      this.runningJobs.delete(id);
+      return result;
+    }
+
+    if (!this.runningJobs.has(id)) {
+      return {
+        ok: true,
+        mode: 'unsupported',
+        message: 'No active Codex job was found for this stop request.',
+      };
+    }
+
+    this.runningJobs.delete(id);
+    return result || {
+      ok: true,
+      mode: 'unsupported',
+      message: 'No active Codex turn was found for this stop request.',
+    };
+  }
+
   async getStatus() {
     const session = this.liveSession?.getSnapshot() || null;
     const ready = Boolean(this.ready && session?.ready);

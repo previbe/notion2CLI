@@ -49,6 +49,7 @@
 .n2c-approve,
 .n2c-decline,
 .n2c-copy,
+.n2c-stop,
 .n2c-open-app {
   font-family: inherit;
 }
@@ -566,9 +567,47 @@
   gap: 8px;
 }
 
+.n2c-job-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
 .n2c-job-id {
   color: var(--n2c-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+.n2c-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(185, 83, 62, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(185, 83, 62, 0.86);
+  cursor: pointer;
+}
+
+.n2c-stop.n2c-hidden {
+  display: none;
+}
+
+.n2c-stop-icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+.n2c-stop:disabled {
+  cursor: default;
+  opacity: 0.48;
 }
 
 .n2c-spinner {

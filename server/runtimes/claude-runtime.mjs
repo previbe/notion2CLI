@@ -176,6 +176,25 @@ export class ClaudeRuntime {
     });
   }
 
+  async cancelJob(jobId) {
+    const session = this.runningJobs.get(jobId);
+    if (!session) {
+      return {
+        ok: true,
+        mode: 'unsupported',
+        message: 'No active Claude Code session was found for this stop request.',
+      };
+    }
+
+    session.cancel('用户停止了任务。');
+    this.runningJobs.delete(jobId);
+    return {
+      ok: true,
+      mode: 'hard',
+      message: 'Claude Code subprocess was terminated.',
+    };
+  }
+
   async getStatus() {
     return {
       runtime: {

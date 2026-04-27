@@ -108,6 +108,26 @@ class FakeRuntime {
   }
 }
 
+class SoftCancelRuntime extends FakeRuntime {
+  async dispatchJob(job) {
+    this.context.markJobDispatched(job.id, { type: 'soft_cancel_dispatched' });
+    this.context.markJobRunning(job.id, { type: 'soft_cancel_running' });
+    setTimeout(() => {
+      this.context.completeJob(job.id, 'Late completion should be ignored', {
+        type: 'soft_cancel_late_completed',
+      });
+    }, 80);
+  }
+
+  async cancelJob() {
+    return {
+      ok: true,
+      mode: 'soft',
+      message: 'fake runtime keeps running',
+    };
+  }
+}
+
 class FakeImageBundleRuntime extends FakeRuntime {
   constructor(imageUrl) {
     super();
@@ -271,6 +291,49 @@ test('bridge app pairs and completes a browser job through the runtime contract'
     assert.equal(job.status, 'completed');
     assert.equal(job.replyText, 'Echo: hello world');
     assert.equal(job.history.some((entry) => entry.type === 'fake_completed'), true);
+  } finally {
+    await httpServer.close();
+    await app.stop();
+  }
+});
+
+test('bridge app cancels a job and ignores late runtime completion', async () => {
+  const app = new BridgeApp({
+    runtime: new SoftCancelRuntime(),
+    log: () => {},
+  });
+  const httpServer = createBridgeHttpServer(app, () => {}, { port: 0 });
+
+  await app.start();
+  const address = await httpServer.listen();
+  const baseUrl = `http://${address.host}:${address.port}`;
+
+  try {
+    const pairResponse = await postJson(`${baseUrl}/api/pair/create`, {});
+    const confirmResponse = await postJson(`${baseUrl}/api/pair/confirm`, {
+      code: pairResponse.code,
+      clientLabel: 'Test Browser',
+    });
+
+    const jobResponse = await postJson(`${baseUrl}/api/jobs`, {
+      action: 'forward_selection_text',
+      pageUrl: 'https://www.notion.so/example',
+      pageTitle: 'Example Page',
+      selectionText: 'please work slowly',
+      source: 'test',
+    }, confirmResponse.token);
+    assert.equal(jobResponse.ok, true);
+
+    const cancelResponse = await postJson(`${baseUrl}/api/jobs/${jobResponse.jobId}/cancel`, {}, confirmResponse.token);
+    assert.equal(cancelResponse.ok, true);
+    assert.equal(cancelResponse.job.status, 'cancelled');
+    assert.equal(cancelResponse.job.runtimeMeta.cancelMode, 'soft');
+
+    await sleep(120);
+    const snapshot = await getJson(`${baseUrl}/api/jobs/${jobResponse.jobId}`, confirmResponse.token);
+    assert.equal(snapshot.job.status, 'cancelled');
+    assert.equal(snapshot.job.replyText, '');
+    assert.equal(snapshot.job.history.some((entry) => entry.type === 'ignored_soft_cancel_late_completed'), true);
   } finally {
     await httpServer.close();
     await app.stop();

@@ -32,6 +32,8 @@ async function handleMessage(message) {
       return resetPromptProfile(message.profileId);
     case 'getJobStatus':
       return getJobStatus(message.jobId);
+    case 'cancelJob':
+      return cancelJob(message.jobId);
     case 'resolveJobApproval':
       return resolveJobApproval(message.jobId, message.resolution);
     case 'openCodexApp':
@@ -180,6 +182,20 @@ async function getJobStatus(jobId) {
   }
 
   return fetchJson(`/api/jobs/${jobId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+async function cancelJob(jobId) {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('浏览器尚未和本地 bridge 配对');
+  }
+
+  return fetchJson(`/api/jobs/${jobId}/cancel`, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
     },

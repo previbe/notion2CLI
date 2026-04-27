@@ -121,6 +121,17 @@ export class ClaudeCliSession {
     this.child.kill('SIGTERM');
   }
 
+  cancel(reason = '用户停止了任务。') {
+    if (this.finished) {
+      return;
+    }
+
+    this.fail(reason, {
+      sessionId: this.sessionId,
+      cancelled: true,
+    });
+  }
+
   async handleLine(line) {
     if (!line.trim()) {
       return;

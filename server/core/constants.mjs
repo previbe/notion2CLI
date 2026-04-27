@@ -32,12 +32,15 @@ export const JOB_STATUS_QUEUED = 'queued';
 export const JOB_STATUS_DISPATCHED = 'dispatched';
 export const JOB_STATUS_RUNNING = 'running';
 export const JOB_STATUS_WAITING_FOR_APPROVAL = 'waiting_for_approval';
+export const JOB_STATUS_CANCELLING = 'cancelling';
 export const JOB_STATUS_COMPLETED = 'completed';
 export const JOB_STATUS_FAILED = 'failed';
+export const JOB_STATUS_CANCELLED = 'cancelled';
 
 export const TERMINAL_JOB_STATUSES = new Set([
   JOB_STATUS_COMPLETED,
   JOB_STATUS_FAILED,
+  JOB_STATUS_CANCELLED,
 ]);
 
 export function nowIso() {

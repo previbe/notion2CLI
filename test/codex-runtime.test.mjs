@@ -5,7 +5,7 @@ import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/code
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
-import { buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
+import { CodexLiveSession, buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
 
 test('codex app-server args keep stdio transport and optional profile overrides', () => {
@@ -48,6 +48,81 @@ test('codex live session uses a stable user-facing thread name', () => {
     buildCodexThreadName('/Users/morrow/coding/notion2CLI'),
     'notion2CLI - notion2CLI',
   );
+});
+
+test('codex live session interrupts an active turn when cancelled', async () => {
+  const calls = [];
+  const session = new CodexLiveSession({
+    cwd: '/tmp/notion2cli',
+    log: () => {},
+  });
+  session.threadId = 'thread-1';
+  session.activeTask = {
+    jobId: 'job-1',
+    turnId: 'turn-1',
+  };
+  session.request = async (method, params) => {
+    calls.push({ method, params });
+    return {};
+  };
+
+  const result = await session.cancelTurn('job-1');
+
+  assert.equal(result.mode, 'hard');
+  assert.equal(session.activeTask.cancelled, true);
+  assert.deepEqual(calls, [
+    {
+      method: 'turn/interrupt',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+      },
+    },
+  ]);
+});
+
+test('codex live session auto-cancels approval requests after cancellation', async () => {
+  const sent = [];
+  let approvalRequests = 0;
+  const session = new CodexLiveSession({
+    cwd: '/tmp/notion2cli',
+    log: () => {},
+  });
+  session.threadId = 'thread-1';
+  session.activeTask = {
+    jobId: 'job-1',
+    turnId: 'turn-1',
+    cancelled: true,
+    onApprovalRequested: () => {
+      approvalRequests += 1;
+    },
+  };
+  session.send = (message) => {
+    sent.push(message);
+  };
+
+  await session.handleServerRequest({
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'mcpServer/elicitation/request',
+    params: {
+      message: 'Allow the notion MCP server to run tool "notion-update-page"?',
+    },
+  });
+
+  assert.equal(approvalRequests, 0);
+  assert.equal(session.pendingApproval, null);
+  assert.deepEqual(sent, [
+    {
+      jsonrpc: '2.0',
+      id: 9,
+      result: {
+        action: 'cancel',
+        content: null,
+        _meta: null,
+      },
+    },
+  ]);
 });
 
 test('claude channel uses a stable user-facing session name', () => {

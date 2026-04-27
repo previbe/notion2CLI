@@ -17,8 +17,10 @@ const state = {
   expanded: false,
   currentJobId: null,
   currentAction: '',
+  currentStatus: '',
   pollTimer: null,
   busy: false,
+  stopBusy: false,
   approvalBusy: false,
   openAppBusy: false,
   pendingApproval: null,
@@ -113,7 +115,14 @@ root.innerHTML = `
               <span class="n2c-spinner"></span>
               <span>还没有开始</span>
             </span>
-            <span class="n2c-job-id" data-job-id></span>
+            <span class="n2c-job-actions">
+              <button class="n2c-stop n2c-hidden" type="button" data-stop-job disabled aria-label="停止任务" title="停止任务">
+                <svg class="n2c-stop-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="7" y="7" width="10" height="10" rx="1.8"></rect>
+                </svg>
+              </button>
+              <span class="n2c-job-id" data-job-id></span>
+            </span>
           </div>
           <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态和 Agent 回复会显示在这里。</div>
           <div class="n2c-approval n2c-hidden" data-approval>
@@ -210,6 +219,7 @@ const savePromptButton = root.querySelector('[data-save-prompt]');
 const resetPromptButton = root.querySelector('[data-reset-prompt]');
 const deletePromptButton = root.querySelector('[data-delete-prompt]');
 const openAppButton = root.querySelector('[data-open-app]');
+const stopButton = root.querySelector('[data-stop-job]');
 const runStatusNode = root.querySelector('[data-run-status]');
 const jobIdNode = root.querySelector('[data-job-id]');
 const activityNoteNode = root.querySelector('[data-activity-note]');
@@ -272,6 +282,11 @@ function bindEvents() {
   resetPromptButton.addEventListener('click', () => resetPromptFromEditor());
   deletePromptButton.addEventListener('click', () => deletePromptFromEditor());
   openAppButton.addEventListener('click', () => openCodexAppFromPanel());
+  stopButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    stopCurrentJob();
+  });
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
 
@@ -651,6 +666,7 @@ async function startAction(profileId = state.promptProfileId) {
   clearPolling();
   setExpanded(true);
   state.busy = true;
+  state.stopBusy = false;
   state.approvalBusy = false;
   state.pendingApproval = null;
   state.currentAction = action;
@@ -738,6 +754,7 @@ async function startManualWriteBack() {
 
   const runtimeLabel = getRuntimeLabel();
   state.busy = true;
+  state.stopBusy = false;
   state.currentAction = ACTION_WRITE_REPLY;
   renderJobState({
     status: 'sending',
@@ -781,6 +798,53 @@ async function startManualWriteBack() {
   }
 }
 
+async function stopCurrentJob() {
+  const jobId = state.currentJobId;
+  if (!jobId || state.stopBusy) {
+    return;
+  }
+
+  clearPolling();
+  state.stopBusy = true;
+  renderJobState({
+    status: 'cancelling',
+    text: '正在停止任务…',
+    jobId,
+    action: state.currentAction,
+  });
+
+  try {
+    const response = await sendMessage({
+      type: 'cancelJob',
+      jobId,
+    });
+    const job = response.job || {};
+    clearPolling();
+    state.busy = false;
+    state.stopBusy = false;
+    state.approvalBusy = false;
+    state.pendingApproval = null;
+    renderJobState({
+      status: job.status || 'cancelled',
+      text: buildCancelStatusText(job),
+      jobId: job.id || jobId,
+      action: job.action || state.currentAction,
+      runtimeMeta: job.runtimeMeta || {},
+    });
+  } catch (error) {
+    state.stopBusy = false;
+    renderJobState({
+      status: state.currentJobId ? 'running' : 'failed',
+      text: error.message || '停止任务失败',
+      jobId,
+      action: state.currentAction,
+    });
+    if (state.currentJobId === jobId) {
+      pollJob(jobId);
+    }
+  }
+}
+
 function pollJob(jobId) {
   clearPolling();
   state.pollTimer = setInterval(async () => {
@@ -791,6 +855,9 @@ function pollJob(jobId) {
       });
 
       const job = response.job;
+      if (shouldIgnorePollResult(jobId)) {
+        return;
+      }
       if (job.status === 'completed' && isReplyAction(job.action)) {
         clearPolling();
         state.approvalBusy = false;
@@ -818,15 +885,17 @@ function pollJob(jobId) {
         runtimeMeta: job.runtimeMeta || {},
       });
 
-      if (job.status === 'completed' || job.status === 'failed') {
+      if (isTerminalJobStatus(job.status)) {
         clearPolling();
         state.busy = false;
+        state.stopBusy = false;
         state.approvalBusy = false;
         updateControls();
       }
     } catch (error) {
       clearPolling();
       state.busy = false;
+      state.stopBusy = false;
       state.approvalBusy = false;
       renderJobState({
         status: 'failed',
@@ -839,9 +908,24 @@ function pollJob(jobId) {
   }, 1800);
 }
 
+function shouldIgnorePollResult(jobId) {
+  return state.currentJobId !== jobId
+    || state.stopBusy
+    || state.currentStatus === 'cancelling'
+    || isTerminalJobStatus(state.currentStatus);
+}
+
 function buildJobStateText(job) {
   if (job.status === 'failed') {
     return job.error || (job.action === ACTION_WRITE_REPLY ? '写回失败。' : '执行失败。');
+  }
+
+  if (job.status === 'cancelled') {
+    return buildCancelStatusText(job);
+  }
+
+  if (job.status === 'cancelling') {
+    return '正在停止任务…';
   }
 
   if (job.status === 'waiting_for_approval') {
@@ -898,6 +982,9 @@ function buildWriteStatusText(status, writeMode) {
   if (status === 'completed') {
     return buildWriteCompletedText(writeMode);
   }
+  if (status === 'cancelled') {
+    return '已停止写回任务。';
+  }
   const runtimeLabel = getRuntimeLabel();
 
   switch (status) {
@@ -907,11 +994,22 @@ function buildWriteStatusText(status, writeMode) {
       return `写回请求已送达 ${runtimeLabel}，正在等待执行…`;
     case 'running':
       return buildWriteRunningText(writeMode);
+    case 'cancelling':
+      return '正在停止写回任务…';
     case 'sending':
       return '正在提交写回请求…';
     default:
       return '写回处理中…';
   }
+}
+
+function buildCancelStatusText(job = {}) {
+  const mode = String(job.runtimeMeta?.cancelMode || '').trim();
+  if (mode === 'soft' || mode === 'unsupported') {
+    return '已停止等待这次结果；底层 Agent 可能仍在运行。';
+  }
+
+  return '任务已停止。';
 }
 
 function buildWriteRunningText(writeMode) {
@@ -947,10 +1045,11 @@ function buildWriteCompletedText(writeMode) {
 function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
   state.currentAction = action || state.currentAction;
   state.currentJobId = jobId || null;
+  state.currentStatus = status || '';
 
   jobIdNode.textContent = jobId ? `#${jobId.slice(0, 8)}` : '';
 
-  const isTerminal = status === 'completed' || status === 'failed';
+  const isTerminal = isTerminalJobStatus(status);
   const isWaitingForApproval = status === 'waiting_for_approval';
   const statusMarkup = isTerminal
     ? `<span>${statusLabel(status, action)}</span>`
@@ -999,6 +1098,10 @@ function statusLabel(status, action) {
       return action === ACTION_WRITE_REPLY ? '写回中' : '处理中';
     case 'waiting_for_approval':
       return '等待确认';
+    case 'cancelling':
+      return '停止中';
+    case 'cancelled':
+      return '已停止';
     case 'sending':
       return action === ACTION_WRITE_REPLY ? '准备写回' : '提交中';
     case 'completed':
@@ -1008,6 +1111,10 @@ function statusLabel(status, action) {
     default:
       return '处理中';
   }
+}
+
+function isTerminalJobStatus(status) {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
 
 function getSelectionText() {
@@ -1272,11 +1379,29 @@ function updateControls() {
   copyButton.disabled = !(state.latestBrief || state.latestReply);
   writeBackButton.classList.toggle('n2c-hidden', !state.manualWritebackVisible);
   writeBackButton.disabled = !state.manualWritebackVisible || state.busy || !canWriteBack(selectionText);
+  stopButton.classList.toggle('n2c-hidden', !canShowStopButton());
+  stopButton.disabled = state.stopBusy || !canStopCurrentJob();
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
   approveButton.textContent = state.pendingApproval?.mode === 'url' && !isUrlApprovalReadyToContinue()
     ? '打开授权页'
     : '允许继续';
+}
+
+function canShowStopButton() {
+  return Boolean(state.currentJobId) && state.busy && !isTerminalJobStatus(currentVisibleStatus());
+}
+
+function canStopCurrentJob() {
+  return Boolean(state.currentJobId) && state.busy && !state.stopBusy && !isTerminalJobStatus(currentVisibleStatus());
+}
+
+function currentVisibleStatus() {
+  if (state.stopBusy) {
+    return 'cancelling';
+  }
+
+  return state.currentStatus || '';
 }
 
 async function openCodexAppFromPanel() {

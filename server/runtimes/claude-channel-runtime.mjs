@@ -208,6 +208,28 @@ export class ClaudeChannelRuntime {
     throw new Error('Claude channel approval happens inside the active Claude Code session');
   }
 
+  async cancelJob(jobId) {
+    if (this.workerRuntime.runningJobs?.has(jobId) && typeof this.workerRuntime.cancelJob === 'function') {
+      return await this.workerRuntime.cancelJob(jobId);
+    }
+
+    if (!this.runningJobs.has(jobId)) {
+      return {
+        ok: true,
+        mode: 'unsupported',
+        message: 'No active Claude channel job was found for this stop request.',
+      };
+    }
+
+    this.clearJobTimer(jobId);
+    this.runningJobs.delete(jobId);
+    return {
+      ok: true,
+      mode: 'soft',
+      message: 'Stopped waiting for the Claude Code channel reply. The terminal session may still finish the task.',
+    };
+  }
+
   async getStatus() {
     const workerStatus = await this.workerRuntime.getStatus();
     const ready = Boolean(this.connected);
