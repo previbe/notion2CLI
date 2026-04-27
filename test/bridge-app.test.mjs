@@ -6,6 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { BridgeApp } from '../server/core/bridge-app.mjs';
+import { ArtifactStore } from '../server/core/artifact-store.mjs';
 import { createBridgeHttpServer } from '../server/core/http-server.mjs';
 import { PromptProfileStore } from '../server/core/prompt-profiles.mjs';
 
@@ -508,6 +509,7 @@ test('bridge app prefers runtime-backed page bundles for full-page artifact reso
   const app = new BridgeApp({
     runtime: new FakeImageBundleRuntime(imageUrl),
     log: () => {},
+    artifactStore: new ArtifactStore({ log: () => {}, allowPrivateNetworkUrls: true }),
   });
   const httpServer = createBridgeHttpServer(app, () => {}, { port: 0 });
 

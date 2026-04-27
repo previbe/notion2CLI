@@ -125,6 +125,49 @@ test('codex live session auto-cancels approval requests after cancellation', asy
   ]);
 });
 
+test('codex live session fails queued turns when the websocket disconnects', () => {
+  const failures = [];
+  const session = new CodexLiveSession({
+    cwd: '/tmp/notion2cli',
+    log: () => {},
+  });
+  session.connected = true;
+  session.threadId = 'thread-1';
+  session.activeTask = {
+    jobId: 'active-job',
+    turnId: 'turn-1',
+    onFailed: (message, meta) => failures.push({ jobId: 'active-job', message, meta }),
+  };
+  session.turnQueue.push({
+    jobId: 'queued-job',
+    onFailed: (message, meta) => failures.push({ jobId: 'queued-job', message, meta }),
+  });
+
+  session.handleConnectionFailure('socket closed');
+
+  assert.equal(session.connected, false);
+  assert.equal(session.activeTask, null);
+  assert.equal(session.turnQueue.length, 0);
+  assert.deepEqual(failures, [
+    {
+      jobId: 'active-job',
+      message: 'socket closed',
+      meta: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+      },
+    },
+    {
+      jobId: 'queued-job',
+      message: 'socket closed',
+      meta: {
+        threadId: 'thread-1',
+        turnId: null,
+      },
+    },
+  ]);
+});
+
 test('claude channel uses a stable user-facing session name', () => {
   assert.equal(
     buildClaudeChannelName('/Users/morrow/coding/notion2CLI'),

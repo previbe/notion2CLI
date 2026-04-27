@@ -672,6 +672,7 @@ export class CodexLiveSession {
 
     this.connected = false;
     this.rejectPendingRequests(new Error(message));
+    this.pendingApproval = null;
 
     if (this.activeTask) {
       this.activeTask.onFailed?.(message, {
@@ -679,6 +680,14 @@ export class CodexLiveSession {
         turnId: this.activeTask.turnId || null,
       });
       this.activeTask = null;
+    }
+
+    const queuedTasks = this.turnQueue.splice(0);
+    for (const task of queuedTasks) {
+      task.onFailed?.(message, {
+        threadId: this.threadId,
+        turnId: task.turnId || null,
+      });
     }
   }
 

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -26,9 +27,10 @@ const EXTENSION_MIME_MAP = new Map([
 ]);
 
 export class ArtifactStore {
-  constructor({ rootDir, log }) {
+  constructor({ rootDir, log, allowPrivateNetworkUrls = false } = {}) {
     this.rootDir = rootDir || path.join(getNotion2cliHome(), 'state', 'artifacts');
     this.log = log || (() => {});
+    this.allowPrivateNetworkUrls = allowPrivateNetworkUrls === true;
   }
 
   async prepareArtifacts(jobId, assets = {}) {
@@ -73,7 +75,9 @@ export class ArtifactStore {
     for (let index = 0; index < normalizedImages.length; index += 1) {
       const candidate = normalizedImages[index];
       try {
-        const artifact = await downloadImageArtifact(cacheDir, index, candidate);
+        const artifact = await downloadImageArtifact(cacheDir, index, candidate, {
+          allowPrivateNetworkUrls: this.allowPrivateNetworkUrls,
+        });
         images.push(artifact);
       } catch (error) {
         const message = error?.message || 'Unknown image download failure';
@@ -131,15 +135,16 @@ function normalizeDimension(value) {
   return Math.round(candidate);
 }
 
-async function downloadImageArtifact(cacheDir, index, image) {
+async function downloadImageArtifact(cacheDir, index, image, options = {}) {
+  validateImageSourceUrl(image.sourceUrl, options);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   let response;
   try {
-    response = await fetch(image.sourceUrl, {
-      redirect: 'follow',
+    response = await fetchImageWithValidatedRedirects(image.sourceUrl, {
       signal: controller.signal,
+      allowPrivateNetworkUrls: options.allowPrivateNetworkUrls,
     });
   } finally {
     clearTimeout(timer);
@@ -150,7 +155,7 @@ async function downloadImageArtifact(cacheDir, index, image) {
   }
 
   const headerMimeType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-  const buffer = Buffer.from(await response.arrayBuffer());
+  const buffer = await readResponseBodyWithLimit(response, MAX_IMAGE_BYTES);
   const mimeType = resolveImageMimeType({
     headerMimeType,
     buffer,
@@ -182,6 +187,134 @@ async function downloadImageArtifact(cacheDir, index, image) {
     height: image.height,
     alt: image.alt,
   };
+}
+
+async function fetchImageWithValidatedRedirects(sourceUrl, options = {}) {
+  let currentUrl = validateImageSourceUrl(sourceUrl, options);
+
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    const response = await fetch(currentUrl, {
+      redirect: 'manual',
+      signal: options.signal,
+    });
+
+    if (![301, 302, 303, 307, 308].includes(response.status)) {
+      return response;
+    }
+
+    const location = response.headers.get('location');
+    if (!location) {
+      throw new Error(`redirect ${response.status} missing location`);
+    }
+
+    currentUrl = validateImageSourceUrl(new URL(location, currentUrl).toString(), options);
+  }
+
+  throw new Error('too many redirects');
+}
+
+async function readResponseBodyWithLimit(response, maxBytes) {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new Error(`image too large (${contentLength} bytes)`);
+  }
+
+  if (!response.body?.getReader) {
+    const fallback = Buffer.from(await response.arrayBuffer());
+    if (fallback.length > maxBytes) {
+      throw new Error(`image too large (${fallback.length} bytes)`);
+    }
+    return fallback;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const chunk = Buffer.from(value);
+    totalBytes += chunk.length;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error(`image too large (${totalBytes} bytes)`);
+    }
+
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks, totalBytes);
+}
+
+function validateImageSourceUrl(sourceUrl, options = {}) {
+  let url;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    throw new Error('invalid image URL');
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`unsupported URL protocol ${url.protocol}`);
+  }
+
+  if (!options.allowPrivateNetworkUrls && isPrivateNetworkHost(url.hostname)) {
+    throw new Error('local/private image URLs are not allowed');
+  }
+
+  return url.toString();
+}
+
+function isPrivateNetworkHost(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) {
+    return true;
+  }
+
+  if (host === 'localhost' || host.endsWith('.localhost')) {
+    return true;
+  }
+
+  if (net.isIP(host) === 4) {
+    return isPrivateIpv4(host);
+  }
+
+  if (net.isIP(host) === 6) {
+    return isPrivateIpv6(host);
+  }
+
+  return false;
+}
+
+function isPrivateIpv4(host) {
+  const parts = host.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+
+  const [a, b] = parts;
+  return a === 0
+    || a === 10
+    || a === 127
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 100 && b >= 64 && b <= 127);
+}
+
+function isPrivateIpv6(host) {
+  return host === '::1'
+    || host === '0:0:0:0:0:0:0:1'
+    || host.startsWith('fc')
+    || host.startsWith('fd')
+    || host.startsWith('fe80:')
+    || host.startsWith('::ffff:127.')
+    || host.startsWith('::ffff:10.')
+    || host.startsWith('::ffff:192.168.');
 }
 
 function getNotion2cliHome() {

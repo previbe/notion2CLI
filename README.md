@@ -33,7 +33,7 @@
 
 本机需要：
 
-- `Node.js`
+- `Node.js 22.15+`
 - `npm`
 - `Google Chrome`
 - `Codex CLI` 或 `Claude Code`

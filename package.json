@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "A local-first bridge that runs Notion page content as the next input in a local Codex or Claude Code session.",
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "bin": {
     "notion2cli": "./bin/notion2cli.mjs",
     "notion2cli-bridge": "./bin/notion2cli-bridge",

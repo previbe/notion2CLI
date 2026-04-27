@@ -32,7 +32,7 @@ test('artifact store downloads remote page images into local cache', async () =>
   const address = server.address();
   const imageUrl = `http://127.0.0.1:${address.port}/image.png`;
   const rootDir = path.join(os.tmpdir(), `n2c-artifacts-${Date.now()}`);
-  const store = new ArtifactStore({ rootDir, log: () => {} });
+  const store = new ArtifactStore({ rootDir, log: () => {}, allowPrivateNetworkUrls: true });
 
   try {
     const result = await store.prepareArtifacts('job-1', {
@@ -68,7 +68,7 @@ test('artifact store sniffs octet-stream SVGs and writes .svg artifacts', async 
   const address = server.address();
   const imageUrl = `http://127.0.0.1:${address.port}/image`;
   const rootDir = path.join(os.tmpdir(), `n2c-artifacts-svg-${Date.now()}`);
-  const store = new ArtifactStore({ rootDir, log: () => {} });
+  const store = new ArtifactStore({ rootDir, log: () => {}, allowPrivateNetworkUrls: true });
 
   try {
     const result = await store.prepareArtifacts('job-svg', {
@@ -83,6 +83,25 @@ test('artifact store sniffs octet-stream SVGs and writes .svg artifacts', async 
     assert.equal(result.warnings.length, 0);
   } finally {
     server.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('artifact store blocks private network image URLs by default', async () => {
+  const rootDir = path.join(os.tmpdir(), `n2c-artifacts-private-${Date.now()}`);
+  const store = new ArtifactStore({ rootDir, log: () => {} });
+
+  try {
+    const result = await store.prepareArtifacts('job-private', {
+      images: [
+        { sourceUrl: 'http://127.0.0.1:43821/private.png' },
+      ],
+    });
+
+    assert.equal(result.images.length, 0);
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /local\/private image URLs are not allowed/);
+  } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
 });

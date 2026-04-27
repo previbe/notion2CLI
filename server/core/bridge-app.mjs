@@ -21,13 +21,13 @@ import { PromptProfileStore } from './prompt-profiles.mjs';
 import { parseApprovalResolution, parseJobRequest, parsePairConfirm, parsePromptProfileMutation } from './schemas.mjs';
 
 export class BridgeApp {
-  constructor({ runtime, log, promptProfileStore = new PromptProfileStore() }) {
+  constructor({ runtime, log, promptProfileStore = new PromptProfileStore(), artifactStore = null }) {
     this.runtime = runtime;
     this.log = log;
     this.startedAt = new Date().toISOString();
     this.jobStore = new JobStore();
     this.pairingStore = new PairingStore();
-    this.artifactStore = new ArtifactStore({ log });
+    this.artifactStore = artifactStore || new ArtifactStore({ log });
     this.promptProfileStore = promptProfileStore;
     this.pageBundleProvider = new RuntimeBackedNotionPageBundleProvider({ runtime, log });
     this.runtimeContext = this.createRuntimeContext();
