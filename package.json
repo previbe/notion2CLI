@@ -1,17 +1,47 @@
 {
   "name": "notion2cli",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "A local-first bridge that runs Notion page content as the next input in a local Codex or Claude Code session.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/previbe/notion2CLI.git"
+  },
+  "bugs": {
+    "url": "https://github.com/previbe/notion2CLI/issues"
+  },
+  "homepage": "https://github.com/previbe/notion2CLI#readme",
+  "keywords": [
+    "notion",
+    "cli",
+    "codex",
+    "claude",
+    "chrome-extension",
+    "mcp",
+    "local-first"
+  ],
   "engines": {
     "node": ">=22.15.0"
   },
+  "files": [
+    ".claude-plugin/",
+    ".claude/commands/",
+    "bin/",
+    "cli/",
+    "docs/",
+    "extension/",
+    "server/",
+    "skills/",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md"
+  ],
   "bin": {
-    "notion2cli": "./bin/notion2cli.mjs",
-    "notion2cli-bridge": "./bin/notion2cli-bridge",
-    "notion2cli-connect": "./bin/notion2cli-connect",
-    "notion2cli-status": "./bin/notion2cli-status"
+    "notion2cli": "bin/notion2cli.mjs",
+    "notion2cli-bridge": "bin/notion2cli-bridge",
+    "notion2cli-connect": "bin/notion2cli-connect",
+    "notion2cli-status": "bin/notion2cli-status"
   },
   "scripts": {
     "check": "node ./scripts/check.mjs",

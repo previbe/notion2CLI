@@ -3,3 +3,13 @@ node_modules
 npm-debug.log*
 .tmp/
 output/
+.env
+.env.*
+*.local
+*.log
+*.tgz
+coverage/
+dist/
+build/
+.nyc_output/
+.claude/settings.local.json

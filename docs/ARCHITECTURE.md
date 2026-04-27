@@ -126,9 +126,9 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 
 相关代码：
 
-- [extension/content-script.js](/Users/morrow/coding/notion2CLI/extension/content-script.js)
-- [extension/background.js](/Users/morrow/coding/notion2CLI/extension/background.js)
-- [extension/popup.js](/Users/morrow/coding/notion2CLI/extension/popup.js)
+- [extension/content-script.js](../extension/content-script.js)
+- [extension/background.js](../extension/background.js)
+- [extension/popup.js](../extension/popup.js)
 
 ### Bridge Core
 
@@ -143,15 +143,15 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 
 相关代码：
 
-- [server/core/bridge-app.mjs](/Users/morrow/coding/notion2CLI/server/core/bridge-app.mjs)
-- [server/core/http-server.mjs](/Users/morrow/coding/notion2CLI/server/core/http-server.mjs)
-- [server/core/job-store.mjs](/Users/morrow/coding/notion2CLI/server/core/job-store.mjs)
-- [server/core/schemas.mjs](/Users/morrow/coding/notion2CLI/server/core/schemas.mjs)
-- [server/core/mcp-page-bundle.mjs](/Users/morrow/coding/notion2CLI/server/core/mcp-page-bundle.mjs)
-- [server/core/page-bundle-provider.mjs](/Users/morrow/coding/notion2CLI/server/core/page-bundle-provider.mjs)
-- [server/core/artifact-resolver.mjs](/Users/morrow/coding/notion2CLI/server/core/artifact-resolver.mjs)
-- [server/core/artifact-store.mjs](/Users/morrow/coding/notion2CLI/server/core/artifact-store.mjs)
-- [server/core/input-bundle.mjs](/Users/morrow/coding/notion2CLI/server/core/input-bundle.mjs)
+- [server/core/bridge-app.mjs](../server/core/bridge-app.mjs)
+- [server/core/http-server.mjs](../server/core/http-server.mjs)
+- [server/core/job-store.mjs](../server/core/job-store.mjs)
+- [server/core/schemas.mjs](../server/core/schemas.mjs)
+- [server/core/mcp-page-bundle.mjs](../server/core/mcp-page-bundle.mjs)
+- [server/core/page-bundle-provider.mjs](../server/core/page-bundle-provider.mjs)
+- [server/core/artifact-resolver.mjs](../server/core/artifact-resolver.mjs)
+- [server/core/artifact-store.mjs](../server/core/artifact-store.mjs)
+- [server/core/input-bundle.mjs](../server/core/input-bundle.mjs)
 
 ### Codex Runtime
 
@@ -167,9 +167,9 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 
 相关代码：
 
-- [server/runtimes/codex-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-runtime.mjs)
-- [server/runtimes/codex-live-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-live-session.mjs)
-- [server/runtimes/codex-app-server-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/codex-app-server-session.mjs)
+- [server/runtimes/codex-runtime.mjs](../server/runtimes/codex-runtime.mjs)
+- [server/runtimes/codex-live-session.mjs](../server/runtimes/codex-live-session.mjs)
+- [server/runtimes/codex-app-server-session.mjs](../server/runtimes/codex-app-server-session.mjs)
 
 ### Claude Channel Runtime
 
@@ -183,10 +183,10 @@ MVP 默认建议只使用非破坏性的“追加到页面末尾”。
 
 相关代码：
 
-- [server/runtimes/claude-channel-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-channel-runtime.mjs)
-- [server/channel-server.mjs](/Users/morrow/coding/notion2CLI/server/channel-server.mjs)
-- [server/runtimes/claude-runtime.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-runtime.mjs)
-- [server/runtimes/claude-cli-session.mjs](/Users/morrow/coding/notion2CLI/server/runtimes/claude-cli-session.mjs)
+- [server/runtimes/claude-channel-runtime.mjs](../server/runtimes/claude-channel-runtime.mjs)
+- [server/channel-server.mjs](../server/channel-server.mjs)
+- [server/runtimes/claude-runtime.mjs](../server/runtimes/claude-runtime.mjs)
+- [server/runtimes/claude-cli-session.mjs](../server/runtimes/claude-cli-session.mjs)
 
 ## 核心对象
 

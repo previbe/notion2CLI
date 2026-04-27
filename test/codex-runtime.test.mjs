@@ -45,7 +45,7 @@ test('codex live session args keep websocket transport and optional profile over
 
 test('codex live session uses a stable user-facing thread name', () => {
   assert.equal(
-    buildCodexThreadName('/Users/morrow/coding/notion2CLI'),
+    buildCodexThreadName('/workspace/notion2CLI'),
     'notion2CLI - notion2CLI',
   );
 });
@@ -170,7 +170,7 @@ test('codex live session fails queued turns when the websocket disconnects', () 
 
 test('claude channel uses a stable user-facing session name', () => {
   assert.equal(
-    buildClaudeChannelName('/Users/morrow/coding/notion2CLI'),
+    buildClaudeChannelName('/workspace/notion2CLI'),
     'notion2CLI - notion2CLI',
   );
 });

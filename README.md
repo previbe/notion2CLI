@@ -53,7 +53,8 @@ claude --version
 ## 安装
 
 ```bash
-cd /Users/morrow/coding/notion2CLI
+git clone https://github.com/previbe/notion2CLI.git
+cd notion2CLI
 npm install
 npm install -g .
 ```
@@ -63,7 +64,7 @@ npm install -g .
 1. 打开 `chrome://extensions`
 2. 开启“开发者模式”
 3. 点击“加载已解压的扩展程序”
-4. 选择 `/Users/morrow/coding/notion2CLI/extension`
+4. 选择本仓库里的 `extension` 目录
 
 ## 快速开始：Codex
 
@@ -225,3 +226,17 @@ npm run check
 - 文件附件暂未完整支持
 - 插件和 bridge 之间仍使用 localhost HTTP
 - Codex App 实时 UI 镜像不作为 MVP 承诺；MVP 承诺的是同一个 session 稳定进入 Codex App 历史
+
+## 贡献
+
+欢迎提交 issue 和 pull request。贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+除非你在提交时明确说明，否则提交到本项目的贡献会按照本项目的 MIT License 授权。
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## 关联声明
+
+notion2CLI 不是 Notion、OpenAI、Anthropic、Claude 或 Google Chrome 的官方项目，也不由这些公司背书或维护。
