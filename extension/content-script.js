@@ -89,16 +89,16 @@ root.innerHTML = `
           <span class="n2c-dot" data-bridge-dot></span>
           <span class="n2c-strip-label" data-strip-label>未连接本地 CLI</span>
         </div>
+        <div class="n2c-page-meta">
+          <div class="n2c-meta-label">当前页面</div>
+          <div class="n2c-page-title" data-page-title>读取中…</div>
+        </div>
         <button class="n2c-strip-toggle" type="button" data-close-sheet aria-label="收起 Activity">
           <span class="n2c-chevron n2c-chevron-down"></span>
         </button>
       </div>
       <div class="n2c-sheet-paper">
         <div class="n2c-card-body">
-          <div class="n2c-page-meta">
-            <div class="n2c-meta-label">当前页面</div>
-            <div class="n2c-page-title" data-page-title>读取中…</div>
-          </div>
           <label class="n2c-task-picker">
             <span class="n2c-task-head">
               <span class="n2c-meta-label">任务</span>
@@ -126,9 +126,6 @@ root.innerHTML = `
           </div>
           <div class="n2c-brief-head">
             <div class="n2c-meta-label">BRIEF</div>
-            <div class="n2c-brief-actions">
-              <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
-            </div>
           </div>
           <div class="n2c-output n2c-empty" data-output>最新回复会显示在这里。</div>
           <div class="n2c-footer-actions">
@@ -138,7 +135,10 @@ root.innerHTML = `
                 <path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15"></path>
               </svg>
             </button>
-            <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
+            <div class="n2c-footer-right">
+              <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
+              <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
+            </div>
           </div>
         </div>
       </div>
@@ -593,7 +593,6 @@ function renderPromptButtons() {
 
 function updateActionCopy() {
   const selected = getSelectionText();
-  const runtimeLabel = getRuntimeLabel();
   sendHintNode.classList.remove('n2c-hidden');
 
   if (!state.runtime.ready) {
@@ -617,7 +616,8 @@ function updateActionCopy() {
   }
 
   if (selected) {
-    sendHintNode.textContent = `会把选中内容作为任务输入发给 ${runtimeLabel}，并直接开始处理。`;
+    sendHintNode.textContent = '';
+    sendHintNode.classList.add('n2c-hidden');
     renderPromptButtons();
     return;
   }
@@ -628,7 +628,8 @@ function updateActionCopy() {
     return;
   }
 
-  sendHintNode.textContent = `会把当前页作为任务输入发给 ${runtimeLabel}，并直接开始处理。`;
+  sendHintNode.textContent = '';
+  sendHintNode.classList.add('n2c-hidden');
   renderPromptButtons();
 }
 
