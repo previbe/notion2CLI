@@ -14,7 +14,7 @@ const ACTION_WRITE_REPLY = 'write_reply_to_notion';
 
 const state = {
   bridgeReady: false,
-  bridgeMessage: '检查连接中',
+  bridgeMessage: 'Checking connection',
   expanded: false,
   currentJobId: null,
   currentAction: '',
@@ -32,7 +32,7 @@ const state = {
   promptProfiles: [
     {
       id: PROMPT_PROFILE_RAW,
-      name: '原文',
+      name: 'Raw',
       instruction: '',
       editable: false,
       deletable: false,
@@ -66,7 +66,7 @@ const state = {
   session: null,
   runtime: {
     id: 'unknown',
-    label: '本地 Agent',
+    label: 'Local Agent',
     ready: false,
     standalone: false,
     pairingCommand: 'notion2cli pair',
@@ -90,13 +90,13 @@ root.innerHTML = `
       <div class="n2c-sheet-header">
         <div class="n2c-strip-status">
           <span class="n2c-dot" data-bridge-dot></span>
-          <span class="n2c-strip-label" data-strip-label>未连接本地 CLI</span>
+          <span class="n2c-strip-label" data-strip-label>Local CLI disconnected</span>
         </div>
         <div class="n2c-page-meta">
-          <div class="n2c-meta-label">当前页面</div>
-          <div class="n2c-page-title" data-page-title>读取中…</div>
+          <div class="n2c-meta-label">Current page</div>
+          <div class="n2c-page-title" data-page-title>Loading...</div>
         </div>
-        <button class="n2c-strip-toggle" type="button" data-close-sheet aria-label="收起 Activity">
+        <button class="n2c-strip-toggle" type="button" data-close-sheet aria-label="Collapse Activity">
           <span class="n2c-chevron n2c-chevron-down"></span>
         </button>
       </div>
@@ -104,8 +104,8 @@ root.innerHTML = `
         <div class="n2c-card-body">
           <label class="n2c-task-picker">
             <span class="n2c-task-head">
-              <span class="n2c-meta-label">任务</span>
-              <button class="n2c-prompt-manage" type="button" data-manage-prompts>管理</button>
+              <span class="n2c-meta-label">Task</span>
+              <button class="n2c-prompt-manage" type="button" data-manage-prompts>Manage</button>
             </span>
             <span class="n2c-task-list" data-prompt-list></span>
           </label>
@@ -114,10 +114,10 @@ root.innerHTML = `
           <div class="n2c-meta">
             <span class="n2c-status" data-run-status>
               <span class="n2c-spinner"></span>
-              <span>还没有开始</span>
+              <span>Not started</span>
             </span>
             <span class="n2c-job-actions">
-              <button class="n2c-stop n2c-hidden" type="button" data-stop-job disabled aria-label="停止任务" title="停止任务">
+              <button class="n2c-stop n2c-hidden" type="button" data-stop-job disabled aria-label="Stop task" title="Stop task">
                 <svg class="n2c-stop-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <rect x="7" y="7" width="10" height="10" rx="1.8"></rect>
                 </svg>
@@ -125,29 +125,29 @@ root.innerHTML = `
               <span class="n2c-job-id" data-job-id></span>
             </span>
           </div>
-          <div class="n2c-activity-note n2c-empty" data-activity-note>运行状态和 Agent 回复会显示在这里。</div>
+          <div class="n2c-activity-note n2c-empty" data-activity-note>Run status and agent replies appear here.</div>
           <div class="n2c-approval n2c-hidden" data-approval>
-            <div class="n2c-approval-title">需要你的确认</div>
-            <div class="n2c-approval-message" data-approval-message>当前执行需要确认后才能继续。</div>
+            <div class="n2c-approval-title">Confirmation required</div>
+            <div class="n2c-approval-message" data-approval-message>This run needs confirmation before it can continue.</div>
             <div class="n2c-approval-actions">
-              <button class="n2c-approve" type="button" data-approve>允许继续</button>
-              <button class="n2c-decline" type="button" data-decline>拒绝</button>
+              <button class="n2c-approve" type="button" data-approve>Allow</button>
+              <button class="n2c-decline" type="button" data-decline>Decline</button>
             </div>
           </div>
           <div class="n2c-brief-head">
             <div class="n2c-meta-label">BRIEF</div>
           </div>
-          <div class="n2c-output n2c-empty" data-output>最新回复会显示在这里。</div>
+          <div class="n2c-output n2c-empty" data-output>The latest reply appears here.</div>
           <div class="n2c-footer-actions">
-            <button class="n2c-copy" type="button" data-copy disabled aria-label="复制结果" title="复制结果">
+            <button class="n2c-copy" type="button" data-copy disabled aria-label="Copy result" title="Copy result">
               <svg class="n2c-copy-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="8" y="8" width="11" height="11" rx="2"></rect>
                 <path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15"></path>
               </svg>
             </button>
             <div class="n2c-footer-right">
-              <button class="n2c-writeback" type="button" data-write-back disabled>写回 Notion</button>
-              <button class="n2c-open-app" type="button" data-open-app disabled>打开会话</button>
+              <button class="n2c-writeback" type="button" data-write-back disabled>Write to Notion</button>
+              <button class="n2c-open-app" type="button" data-open-app disabled>Open session</button>
             </div>
           </div>
         </div>
@@ -157,38 +157,38 @@ root.innerHTML = `
     <button class="n2c-fab" type="button" aria-expanded="false" aria-controls="n2c-activity-sheet">
       <span class="n2c-strip-status">
         <span class="n2c-dot" data-bridge-dot></span>
-        <span class="n2c-strip-label" data-strip-label>未连接本地 CLI</span>
+        <span class="n2c-strip-label" data-strip-label>Local CLI disconnected</span>
       </span>
       <span class="n2c-strip-toggle" aria-hidden="true">
         <span class="n2c-chevron n2c-chevron-up"></span>
       </span>
     </button>
-    <div class="n2c-modal n2c-hidden" data-prompt-modal role="dialog" aria-modal="true" aria-label="管理提示词">
+    <div class="n2c-modal n2c-hidden" data-prompt-modal role="dialog" aria-modal="true" aria-label="Manage prompts">
       <div class="n2c-modal-panel">
         <div class="n2c-modal-head">
           <div>
-            <div class="n2c-meta-label">提示词</div>
-            <div class="n2c-modal-title">管理任务</div>
+            <div class="n2c-meta-label">Prompt</div>
+            <div class="n2c-modal-title">Manage tasks</div>
           </div>
-          <button class="n2c-modal-close" type="button" data-close-prompts aria-label="关闭">×</button>
+          <button class="n2c-modal-close" type="button" data-close-prompts aria-label="Close">×</button>
         </div>
         <div class="n2c-prompt-editor">
           <div class="n2c-prompt-list" data-prompt-editor-list></div>
           <div class="n2c-prompt-form">
             <label class="n2c-field">
-              <span class="n2c-field-label">名称</span>
+              <span class="n2c-field-label">Name</span>
               <input class="n2c-input" data-prompt-name maxlength="48" />
             </label>
             <label class="n2c-field">
-              <span class="n2c-field-label">提示词</span>
+              <span class="n2c-field-label">Prompt</span>
               <textarea class="n2c-textarea" data-prompt-instruction spellcheck="false"></textarea>
             </label>
             <div class="n2c-editor-message" data-prompt-editor-message></div>
             <div class="n2c-editor-actions">
-              <button class="n2c-editor-button" type="button" data-new-prompt>新建</button>
-              <button class="n2c-editor-button n2c-editor-primary" type="button" data-save-prompt>保存</button>
-              <button class="n2c-editor-button" type="button" data-reset-prompt>恢复默认</button>
-              <button class="n2c-editor-button n2c-editor-danger" type="button" data-delete-prompt>删除</button>
+              <button class="n2c-editor-button" type="button" data-new-prompt>New</button>
+              <button class="n2c-editor-button n2c-editor-primary" type="button" data-save-prompt>Save</button>
+              <button class="n2c-editor-button" type="button" data-reset-prompt>Reset default</button>
+              <button class="n2c-editor-button n2c-editor-danger" type="button" data-delete-prompt>Delete</button>
             </div>
           </div>
         </div>
@@ -327,12 +327,12 @@ function bindEvents() {
 
     await navigator.clipboard.writeText(text);
     copyButton.classList.add('n2c-copied');
-    copyButton.setAttribute('aria-label', '已复制');
-    copyButton.title = '已复制';
+    copyButton.setAttribute('aria-label', 'Copied');
+    copyButton.title = 'Copied';
     setTimeout(() => {
       copyButton.classList.remove('n2c-copied');
-      copyButton.setAttribute('aria-label', '复制结果');
-      copyButton.title = '复制结果';
+      copyButton.setAttribute('aria-label', 'Copy result');
+      copyButton.title = 'Copy result';
     }, 1400);
   });
 
@@ -561,11 +561,11 @@ async function refreshBridgeStatus() {
       ready: false,
       standalone: false,
     };
-    state.bridgeMessage = error.message || '无法连接 bridge';
+    state.bridgeMessage = error.message || 'Unable to connect to bridge';
   }
 
   statusDots.forEach((node) => node.classList.toggle('ready', state.bridgeReady));
-  const stripLabel = state.bridgeReady ? 'Activity' : '未连接本地 CLI';
+  const stripLabel = state.bridgeReady ? 'Activity' : 'Local CLI disconnected';
   stripLabelNodes.forEach((node) => {
     node.textContent = stripLabel;
   });
@@ -626,20 +626,20 @@ function updateActionCopy() {
 
   if (!state.runtime.ready) {
     sendHintNode.textContent = state.runtime.launchCommand
-      ? `先在扩展弹窗里启动 CLI：${state.runtime.launchCommand}`
-      : '先在扩展弹窗里启动 CLI。';
+      ? `Start the CLI from the extension popup: ${state.runtime.launchCommand}`
+      : 'Start the CLI from the extension popup.';
     renderPromptButtons();
     return;
   }
 
   if (!state.bridgeReady) {
-    sendHintNode.textContent = '先在扩展弹窗里生成并输入 6 位配对码，连接完成后再回来运行。';
+    sendHintNode.textContent = 'Generate and enter a 6-digit pairing code in the extension popup, then return here to run.';
     renderPromptButtons();
     return;
   }
 
   if (!isSupportedRuntime() || state.runtime.standalone) {
-    sendHintNode.textContent = '当前模式不支持真实运行。请在扩展弹窗里启动 Codex 或 Claude，再回来运行。';
+    sendHintNode.textContent = 'The current mode does not support real runs. Start Codex or Claude from the extension popup, then return here.';
     renderPromptButtons();
     return;
   }
@@ -652,7 +652,7 @@ function updateActionCopy() {
   }
 
   if (!canAttemptFullPageDelivery()) {
-    sendHintNode.textContent = '运行整页前需要先能读取 Notion 页面内容。请先在扩展弹窗里启用 Notion MCP。';
+    sendHintNode.textContent = 'Full-page runs require Notion page access. Enable Notion MCP in the extension popup first.';
     renderPromptButtons();
     return;
   }
@@ -663,11 +663,11 @@ function updateActionCopy() {
 }
 
 function buildSubmitText({ target, runtimeLabel, task }) {
-  return `正在把${target}作为「${task.name}」输入提交给 ${runtimeLabel}…`;
+  return `Submitting ${target} as "${task.name}" input to ${runtimeLabel}...`;
 }
 
 function buildSubmittedText({ target, runtimeLabel, task }) {
-  return `${target}已作为「${task.name}」输入提交给 ${runtimeLabel}，正在等待处理结果。`;
+  return `${target} was submitted as "${task.name}" input to ${runtimeLabel} and is waiting for the result.`;
 }
 
 async function startAction(profileId = state.promptProfileId) {
@@ -697,8 +697,8 @@ async function startAction(profileId = state.promptProfileId) {
   renderJobState({
     status: 'sending',
     text: selectionText
-      ? buildSubmitText({ target: '选中内容', runtimeLabel, task })
-      : buildSubmitText({ target: '当前页', runtimeLabel, task }),
+      ? buildSubmitText({ target: 'selection', runtimeLabel, task })
+      : buildSubmitText({ target: 'current page', runtimeLabel, task }),
     jobId: '',
     action,
   });
@@ -720,8 +720,8 @@ async function startAction(profileId = state.promptProfileId) {
     renderJobState({
       status: response.status,
       text: selectionText
-        ? buildSubmittedText({ target: '选中内容', runtimeLabel, task })
-        : buildSubmittedText({ target: '当前页', runtimeLabel, task }),
+        ? buildSubmittedText({ target: 'selection', runtimeLabel, task })
+        : buildSubmittedText({ target: 'current page', runtimeLabel, task }),
       jobId: response.jobId,
       action,
     });
@@ -730,7 +730,7 @@ async function startAction(profileId = state.promptProfileId) {
     state.busy = false;
     renderJobState({
       status: 'failed',
-      text: error.message || '提交失败',
+      text: error.message || 'Submit failed',
       jobId: '',
       action,
     });
@@ -749,7 +749,7 @@ async function startManualWriteBack() {
   if (!replyText) {
     renderJobState({
       status: 'failed',
-      text: '当前没有可写回的回复。',
+      text: 'There is no reply to write back.',
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
@@ -760,7 +760,7 @@ async function startManualWriteBack() {
     state.busy = false;
     renderJobState({
       status: 'failed',
-      text: '当前写回模式是“替换当前选中内容”。请先选中要替换的原文，再点击“写回 Notion”。',
+      text: 'The current write-back mode replaces the selected content. Select the target text before clicking Write to Notion.',
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
@@ -806,7 +806,7 @@ async function startManualWriteBack() {
     state.busy = false;
     renderJobState({
       status: 'failed',
-      text: error.message || '写回失败',
+      text: error.message || 'Write-back failed',
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
@@ -823,7 +823,7 @@ async function stopCurrentJob() {
   state.stopBusy = true;
   renderJobState({
     status: 'cancelling',
-    text: '正在停止任务…',
+    text: 'Stopping task...',
     jobId,
     action: state.currentAction,
   });
@@ -850,7 +850,7 @@ async function stopCurrentJob() {
     state.stopBusy = false;
     renderJobState({
       status: state.currentJobId ? 'running' : 'failed',
-      text: error.message || '停止任务失败',
+      text: error.message || 'Failed to stop task',
       jobId,
       action: state.currentAction,
     });
@@ -914,7 +914,7 @@ function pollJob(jobId) {
       state.approvalBusy = false;
       renderJobState({
         status: 'failed',
-        text: error.message || '读取任务状态失败',
+        text: error.message || 'Failed to read task status',
         jobId,
         action: state.currentAction || ACTION_FORWARD_FULL_PAGE,
         runtimeMeta: {},
@@ -932,7 +932,7 @@ function shouldIgnorePollResult(jobId) {
 
 function buildJobStateText(job) {
   if (job.status === 'failed') {
-    return job.error || (job.action === ACTION_WRITE_REPLY ? '写回失败。' : '执行失败。');
+    return job.error || (job.action === ACTION_WRITE_REPLY ? 'Write-back failed.' : 'Run failed.');
   }
 
   if (job.status === 'cancelled') {
@@ -940,13 +940,13 @@ function buildJobStateText(job) {
   }
 
   if (job.status === 'cancelling') {
-    return '正在停止任务…';
+    return 'Stopping task...';
   }
 
   if (job.status === 'waiting_for_approval') {
     return job.runtimeMeta?.pendingApproval?.message || (job.action === ACTION_WRITE_REPLY
-      ? '写回前需要你的确认。'
-      : '继续执行前需要你的确认。');
+      ? 'Write-back needs your confirmation.'
+      : 'Continuing needs your confirmation.');
   }
 
   if (job.action === ACTION_WRITE_REPLY) {
@@ -963,33 +963,33 @@ function buildJobStateText(job) {
 function buildReplyCompletedText(job) {
   const meta = job.runtimeMeta || {};
   if (state.runtime.id === 'codex' && meta.appVisible) {
-    return '这条 Brief 已经进入同一个 Codex App session，并显示在面板里。';
+    return 'This Brief was added to the same Codex App session and is shown in the panel.';
   }
 
   if (state.runtime.id === 'claude') {
-    return '这条 Brief 已经显示在当前 Claude Code 终端会话和面板里。';
+    return 'This Brief is shown in the current Claude Code terminal session and in the panel.';
   }
 
-  return '这条 Brief 已经显示在面板里。';
+  return 'This Brief is shown in the panel.';
 }
 
 function buildForwardStatusText(status, action, job = {}) {
-  const target = action === ACTION_FORWARD_SELECTION ? '选中内容' : '当前页';
+  const target = action === ACTION_FORWARD_SELECTION ? 'selection' : 'current page';
   const runtimeLabel = getRuntimeLabel();
   const task = resolveJobPromptProfile(job);
   const taskPrefix = task.id === PROMPT_PROFILE_RAW ? '' : `${task.name} `;
 
   switch (status) {
     case 'queued':
-      return `${taskPrefix}${target}已提交，正在排队处理…`;
+      return `${taskPrefix}${target} submitted and queued...`;
     case 'dispatched':
-      return `${taskPrefix}${target}已送达 ${runtimeLabel}，正在等待开始处理…`;
+      return `${taskPrefix}${target} delivered to ${runtimeLabel} and waiting to start...`;
     case 'running':
-      return `${runtimeLabel} 正在处理${taskPrefix}${target}…`;
+      return `${runtimeLabel} is processing ${taskPrefix}${target}...`;
     case 'sending':
-      return `正在提交${taskPrefix}${target}…`;
+      return `Submitting ${taskPrefix}${target}...`;
     default:
-      return `${taskPrefix}${target}处理中…`;
+      return `${taskPrefix}${target} processing...`;
   }
 }
 
@@ -998,62 +998,62 @@ function buildWriteStatusText(status, writeMode) {
     return buildWriteCompletedText(writeMode);
   }
   if (status === 'cancelled') {
-    return '已停止写回任务。';
+    return 'Write-back task stopped.';
   }
   const runtimeLabel = getRuntimeLabel();
 
   switch (status) {
     case 'queued':
-      return '写回请求已发出，正在排队…';
+      return 'Write-back request sent and queued...';
     case 'dispatched':
-      return `写回请求已送达 ${runtimeLabel}，正在等待执行…`;
+      return `Write-back request delivered to ${runtimeLabel} and waiting to run...`;
     case 'running':
       return buildWriteRunningText(writeMode);
     case 'cancelling':
-      return '正在停止写回任务…';
+      return 'Stopping write-back task...';
     case 'sending':
-      return '正在提交写回请求…';
+      return 'Submitting write-back request...';
     default:
-      return '写回处理中…';
+      return 'Write-back in progress...';
   }
 }
 
 function buildCancelStatusText(job = {}) {
   const mode = String(job.runtimeMeta?.cancelMode || '').trim();
   if (mode === 'soft' || mode === 'unsupported') {
-    return '已停止等待这次结果；底层 Agent 可能仍在运行。';
+    return 'Stopped waiting for this result; the underlying agent may still be running.';
   }
 
-  return '任务已停止。';
+  return 'Task stopped.';
 }
 
 function buildWriteRunningText(writeMode) {
   if (state.runtime.standalone) {
-    return '正在生成模拟写回结果，不会改动当前页面。';
+    return 'Generating a simulated write-back result. The current page will not change.';
   }
 
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return '正在把结果替换到刚才选中的原文位置…';
+      return 'Replacing the previously selected text with the result...';
     case WRITE_MODE_REPLACE_CONTENT:
-      return '正在用结果覆盖当前页面正文…';
+      return 'Replacing the current page body with the result...';
     default:
-      return '正在把结果追加到当前页面末尾…';
+      return 'Appending the result to the current page...';
   }
 }
 
 function buildWriteCompletedText(writeMode) {
   if (state.runtime.standalone) {
-    return '模拟写回已完成，不会改动当前页面。';
+    return 'Simulated write-back completed. The current page was not changed.';
   }
 
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return '这次结果已经替换到刚才选中的原文位置。';
+      return 'The result replaced the previously selected text.';
     case WRITE_MODE_REPLACE_CONTENT:
-      return '这次结果已经覆盖当前页面正文。';
+      return 'The result replaced the current page body.';
     default:
-      return '这次结果已经追加到当前页面末尾。';
+      return 'The result was appended to the current page.';
   }
 }
 
@@ -1073,7 +1073,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
       : `<span class="n2c-spinner"></span><span>${statusLabel(status, action)}</span>`;
   runStatusNode.innerHTML = statusMarkup;
 
-  activityNoteNode.textContent = text || '运行状态和 Agent 回复会显示在这里。';
+  activityNoteNode.textContent = text || 'Run status and agent replies appear here.';
   activityNoteNode.classList.toggle('n2c-empty', !text);
   syncApprovalState(status, runtimeMeta.pendingApproval || null);
   updateControls();
@@ -1085,7 +1085,7 @@ function renderJobState({ status, text, jobId, action, runtimeMeta = {} }) {
 
 function renderBrief() {
   const brief = state.latestBrief || '';
-  outputNode.textContent = brief || '最终 Brief 会显示在这里。';
+  outputNode.textContent = brief || 'The final Brief appears here.';
   outputNode.classList.toggle('n2c-empty', !brief);
   copyButton.disabled = !brief && !state.latestReply;
 
@@ -1106,25 +1106,25 @@ function extractBrief(text) {
 function statusLabel(status, action) {
   switch (status) {
     case 'queued':
-      return '已排队';
+      return 'Queued';
     case 'dispatched':
-      return action === ACTION_WRITE_REPLY ? '准备写回' : '已发出';
+      return action === ACTION_WRITE_REPLY ? 'Preparing write-back' : 'Dispatched';
     case 'running':
-      return action === ACTION_WRITE_REPLY ? '写回中' : '处理中';
+      return action === ACTION_WRITE_REPLY ? 'Writing back' : 'Processing';
     case 'waiting_for_approval':
-      return '等待确认';
+      return 'Waiting for confirmation';
     case 'cancelling':
-      return '停止中';
+      return 'Stopping';
     case 'cancelled':
-      return '已停止';
+      return 'Stopped';
     case 'sending':
-      return action === ACTION_WRITE_REPLY ? '准备写回' : '提交中';
+      return action === ACTION_WRITE_REPLY ? 'Preparing write-back' : 'Submitting';
     case 'completed':
-      return action === ACTION_WRITE_REPLY ? '已写回 Notion' : '已完成';
+      return action === ACTION_WRITE_REPLY ? 'Written to Notion' : 'Completed';
     case 'failed':
-      return action === ACTION_WRITE_REPLY ? '写回失败' : '执行失败';
+      return action === ACTION_WRITE_REPLY ? 'Write-back failed' : 'Run failed';
     default:
-      return '处理中';
+      return 'Processing';
   }
 }
 
@@ -1141,7 +1141,7 @@ function getPageTitle() {
 }
 
 function getRuntimeLabel() {
-  return state.runtime.label || '本地 Agent';
+  return state.runtime.label || 'Local Agent';
 }
 
 function resolveJobPromptProfile(job) {
@@ -1165,7 +1165,7 @@ function resolvePromptProfile(value, fallbackProfile = null) {
 
   return {
     id: PROMPT_PROFILE_RAW,
-    name: '原文',
+    name: 'Raw',
     instruction: '',
   };
 }
@@ -1191,7 +1191,7 @@ function normalizePromptProfiles(value) {
   if (!normalized.some((profile) => profile.id === PROMPT_PROFILE_RAW)) {
     normalized.unshift({
       id: PROMPT_PROFILE_RAW,
-      name: '原文',
+      name: 'Raw',
       instruction: '',
       editable: false,
       deletable: false,
@@ -1262,7 +1262,7 @@ function renderPromptManager() {
   savePromptButton.disabled = state.promptEditorBusy || !state.bridgeReady || Boolean(selectedProfile && !selectedProfile.editable);
   deletePromptButton.disabled = state.promptEditorBusy || !state.bridgeReady || !selectedProfile?.deletable;
   resetPromptButton.disabled = state.promptEditorBusy || !state.bridgeReady || !selectedProfile?.resettable;
-  savePromptButton.textContent = state.promptEditorProfileId === PROMPT_EDITOR_NEW ? '创建' : '保存';
+  savePromptButton.textContent = state.promptEditorProfileId === PROMPT_EDITOR_NEW ? 'Create' : 'Save';
 }
 
 function readPromptEditorDraft() {
@@ -1290,7 +1290,7 @@ async function createPromptFromEditor() {
     updatePromptProfilesFromResponse(response);
     state.promptEditorProfileId = response.profile?.id || state.promptProfiles.at(-1)?.id || PROMPT_PROFILE_RAW;
     state.promptProfileId = state.promptEditorProfileId;
-    state.promptEditorMessage = '已创建。';
+    state.promptEditorMessage = 'Created.';
   });
 }
 
@@ -1311,13 +1311,13 @@ async function savePromptFromEditor() {
     updatePromptProfilesFromResponse(response);
     state.promptProfileId = response.profile?.id || profileId;
     state.promptEditorProfileId = state.promptProfileId;
-    state.promptEditorMessage = '已保存。';
+    state.promptEditorMessage = 'Saved.';
   });
 }
 
 async function deletePromptFromEditor() {
   const profile = resolvePromptProfile(state.promptEditorProfileId);
-  if (!profile.deletable || !window.confirm(`删除“${profile.name}”？`)) {
+  if (!profile.deletable || !window.confirm(`Delete "${profile.name}"?`)) {
     return;
   }
 
@@ -1332,7 +1332,7 @@ async function deletePromptFromEditor() {
       persistPromptProfilePreference(state.promptProfileId);
     }
     state.promptEditorProfileId = state.promptProfileId;
-    state.promptEditorMessage = '已删除。';
+    state.promptEditorMessage = 'Deleted.';
   });
 }
 
@@ -1350,7 +1350,7 @@ async function resetPromptFromEditor() {
     updatePromptProfilesFromResponse(response);
     state.promptProfileId = response.profile?.id || profile.id;
     state.promptEditorProfileId = state.promptProfileId;
-    state.promptEditorMessage = '已恢复默认。';
+    state.promptEditorMessage = 'Reset to default.';
   });
 }
 
@@ -1362,7 +1362,7 @@ async function runPromptEditorMutation(callback) {
   try {
     await callback();
   } catch (error) {
-    state.promptEditorMessage = error.message || '操作失败。';
+    state.promptEditorMessage = error.message || 'Operation failed.';
   } finally {
     state.promptEditorBusy = false;
     renderPromptButtons();
@@ -1400,8 +1400,8 @@ function updateControls() {
   approveButton.disabled = !state.pendingApproval || state.approvalBusy;
   declineButton.disabled = !state.pendingApproval || state.approvalBusy;
   approveButton.textContent = state.pendingApproval?.mode === 'url' && !isUrlApprovalReadyToContinue()
-    ? '打开授权页'
-    : '允许继续';
+    ? 'Open authorization page'
+    : 'Allow';
 }
 
 function canShowStopButton() {
@@ -1426,19 +1426,19 @@ async function openCodexAppFromPanel() {
   }
 
   state.openAppBusy = true;
-  openAppButton.textContent = '打开中';
+  openAppButton.textContent = 'Opening';
   updateControls();
 
   try {
     const response = await sendMessage({ type: 'openCodexApp' });
-    activityNoteNode.textContent = response.message || '已打开 Codex App。';
+    activityNoteNode.textContent = response.message || 'Codex App opened.';
     activityNoteNode.classList.remove('n2c-empty');
   } catch (error) {
-    activityNoteNode.textContent = error.message || '无法打开 Codex App。';
+    activityNoteNode.textContent = error.message || 'Unable to open Codex App.';
     activityNoteNode.classList.remove('n2c-empty');
   } finally {
     state.openAppBusy = false;
-    openAppButton.textContent = '打开 Codex App';
+    openAppButton.textContent = 'Open Codex App';
     updateControls();
   }
 }
@@ -1469,25 +1469,25 @@ function isReplyAction(action) {
 
 function formatBridgeMessage(response) {
   const runtime = response.runtime || {};
-  const runtimeLabel = runtime.label || '本地 Agent';
+  const runtimeLabel = runtime.label || 'Local Agent';
 
   if (response.paired && runtime.ready) {
     if (runtime.standalone) {
-      return '已连接调试模式';
+      return 'Connected to debug mode';
     }
 
-    return response.session?.threadId ? `已连接 ${runtimeLabel} 会话` : `已连接 ${runtimeLabel}`;
+    return response.session?.threadId ? `Connected to ${runtimeLabel} session` : `Connected to ${runtimeLabel}`;
   }
 
   if (response.awaitingPairCode) {
-    return '等待输入 6 位配对码';
+    return 'Waiting for the 6-digit pairing code';
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || '本地 Agent 未就绪';
+    return runtime.statusMessage || 'Local Agent is not ready';
   }
 
-  return '打开扩展完成连接';
+  return 'Open the extension to finish connecting';
 }
 
 function canAttemptFullPageDelivery() {
@@ -1531,23 +1531,23 @@ function syncLatestReplyFromSession(session) {
 
 function renderSessionState() {
   if (!state.runtime.ready) {
-    openAppButton.textContent = '打开会话';
+    openAppButton.textContent = 'Open session';
     openAppButton.title = '';
     return;
   }
 
   const threadId = String(state.session?.threadId || '').trim();
   if (!threadId) {
-    openAppButton.textContent = state.runtime.id === 'codex' ? '打开 Codex App' : 'Claude 已在终端中';
+    openAppButton.textContent = state.runtime.id === 'codex' ? 'Open Codex App' : 'Claude is in the terminal';
     openAppButton.title = state.runtime.id === 'claude'
-      ? 'Claude Code channel 会话就在启动 notion2cli claude launch 的终端里'
+      ? 'The Claude Code channel session is in the terminal where you ran notion2cli claude launch'
       : '';
     return;
   }
 
-  openAppButton.textContent = state.runtime.id === 'codex' ? '打开 Codex App' : 'Claude 已在终端中';
+  openAppButton.textContent = state.runtime.id === 'codex' ? 'Open Codex App' : 'Claude is in the terminal';
   openAppButton.title = state.runtime.id === 'claude'
-    ? 'Claude Code channel 会话就在启动 notion2cli claude launch 的终端里'
+    ? 'The Claude Code channel session is in the terminal where you ran notion2cli claude launch'
     : '';
 }
 
@@ -1561,7 +1561,7 @@ function sendMessage(message) {
       }
 
       if (!response?.ok) {
-        reject(new Error(response?.error || '扩展通信失败'));
+        reject(new Error(response?.error || 'Extension messaging failed'));
         return;
       }
 
@@ -1580,7 +1580,7 @@ async function submitApproval(action) {
     if (!authWindow) {
       renderJobState({
         status: 'waiting_for_approval',
-        text: '浏览器拦截了授权窗口。请允许弹窗后再试一次。',
+        text: 'The browser blocked the authorization window. Allow popups and try again.',
         jobId: state.currentJobId,
         action: state.currentAction,
         runtimeMeta: {
@@ -1595,7 +1595,7 @@ async function submitApproval(action) {
       opened: true,
     };
     approvalMessageNode.textContent = buildApprovalMessage(state.pendingApproval);
-    activityNoteNode.textContent = '授权页已打开。完成浏览器授权后，再点一次“允许继续”。';
+    activityNoteNode.textContent = 'Authorization page opened. Complete browser authorization, then click Allow again.';
     updateControls();
     return;
   }
@@ -1617,8 +1617,8 @@ async function submitApproval(action) {
     renderJobState({
       status: 'running',
       text: action === 'accept'
-        ? '已允许继续执行，正在等待最新进度…'
-        : `已拒绝当前请求，正在等待 ${getRuntimeLabel()} 结束本次执行…`,
+        ? 'Allowed to continue. Waiting for the latest progress...'
+        : `Declined the current request. Waiting for ${getRuntimeLabel()} to finish this run...`,
       jobId: state.currentJobId,
       action: state.currentAction,
       runtimeMeta: {},
@@ -1627,7 +1627,7 @@ async function submitApproval(action) {
     state.approvalBusy = false;
     renderJobState({
       status: 'failed',
-      text: error.message || '提交确认失败',
+      text: error.message || 'Failed to submit confirmation',
       jobId: state.currentJobId,
       action: state.currentAction,
       runtimeMeta: {},
@@ -1651,22 +1651,22 @@ function syncApprovalState(status, pendingApproval) {
 
   state.pendingApproval = null;
   approvalNode.classList.add('n2c-hidden');
-  approvalMessageNode.textContent = '当前执行需要确认后才能继续。';
+  approvalMessageNode.textContent = 'This run needs confirmation before it can continue.';
   updateControls();
 }
 
 function buildApprovalMessage(pendingApproval) {
-  const base = pendingApproval.message || '当前执行需要你的确认才能继续。';
+  const base = pendingApproval.message || 'This run needs your confirmation before it can continue.';
   if (pendingApproval.mode === 'url' && pendingApproval.url) {
     if (isUrlApprovalReadyToContinue()) {
-      return `${base} 浏览器授权似乎已经完成，现在可以直接点“允许继续”。`;
+      return `${base} Browser authorization appears complete. You can click Allow now.`;
     }
 
     if (pendingApproval.opened) {
-      return `${base} 授权页已经打开。完成浏览器授权后，再点一次“允许继续”。`;
+      return `${base} Authorization page is open. Complete browser authorization, then click Allow again.`;
     }
 
-    return `${base} 先点“打开授权页”，完成浏览器授权后，再回来继续。`;
+    return `${base} Click Open authorization page first, complete browser authorization, then return to continue.`;
   }
 
   return base;
@@ -1719,22 +1719,22 @@ function normalizeWriteMode(mode) {
 function buildWritePendingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `正在请求 ${runtimeLabel} 替换刚才选中的原文…`;
+      return `Requesting ${runtimeLabel} to replace the previously selected text...`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `正在请求 ${runtimeLabel} 覆盖当前页面正文…`;
+      return `Requesting ${runtimeLabel} to replace the current page body...`;
     default:
-      return `正在请求 ${runtimeLabel} 把结果写回当前页面…`;
+      return `Requesting ${runtimeLabel} to write the result back to the current page...`;
   }
 }
 
 function buildWriteWaitingText(writeMode, runtimeLabel) {
   switch (writeMode) {
     case WRITE_MODE_UPDATE_CONTENT:
-      return `替换请求已发出，等待 ${runtimeLabel} 完成写回…`;
+      return `Replace request sent. Waiting for ${runtimeLabel} to finish write-back...`;
     case WRITE_MODE_REPLACE_CONTENT:
-      return `整页覆盖请求已发出，等待 ${runtimeLabel} 完成写回…`;
+      return `Page replacement request sent. Waiting for ${runtimeLabel} to finish write-back...`;
     default:
-      return `写回请求已发出，等待 ${runtimeLabel} 完成追加…`;
+      return `Write-back request sent. Waiting for ${runtimeLabel} to finish appending...`;
   }
 }
 

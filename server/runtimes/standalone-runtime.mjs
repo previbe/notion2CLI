@@ -77,11 +77,11 @@ export class StandaloneRuntime {
         standalone: true,
         pairingCommand: 'notion2cli pair',
         launchCommand: 'notion2cli daemon start --runtime standalone',
-        statusMessage: 'standalone 本地调试模式已就绪。',
+        statusMessage: 'Standalone local debug mode is ready.',
       },
       notionMcp: {
         status: 'unavailable',
-        detail: 'standalone 模式不会调用真实 Notion MCP。',
+        detail: 'Standalone mode does not call real Notion MCP.',
       },
     };
   }
@@ -91,11 +91,11 @@ function buildStandaloneReply(job) {
   if (job.action === ACTION_WRITE_REPLY) {
     if (job.writeMode === WRITE_MODE_UPDATE_CONTENT) {
       return [
-        '当前是 standalone 本地调试模式，下面是模拟写回结果。',
+        'Standalone local debug mode is active. This is a simulated write-back result.',
         '',
-        `会在页面《${job.pageTitle}》里把当前选中的原文替换为新的内容。`,
+        `Would update page "${job.pageTitle}" by replacing the currently selected text with new content.`,
         '',
-        `原文：${job.selectionText || '(空选区)'}`,
+        `Raw: ${job.selectionText || '(empty selection)'}`,
         '',
         job.replyTextToWrite.slice(0, 600),
       ].join('\n');
@@ -103,18 +103,18 @@ function buildStandaloneReply(job) {
 
     if (job.writeMode === WRITE_MODE_REPLACE_CONTENT) {
       return [
-        '当前是 standalone 本地调试模式，下面是模拟写回结果。',
+        'Standalone local debug mode is active. This is a simulated write-back result.',
         '',
-        `会用新的 Markdown 内容覆盖页面《${job.pageTitle}》的正文。`,
+        `Would replace the Markdown body of page "${job.pageTitle}".`,
         '',
         job.replyTextToWrite.slice(0, 600),
       ].join('\n');
     }
 
     return [
-      '当前是 standalone 本地调试模式，下面是模拟写回结果。',
+      'Standalone local debug mode is active. This is a simulated write-back result.',
       '',
-      `会向页面《${job.pageTitle}》追加一个标题为“${job.writeSectionTitle}”的新 section。`,
+      `Would append to page "${job.pageTitle}" a new section titled "${job.writeSectionTitle}".`,
       '',
       job.replyTextToWrite.slice(0, 600),
     ].join('\n');
@@ -122,31 +122,31 @@ function buildStandaloneReply(job) {
 
   if (job.action === ACTION_FORWARD_SELECTION) {
     return [
-      '当前是 standalone 本地调试模式，下面是模拟回复。',
+      'Standalone local debug mode is active. This is a simulated reply.',
       '',
-      `我收到的选中文本是：${job.selectionText || '(空文本)'}`,
+      `Selected text received: ${job.selectionText || '(empty text)'}`,
       Array.isArray(job.inputBundle?.images) && job.inputBundle.images.length
-        ? `同时还附带了 ${job.inputBundle.images.length} 张页面图片工件。`
+        ? `Also received ${job.inputBundle.images.length} page image artifacts.`
         : null,
     ].join('\n');
   }
 
   if (job.action === ACTION_INSTALL_NOTION_MCP) {
     return [
-      '当前是 standalone 本地调试模式，下面是模拟安装提示。',
+      'Standalone local debug mode is active. This is a simulated setup response.',
       '',
-      job.installPrompt || '请按官方文档完成 Notion MCP 的安装与授权。',
+      job.installPrompt || 'Follow the official docs to install and authorize Notion MCP.',
     ].join('\n');
   }
 
   return [
-    '当前是 standalone 本地调试模式，下面是模拟回复。',
+    'Standalone local debug mode is active. This is a simulated reply.',
     '',
     job.inputBundle?.pageBundle
-      ? `bridge 已经预取页面《${job.pageTitle}》的全文 bundle，真实 runtime 会优先消费这份 bundle。`
-      : `我会在真实模式下通过 Notion MCP 读取页面《${job.pageTitle}》的全文并处理它。`,
+      ? `The bridge has prefetched the full-page bundle for "${job.pageTitle}". A real runtime would consume that bundle first.`
+      : `In real mode, I would read the full page "${job.pageTitle}" through Notion MCP and process it.`,
     Array.isArray(job.inputBundle?.images) && job.inputBundle.images.length
-      ? `当前还检测到了 ${job.inputBundle.images.length} 张页面图片，真实 runtime 会把它们一并交给 CLI。`
+      ? `Detected ${job.inputBundle.images.length} page images. A real runtime would pass them to the CLI.`
       : null,
   ].join('\n');
 }

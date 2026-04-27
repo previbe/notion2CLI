@@ -183,7 +183,7 @@ notion      https://mcp.notion.com/mcp -                      enabled  OAuth
     `),
     {
       status: 'configured',
-      detail: '检测到 Codex CLI 已配置并可使用 Notion MCP。',
+      detail: 'Codex CLI is configured and can use Notion MCP.',
     },
   );
 
@@ -194,7 +194,7 @@ notion      https://mcp.notion.com/mcp -                      enabled  Not logge
     `),
     {
       status: 'unauthenticated',
-      detail: '已检测到 Codex CLI 的 Notion MCP 配置，但当前还没有完成登录授权。',
+      detail: 'Codex CLI Notion MCP configuration was detected, but login authorization is not complete.',
     },
   );
 });
@@ -283,25 +283,25 @@ test('codex input items prepend local images before prompt text', () => {
 test('parseClaudeMcpList detects configured and unauthenticated claude MCP states', () => {
   assert.deepEqual(
     parseClaudeMcpList(`
-Checking MCP server health…
+Checking MCP server health...
 
 notion: https://mcp.notion.com/mcp (HTTP) - ✓ Connected
     `),
     {
       status: 'configured',
-      detail: '检测到 Claude Code 已配置并可使用 Notion MCP。',
+      detail: 'Claude Code is configured and can use Notion MCP.',
     },
   );
 
   assert.deepEqual(
     parseClaudeMcpList(`
-Checking MCP server health…
+Checking MCP server health...
 
 notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
     `),
     {
       status: 'unauthenticated',
-      detail: '已检测到 Claude Code 的 Notion MCP 配置，但当前还没有完成授权。',
+      detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
     },
   );
 });
@@ -315,7 +315,7 @@ test('parseClaudeSessionInitNotionStatus uses the runtime session view of Claude
     }),
     {
       status: 'configured',
-      detail: '检测到 Claude Code 已配置并可使用 Notion MCP。',
+      detail: 'Claude Code is configured and can use Notion MCP.',
     },
   );
 
@@ -327,7 +327,7 @@ test('parseClaudeSessionInitNotionStatus uses the runtime session view of Claude
     }),
     {
       status: 'unauthenticated',
-      detail: 'Claude Code 运行时仍需要先完成一次 Notion 浏览器授权。',
+      detail: 'Claude Code runtime still needs one Notion browser authorization.',
     },
   );
 });
@@ -347,7 +347,7 @@ test('claude write-back prompt uses the shared structured action rules', () => {
     promptProfileId: 'raw',
     promptProfile: {
       id: 'raw',
-      name: '原样运行',
+      name: 'Raw',
       instruction: '',
     },
     source: 'test',
@@ -366,7 +366,7 @@ test('claude write-back prompt uses the shared structured action rules', () => {
   assert.match(prompt, /Resolve the target page from pageUrl using Notion MCP before writing/);
   assert.match(prompt, /writeMode=append_markdown_section: append replyTextToWrite/);
   assert.match(prompt, /"writeSectionTitle":"notion2CLI"/);
-  assert.match(prompt, /Profile: raw \(原样运行\)\./);
+  assert.match(prompt, /Profile: raw \(Raw\)\./);
   assert.match(prompt, /Return only final Brief text\./);
   assert.doesNotMatch(prompt, /action=forward_selection_text/);
   assert.doesNotMatch(prompt, /action=forward_full_page_via_mcp/);
@@ -379,7 +379,7 @@ test('claude channel prompt asks the session to reply through the browser tool',
     action: 'forward_selection_text',
     pageUrl: 'https://www.notion.so/example',
     pageTitle: 'Example',
-    selectionText: '只回答 OK',
+    selectionText: 'Reply only OK',
     replyTextToWrite: '',
     writeMode: 'append_markdown_section',
     writeSectionTitle: 'notion2CLI',
@@ -389,7 +389,7 @@ test('claude channel prompt asks the session to reply through the browser tool',
     promptProfileId: 'raw',
     promptProfile: {
       id: 'raw',
-      name: '原样运行',
+      name: 'Raw',
       instruction: '',
     },
     source: 'test',
@@ -447,7 +447,7 @@ test('Build prompt profile is injected as task intent', () => {
         truncated: false,
         warnings: [],
         stats: {},
-        markdown: '# Build Page\n\n实现一个功能。',
+        markdown: '# Build Page\n\nImplement a feature.',
       },
     },
   }, {

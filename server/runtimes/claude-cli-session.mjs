@@ -96,7 +96,7 @@ export class ClaudeCliSession {
     }
 
     if (resolution.action !== 'accept') {
-      this.fail('用户取消了 Notion 授权。', {
+      this.fail('The user cancelled Notion authorization.', {
         sessionId: this.sessionId,
       });
       return;
@@ -121,7 +121,7 @@ export class ClaudeCliSession {
     this.child.kill('SIGTERM');
   }
 
-  cancel(reason = '用户停止了任务。') {
+  cancel(reason = 'The user stopped the task.') {
     if (this.finished) {
       return;
     }
@@ -211,7 +211,7 @@ export class ClaudeCliSession {
       serverName: 'notion',
       mode: 'url',
       url: authUrl,
-      message: 'Claude Code 需要先完成 Notion 浏览器授权。先打开授权页，完成浏览器操作后，再点一次“允许继续”。',
+      message: 'Claude Code needs Notion browser authorization. Open the authorization page, complete the browser flow, then click Allow again.',
     };
     this.nextApprovalId += 1;
 

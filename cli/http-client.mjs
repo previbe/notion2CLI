@@ -31,18 +31,18 @@ export async function requestBridge(method, pathname, options = {}) {
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
   } catch (error) {
-    throw new Error(error?.message || `无法连接 ${getBridgeBaseUrl(options)}`);
+    throw new Error(error?.message || `Unable to connect to ${getBridgeBaseUrl(options)}`);
   }
 
   let payload = null;
   try {
     payload = await response.json();
   } catch {
-    throw new Error(`bridge 返回了无效响应（HTTP ${response.status}）`);
+    throw new Error(`bridge returned an invalid response (HTTP ${response.status})`);
   }
 
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `bridge 请求失败（HTTP ${response.status}）`);
+    throw new Error(payload?.error || `bridge request failed (HTTP ${response.status})`);
   }
 
   return payload;

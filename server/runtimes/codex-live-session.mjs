@@ -221,7 +221,7 @@ export class CodexLiveSession {
       return {
         ok: false,
         mode: 'soft',
-        message: '已停止等待这次结果；Codex turn 尚未返回可中断的 turnId。',
+        message: 'Stopped waiting for this result; the Codex turn has not returned an interruptible turnId yet.',
       };
     }
 
@@ -233,7 +233,7 @@ export class CodexLiveSession {
       return {
         ok: true,
         mode: 'hard',
-        message: '已向 Codex 发送 turn interrupt。',
+        message: 'Sent turn interrupt to Codex.',
       };
     } catch (error) {
       const message = error?.message || 'Codex turn interrupt failed';
@@ -246,7 +246,7 @@ export class CodexLiveSession {
       return {
         ok: false,
         mode: 'soft',
-        message: `已停止等待这次结果；Codex interrupt 未成功：${message}`,
+        message: `Stopped waiting for this result; Codex interrupt did not succeed: ${message}`,
       };
     }
   }
@@ -1222,7 +1222,7 @@ function extractFinalMessageFromTurn(turn) {
 }
 
 function buildPendingApproval(params) {
-  const message = String(params?.message || 'Codex 需要你的确认才能继续。').trim();
+  const message = String(params?.message || 'Codex needs your confirmation to continue.').trim();
   const mode = params?.mode === 'url' ? 'url' : 'form';
 
   return {

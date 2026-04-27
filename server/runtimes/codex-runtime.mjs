@@ -19,7 +19,7 @@ export class CodexRuntime {
     this.profile = process.env.NOTION2CLI_CODEX_PROFILE || '';
     this.extraArgs = parseArgs(process.env.NOTION2CLI_CODEX_EXTRA_ARGS || '');
     this.ready = false;
-    this.statusMessage = '等待检查 Codex CLI。';
+    this.statusMessage = 'Waiting to check Codex CLI.';
     this.runningJobs = new Map();
     this.auxiliarySessions = new Set();
     this.cachedMcpStatus = null;
@@ -32,7 +32,7 @@ export class CodexRuntime {
       const result = await runCommand('codex', ['--version'], { timeoutMs: 4000 });
       if (result.code !== 0) {
         this.ready = false;
-        this.statusMessage = result.stderr.trim() || 'Codex CLI 未就绪。';
+        this.statusMessage = result.stderr.trim() || 'Codex CLI is not ready.';
         return;
       }
 
@@ -46,10 +46,10 @@ export class CodexRuntime {
       await this.liveSession.start();
 
       this.ready = true;
-      this.statusMessage = `Codex CLI 已就绪（${result.stdout.trim() || 'version unknown'}）。`;
+      this.statusMessage = `Codex CLI is ready (${result.stdout.trim() || 'version unknown'}).`;
     } catch (error) {
       this.ready = false;
-      this.statusMessage = error?.message || '无法启动 codex 命令。';
+      this.statusMessage = error?.message || 'Unable to start the codex command.';
       if (this.liveSession) {
         await this.liveSession.stop().catch(() => {});
         this.liveSession = null;
@@ -143,7 +143,7 @@ export class CodexRuntime {
       onApprovalRequested: ({ threadId, turnId, requestId, pendingApproval }) => {
         this.context.markJobWaitingForApproval(job.id, {
           type: 'codex_live_session_waiting_for_approval',
-          note: 'Codex 需要用户确认才能继续。',
+          note: 'Codex needs user confirmation to continue.',
           runtimeMeta: {
             runtime: 'codex',
             transport: 'app-server',
@@ -159,7 +159,7 @@ export class CodexRuntime {
       onApprovalResolved: (resolution) => {
         this.context.markJobRunning(job.id, {
           type: 'codex_live_session_approval_resolved',
-          note: resolution.action === 'accept' ? '已允许 Codex 继续执行。' : '已拒绝当前请求，等待 Codex 结束本次 turn。',
+          note: resolution.action === 'accept' ? 'Allowed Codex to continue.' : 'Declined the current request. Waiting for Codex to finish this turn.',
           runtimeMeta: {
             runtime: 'codex',
             transport: 'app-server',
@@ -208,7 +208,7 @@ export class CodexRuntime {
     });
     this.context.markJobDispatched(job.id, {
       type: 'codex_live_session_queued',
-      note: queueResult.queueDepth > 1 ? '已加入当前 Codex 会话队列。' : '正在等待当前 Codex 会话可用。',
+      note: queueResult.queueDepth > 1 ? 'Added to the current Codex session queue.' : 'Waiting for the current Codex session to become available.',
       runtimeMeta: {
         runtime: 'codex',
         transport: 'app-server',
@@ -276,7 +276,7 @@ export class CodexRuntime {
     if (process.platform !== 'darwin') {
       return {
         ok: false,
-        message: '当前平台暂时只支持 macOS 上自动打开 Codex App。请手动打开 Codex App 后查看 notion2CLI session。',
+        message: 'Opening Codex App automatically is currently supported only on macOS. Open Codex App manually and check the notion2CLI session.',
       };
     }
 
@@ -286,12 +286,12 @@ export class CodexRuntime {
     });
     const output = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
     if (result.code !== 0) {
-      throw new Error(output || '无法打开 Codex App。');
+      throw new Error(output || 'Unable to open Codex App.');
     }
 
     return {
       ok: true,
-      message: '已打开 Codex App。请在最近会话里查看 notion2CLI session。',
+      message: 'Codex App opened. Check recent sessions for the notion2CLI session.',
       session: this.liveSession?.getSnapshot() || null,
     };
   }
@@ -308,7 +308,7 @@ export class CodexRuntime {
     } catch (error) {
       value = {
         status: 'unknown',
-        detail: error?.message || '无法检查 Codex MCP 状态。',
+        detail: error?.message || 'Unable to check Codex MCP status.',
       };
     }
 
@@ -339,7 +339,7 @@ export class CodexRuntime {
     const notes = [];
 
     if (status.status === 'configured') {
-      this.context.completeJob(job.id, `Codex CLI 已检测到可用的 Notion MCP 连接。${status.detail}`, {
+      this.context.completeJob(job.id, `Codex CLI detected a usable Notion MCP connection. ${status.detail}`, {
         type: 'codex_mcp_already_configured',
         runtimeMeta: { runtime: 'codex' },
       });
@@ -352,13 +352,13 @@ export class CodexRuntime {
         timeoutMs: 300000,
       });
       const addOutput = compactCommandOutput(addResult);
-      notes.push('已执行 `codex mcp add notion --url https://mcp.notion.com/mcp`。');
+      notes.push('Ran `codex mcp add notion --url https://mcp.notion.com/mcp`.');
       if (addOutput) {
         notes.push(addOutput);
       }
 
       if (addResult.code !== 0 && !/already exists|already configured|already added/i.test(addOutput)) {
-        this.context.failJob(job.id, addOutput || '执行 codex mcp add 失败。', {
+        this.context.failJob(job.id, addOutput || 'Failed to run codex mcp add.', {
           type: 'codex_mcp_add_failed',
           runtimeMeta: { runtime: 'codex', exitCode: addResult.code ?? 'unknown' },
         });
@@ -375,13 +375,13 @@ export class CodexRuntime {
         timeoutMs: 300000,
       });
       const loginOutput = compactCommandOutput(loginResult);
-      notes.push('已执行 `codex mcp login notion`。');
+      notes.push('Ran `codex mcp login notion`.');
       if (loginOutput) {
         notes.push(loginOutput);
       }
 
       if (loginResult.code !== 0) {
-        this.context.failJob(job.id, loginOutput || '执行 codex mcp login 失败。', {
+        this.context.failJob(job.id, loginOutput || 'Failed to run codex mcp login.', {
           type: 'codex_mcp_login_failed',
           runtimeMeta: { runtime: 'codex', exitCode: loginResult.code ?? 'unknown' },
         });
@@ -394,7 +394,7 @@ export class CodexRuntime {
 
     if (status.status === 'configured') {
       const summary = [
-        '已为 Codex CLI 准备 Notion MCP。',
+        'Prepared Notion MCP for Codex CLI.',
         status.detail,
         ...notes,
       ].filter(Boolean).join('\n\n');
@@ -406,7 +406,7 @@ export class CodexRuntime {
     }
 
     this.context.failJob(job.id, [
-      'Codex CLI 的 Notion MCP 安装流程没有达到可用状态。',
+      'Codex CLI Notion MCP setup did not reach a usable state.',
       status.detail,
       ...notes,
     ].filter(Boolean).join('\n\n'), {
@@ -500,20 +500,20 @@ export function parseNotionMcpList(output) {
   if (!notionLine) {
     return {
       status: 'missing',
-      detail: '未检测到 Codex CLI 的 Notion MCP 配置。',
+      detail: 'Codex CLI Notion MCP configuration was not detected.',
     };
   }
 
   if (/not logged in/i.test(notionLine)) {
     return {
       status: 'unauthenticated',
-      detail: '已检测到 Codex CLI 的 Notion MCP 配置，但当前还没有完成登录授权。',
+      detail: 'Codex CLI Notion MCP configuration was detected, but login authorization is not complete.',
     };
   }
 
   return {
     status: 'configured',
-    detail: '检测到 Codex CLI 已配置并可使用 Notion MCP。',
+    detail: 'Codex CLI is configured and can use Notion MCP.',
   };
 }
 

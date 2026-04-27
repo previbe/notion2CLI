@@ -9,7 +9,7 @@
   "host_permissions": [
     "https://www.notion.so/*",
     "https://notion.so/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1:43821/*"
   ],
   "background": {
     "service_worker": "background.js",

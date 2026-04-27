@@ -386,7 +386,7 @@ function extractFinalMessageFromTurn(turn) {
 }
 
 function buildPendingApproval(params) {
-  const message = String(params?.message || 'Codex 需要你的确认才能继续。').trim();
+  const message = String(params?.message || 'Codex needs your confirmation to continue.').trim();
   const mode = params?.mode === 'url' ? 'url' : 'form';
 
   return {

@@ -78,7 +78,7 @@ async function refreshStatus() {
     popupState.lastErrorMessage = '';
     renderStatus(status);
   } catch (error) {
-    renderDisconnectedState(error.message || '请确认 notion2CLI bridge 已启动。');
+    renderDisconnectedState(error.message || 'Make sure the notion2CLI bridge is running.');
   }
 }
 
@@ -106,7 +106,7 @@ function renderStatus(status) {
 
   accessDetail.textContent = access.detail;
   installButton.disabled = access.disabled || popupState.installBusy;
-  installButton.textContent = popupState.installBusy ? '处理中…' : access.button;
+  installButton.textContent = popupState.installBusy ? 'Processing...' : access.button;
   installStatus.textContent = popupState.installMessage || access.status;
 }
 
@@ -114,7 +114,7 @@ function renderDisconnectedState(message) {
   popupState.status = null;
   popupState.lastErrorMessage = message;
   statusDot.classList.remove('ready');
-  statusValue.textContent = '没有连接本地 runtime';
+  statusValue.textContent = 'No local runtime connected';
   statusHint.textContent = message;
   historyHint.textContent = '';
   historyHint.classList.add('hidden');
@@ -122,18 +122,18 @@ function renderDisconnectedState(message) {
   stepCard.classList.remove('hidden');
   updateRuntimeSwitch(true);
   updatePairSection(false);
-  stepTitle.textContent = '启动 CLI';
-  stepBody.textContent = '按顺序运行下面两条命令：启动目标 runtime 后，再生成 6 位配对码。';
+  stepTitle.textContent = 'Start CLI';
+  stepBody.textContent = 'Run these two commands in order: start the target runtime, then generate a 6-digit pairing code.';
   renderCommands({
-    commandLabel: '启动命令',
+    commandLabel: 'Launch command',
     command: getSelectedRuntimeLaunchCommand(),
-    secondaryCommandLabel: '生成配对码',
+    secondaryCommandLabel: 'Generate pairing code',
     secondaryCommand: 'notion2cli pair',
   });
   installButton.disabled = true;
-  installButton.textContent = '等待启动';
-  accessDetail.textContent = '启动 CLI 后，再在这里检查 Notion MCP。';
-  installStatus.textContent = '当前无法检查。';
+  installButton.textContent = 'Waiting for startup';
+  accessDetail.textContent = 'Start the CLI, then check Notion MCP here.';
+  installStatus.textContent = 'Cannot check yet.';
 }
 
 function updateVisualState(status, access, connected) {
@@ -159,21 +159,21 @@ function updateVisualState(status, access, connected) {
 
 function buildStatusValue(status) {
   const runtime = status.runtime || {};
-  const runtimeLabel = runtime.label || '本地 Agent';
+  const runtimeLabel = runtime.label || 'Local Agent';
 
   if (status.paired && runtime.ready) {
-    return runtime.standalone ? '已连接调试模式' : `已连接 ${runtimeLabel}`;
+    return runtime.standalone ? 'Connected to debug mode' : `Connected to ${runtimeLabel}`;
   }
 
   if (status.awaitingPairCode) {
-    return '等待输入配对码';
+    return 'Waiting for pairing code';
   }
 
   if (!runtime.ready) {
-    return runtime.statusMessage || '本地 Agent 未就绪';
+    return runtime.statusMessage || 'Local Agent is not ready';
   }
 
-  return '浏览器尚未连接';
+  return 'Browser is not connected';
 }
 
 function buildStatusHint(status) {
@@ -181,19 +181,19 @@ function buildStatusHint(status) {
 
   if (status.paired && runtime.ready) {
     return runtime.standalone
-      ? '当前是调试模式：页面内操作会返回模拟结果，不会调用真实 Notion。'
-      : `浏览器已经连到当前 ${runtime.label || 'Agent'} 会话。回到 Notion 页面点击“运行当前页”即可直接开始处理。`;
+      ? 'Debug mode is active. Page actions return simulated results and do not call real Notion.'
+      : `The browser is connected to the current ${runtime.label || 'Agent'} session. Return to the Notion page and click Run current page to start.`;
   }
 
   if (status.awaitingPairCode) {
-    return '已经生成 6 位配对码。把数字贴到下方，就能把当前浏览器连到本地会话。';
+    return 'A 6-digit pairing code has been generated. Paste it below to connect this browser to the local session.';
   }
 
   if (!runtime.ready) {
-    return `启动 CLI：${getSelectedRuntimeLaunchCommand()}`;
+    return `Start CLI: ${getSelectedRuntimeLaunchCommand()}`;
   }
 
-  return '运行配对命令生成 6 位码，再在下方完成浏览器连接。';
+  return 'Run the pairing command to generate a 6-digit code, then finish browser connection below.';
 }
 
 function renderHistoryHint(status) {
@@ -202,9 +202,9 @@ function renderHistoryHint(status) {
 
   if (status.paired && runtime.ready && !runtime.standalone) {
     if (runtime.id === 'codex') {
-      text = '你可以通过打开 Codex App 查看历史对话记录，刷新需要重启。';
+      text = 'Open Codex App to view conversation history. Refreshing may require a restart.';
     } else if (runtime.id === 'claude') {
-      text = '你可以在 Claude Code 中实时查看历史对话记录。';
+      text = 'View conversation history live in Claude Code.';
     }
   }
 
@@ -218,11 +218,11 @@ function getNextStep(status) {
 
   if (!runtime.ready) {
     return {
-      title: '启动 CLI',
-      body: '按顺序运行下面两条命令：先启动目标 runtime，再生成 6 位配对码。',
-      commandLabel: '启动命令',
+      title: 'Start CLI',
+      body: 'Run these two commands in order: start the target runtime, then generate a 6-digit pairing code.',
+      commandLabel: 'Launch command',
       command: getSelectedRuntimeLaunchCommand(),
-      secondaryCommandLabel: '生成配对码',
+      secondaryCommandLabel: 'Generate pairing code',
       secondaryCommand: 'notion2cli pair',
       showRuntimeSwitch: true,
     };
@@ -230,9 +230,9 @@ function getNextStep(status) {
 
   if (!status.paired || status.awaitingPairCode) {
     return {
-      title: status.awaitingPairCode ? '把配对码贴回来' : '生成一个配对码',
-      body: '运行下面的命令拿到 6 位数字，然后贴到下方的输入框里。',
-      commandLabel: '生成配对码',
+      title: status.awaitingPairCode ? 'Paste the pairing code' : 'Generate a pairing code',
+      body: 'Run this command to get a 6-digit code, then paste it into the input below.',
+      commandLabel: 'Generate pairing code',
       command: runtime.pairingCommand || 'notion2cli pair',
       showRuntimeSwitch: false,
     };
@@ -240,8 +240,8 @@ function getNextStep(status) {
 
   if (!runtime.standalone && access.canInstall) {
     return {
-      title: '启用 Notion MCP',
-      body: `浏览器已经连上当前 ${runtime.label || 'Agent'} 会话。接下来只要把 Notion MCP 配好，运行整页和手动写回就能正常工作。`,
+      title: 'Enable Notion MCP',
+      body: `The browser is connected to the current ${runtime.label || 'Agent'} session. Configure Notion MCP next to enable full-page runs and manual write-back.`,
       command: '',
       showRuntimeSwitch: false,
     };
@@ -262,9 +262,9 @@ function getAccessState(status) {
 
   if (!runtime.ready) {
     return {
-      detail: '启动 CLI 后，再在这里检查 Notion MCP。',
-      status: '还没有开始检查。',
-      button: '等待启动',
+      detail: 'Start the CLI, then check Notion MCP here.',
+      status: 'Not checked yet.',
+      button: 'Waiting for startup',
       disabled: true,
       canInstall: false,
     };
@@ -272,9 +272,9 @@ function getAccessState(status) {
 
   if (!status.paired) {
     return {
-      detail: '完成浏览器连接，再为当前 runtime 启用 Notion MCP。',
-      status: '连接完成后可继续。',
-      button: '完成连接',
+      detail: 'Finish browser connection, then enable Notion MCP for the current runtime.',
+      status: 'Continue after connection completes.',
+      button: 'Finish connection',
       disabled: true,
       canInstall: false,
     };
@@ -282,9 +282,9 @@ function getAccessState(status) {
 
   if (runtime.standalone) {
     return {
-      detail: '当前是 standalone 调试模式，不会调用真实 Notion MCP。',
-      status: '这里只会返回模拟结果。',
-      button: '调试模式不可用',
+      detail: 'Standalone debug mode is active and does not call real Notion MCP.',
+      status: 'Only simulated results are returned here.',
+      button: 'Unavailable in debug mode',
       disabled: true,
       canInstall: false,
     };
@@ -293,59 +293,59 @@ function getAccessState(status) {
   switch (notionMcp.status) {
     case 'configured':
       return {
-        detail: notionMcp.detail || '当前 runtime 已可读取和写回 Notion。',
-        status: '无需额外设置。',
-        button: '已启用',
+        detail: notionMcp.detail || 'The current runtime can read and write Notion.',
+        status: 'No extra setup needed.',
+        button: 'Enabled',
         disabled: true,
         canInstall: false,
       };
     case 'unauthenticated':
       if (runtime.id === 'claude') {
         return {
-          detail: notionMcp.detail || '已经检测到 Claude Code 的 Notion MCP 配置，但还没有完成授权。',
-          status: '整页读取时会在 Activity 里弹出浏览器授权链接；写回授权也可能出现在 Claude 终端里。',
-          button: '按需授权',
+          detail: notionMcp.detail || 'Claude Code Notion MCP is configured, but authorization is not complete.',
+          status: 'Full-page reads show a browser authorization link in Activity. Write-back authorization may also appear in the Claude terminal.',
+          button: 'Authorize when needed',
           disabled: true,
           canInstall: false,
         };
       }
 
       return {
-        detail: notionMcp.detail || '已经检测到 Notion MCP 配置，但你还需要完成一次授权。',
-          status: '完成授权后，运行整页和写回都会恢复。',
-        button: '继续授权',
+        detail: notionMcp.detail || 'Notion MCP is configured, but authorization is still required.',
+        status: 'After authorization, full-page runs and write-back will work again.',
+        button: 'Continue authorization',
         disabled: false,
         canInstall: true,
-        pendingText: '正在发起授权请求…',
-        waitText: `授权请求已发出，等待 ${runtime.label || 'Agent'} 完成…`,
+        pendingText: 'Starting authorization request...',
+        waitText: `Authorization request sent. Waiting for ${runtime.label || 'Agent'} to finish...`,
       };
     case 'missing':
       return {
-        detail: notionMcp.detail || '当前 runtime 还没有配置 Notion MCP。',
-        status: '启用后才能读取整页并写回结果。',
-        button: '启用 Notion MCP',
+        detail: notionMcp.detail || 'The current runtime does not have Notion MCP configured.',
+        status: 'Enable it to read full pages and write results back.',
+        button: 'Enable Notion MCP',
         disabled: false,
         canInstall: true,
-        pendingText: '正在启用 Notion MCP…',
-        waitText: `启用请求已发出，等待 ${runtime.label || 'Agent'} 完成…`,
+        pendingText: 'Enabling Notion MCP...',
+        waitText: `Enable request sent. Waiting for ${runtime.label || 'Agent'} to finish...`,
       };
     case 'unavailable':
       return {
-        detail: notionMcp.detail || '当前模式不会调用真实 Notion MCP。',
-        status: '切换到真实 runtime 后再继续。',
-        button: '当前不可用',
+        detail: notionMcp.detail || 'The current mode does not call real Notion MCP.',
+        status: 'Switch to a real runtime to continue.',
+        button: 'Currently unavailable',
         disabled: true,
         canInstall: false,
       };
     default:
       return {
-        detail: notionMcp.detail || '现在还无法自动确认 Notion MCP 状态。',
-        status: '如果运行整页或写回失败，请查看官方文档。',
-        button: '尝试修复',
+        detail: notionMcp.detail || 'Notion MCP status cannot be confirmed automatically yet.',
+        status: 'If full-page runs or write-back fail, check the official docs.',
+        button: 'Try to fix',
         disabled: false,
         canInstall: true,
-        pendingText: '正在尝试修复 Notion MCP…',
-        waitText: `修复请求已发出，等待 ${runtime.label || 'Agent'} 处理…`,
+        pendingText: 'Trying to fix Notion MCP...',
+        waitText: `Fix request sent. Waiting for ${runtime.label || 'Agent'} to handle it...`,
       };
   }
 }
@@ -357,15 +357,15 @@ async function connectBridge() {
 
   const code = codeInput.value.trim();
   if (!/^\d{6}$/.test(code)) {
-    statusValue.textContent = '配对码格式不正确';
-    statusHint.textContent = '请输入 6 位数字。配对码来自上面的生成配对码命令。';
+    statusValue.textContent = 'Invalid pairing code format';
+    statusHint.textContent = 'Enter 6 digits. The pairing code comes from the Generate pairing code command above.';
     return;
   }
 
   popupState.pairBusy = true;
   connectButton.disabled = true;
   codeInput.disabled = true;
-  connectButton.textContent = '连接中…';
+  connectButton.textContent = 'Connecting...';
 
   try {
     await sendMessage({ type: 'pairBridge', code });
@@ -374,13 +374,13 @@ async function connectBridge() {
     await refreshStatus();
   } catch (error) {
     statusDot.classList.remove('ready');
-    statusValue.textContent = '连接失败';
-    statusHint.textContent = error.message || '请重新生成配对码后再试一次。';
+    statusValue.textContent = 'Connection failed';
+    statusHint.textContent = error.message || 'Generate a new pairing code and try again.';
   } finally {
     popupState.pairBusy = false;
     connectButton.disabled = false;
     codeInput.disabled = false;
-    connectButton.textContent = '连接浏览器';
+    connectButton.textContent = 'Connect browser';
   }
 }
 
@@ -447,9 +447,9 @@ async function copyCommand(codeNode, buttonNode) {
   }
 
   await navigator.clipboard.writeText(command);
-  buttonNode.textContent = '已复制';
+  buttonNode.textContent = 'Copied';
   setTimeout(() => {
-    buttonNode.textContent = '复制';
+    buttonNode.textContent = 'Copy';
   }, 1400);
 }
 
@@ -461,7 +461,7 @@ async function sendInstallRequest() {
   }
 
   popupState.installBusy = true;
-  popupState.installMessage = access.pendingText || '正在处理…';
+  popupState.installMessage = access.pendingText || 'Processing...';
   renderStatus(status);
 
   try {
@@ -471,19 +471,19 @@ async function sendInstallRequest() {
         action: 'install_notion_mcp',
         pageUrl: 'chrome-extension://notion2cli/setup',
         pageTitle: 'notion2CLI setup',
-        installPrompt: `按照以下 notion 官方文档完成 notion MCP 的安装与授权：${NOTION_MCP_DOC_URL}`,
+        installPrompt: `Follow the official Notion MCP docs to complete installation and authorization: ${NOTION_MCP_DOC_URL}`,
         officialDocUrl: NOTION_MCP_DOC_URL,
         source: 'chrome-extension-popup',
       },
     });
 
     popupState.installJobId = response.jobId;
-    popupState.installMessage = access.waitText || '请求已发出，等待 Agent 处理…';
+    popupState.installMessage = access.waitText || 'Request sent. Waiting for the agent to handle it...';
     renderStatus(status);
     pollInstallJob(response.jobId);
   } catch (error) {
     popupState.installBusy = false;
-    popupState.installMessage = error.message || '请求失败';
+    popupState.installMessage = error.message || 'Request failed';
     renderStatus(status);
   }
 }
@@ -513,7 +513,7 @@ function pollInstallJob(jobId) {
     } catch (error) {
       popupState.installBusy = false;
       popupState.installJobId = null;
-      popupState.installMessage = error.message || '读取安装状态失败';
+      popupState.installMessage = error.message || 'Failed to read setup status';
       clearInstallPolling();
       if (popupState.status) {
         renderStatus(popupState.status);
@@ -540,7 +540,7 @@ function selectRuntime(runtimeId) {
     return;
   }
 
-  renderDisconnectedState(popupState.lastErrorMessage || '请确认 notion2CLI bridge 已启动。');
+  renderDisconnectedState(popupState.lastErrorMessage || 'Make sure the notion2CLI bridge is running.');
 }
 
 function updateRuntimeSwitch(visible) {
@@ -613,20 +613,20 @@ function getWriteModeCopy(mode) {
   if (mode === WRITE_MODE_UPDATE_CONTENT) {
     return {
       tone: 'warning',
-      hint: '点击“写回 Notion”时，会用当前最新回复替换你此刻选中的原文。写回前需要先在页面里选中目标文本。',
+      hint: 'When you click Write to Notion, the latest reply replaces the text currently selected on the page. Select the target text before writing back.',
     };
   }
 
   if (mode === WRITE_MODE_REPLACE_CONTENT) {
     return {
       tone: 'danger',
-      hint: '点击“写回 Notion”时，会用当前最新回复覆盖页面正文。这是高风险模式，只适合明确知道后果时使用。',
+      hint: 'When you click Write to Notion, the latest reply replaces the page body. This is high risk and should be used only when you understand the result.',
     };
   }
 
   return {
     tone: 'default',
-    hint: '点击“写回 Notion”时，会把当前最新回复追加到页面末尾，不改动原文。这是默认推荐模式。',
+    hint: 'When you click Write to Notion, the latest reply is appended to the page without changing existing content. This is the recommended default.',
   };
 }
 
@@ -643,19 +643,19 @@ function normalizeWriteMode(mode) {
 function formatJobStatus(status) {
   switch (status) {
     case 'queued':
-      return '已排队';
+      return 'Queued';
     case 'dispatched':
-      return '已发出';
+      return 'Dispatched';
     case 'running':
-      return '处理中';
+      return 'Processing';
     case 'waiting_for_approval':
-      return '等待确认';
+      return 'Waiting for confirmation';
     case 'completed':
-      return '执行完成';
+      return 'Completed';
     case 'failed':
-      return '执行失败';
+      return 'Run failed';
     default:
-      return '处理中';
+      return 'Processing';
   }
 }
 
@@ -669,7 +669,7 @@ function sendMessage(message) {
       }
 
       if (!response?.ok) {
-        reject(new Error(response?.error || '扩展通信失败'));
+        reject(new Error(response?.error || 'Extension messaging failed'));
         return;
       }
 

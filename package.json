@@ -33,9 +33,11 @@
     "extension/",
     "server/",
     "skills/",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "SECURITY.md"
   ],
   "bin": {
     "notion2cli": "bin/notion2cli.mjs",

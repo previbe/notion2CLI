@@ -22,7 +22,7 @@ test('prompt profile store lists protected raw and editable Build profiles', asy
   await withStore(async (store) => {
     const profiles = await store.list();
     assert.deepEqual(profiles.map((profile) => profile.id), ['raw', 'build']);
-    assert.equal(profiles[0].name, '原文');
+    assert.equal(profiles[0].name, 'Raw');
     assert.equal(profiles[0].editable, false);
     assert.equal(profiles[1].name, 'Build');
     assert.equal(profiles[1].editable, true);

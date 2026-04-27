@@ -48,7 +48,7 @@ export function nowIso() {
 }
 
 export function truncate(text, maxLength) {
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 3))}...` : text;
 }
 
 export function readBearer(req) {

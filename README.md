@@ -1,56 +1,67 @@
 # notion2CLI
 
-`notion2CLI` 的 MVP 只解决一件事：
+[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Contributing](CONTRIBUTING.md)
 
-**把 Notion 页面当作本地 AI CLI 会话的富文本输入框。**
+Use a Notion page as the rich-text input surface for a local Codex or Claude Code session.
 
-在 Notion 页面里点击插件按钮后，插件会把当前选区或当前整页作为下一条用户输入交给本地会话，并直接开始处理。回复先回到插件面板，再由用户决定是否写回 Notion。
+notion2CLI is a local-first bridge between three things you already run on your machine:
 
-## 当前 MVP
+- a Notion page in Chrome
+- a tiny localhost bridge
+- a local AI coding/runtime session, currently Codex CLI or Claude Code
 
-已实现：
+Select text in Notion, or run the whole page, and notion2CLI sends that content as the next user request to the active local runtime. The answer returns to the browser panel. If the task should update the Notion page, the runtime can write back through Notion MCP.
 
-- 选中文本作为下一条输入运行
-- 当前整页作为下一条输入运行
-- 整页读取仍通过当前 runtime 的 Notion MCP 完成
-- Notion 页面里的图片会作为本地图片工件交给 runtime
-- 最新回复会回到插件面板
-- Agent 可按任务提示词通过 Notion MCP 修改当前 Notion 页面
-- 用户也可在设置里选择显示手动“写回 Notion”按钮作为 fallback
-- Codex 会稳定复用同一个 Codex App 可见 session
-- Claude Code 会通过 Channels 投递到 `notion2cli claude launch` 启动的当前终端会话
+## Project Status
 
-暂不做：
+This is an early MVP. The core contract is intentionally narrow:
 
-- bridge 自己直连 Notion API / MCP 读取页面
-- bridge 自己确定性写回 Notion
-- 完整文件附件支持
-- Claude Desktop 输入注入
-- Chrome Native Messaging
-- Codex App、Claude 终端、插件之间的全双向历史同步
+- Forward selected Notion text as the next runtime input.
+- Forward the current Notion page as the next runtime input.
+- Resolve full-page content through the runtime's Notion MCP server.
+- Cache Notion page images as local artifacts for the runtime.
+- Return the latest assistant result to the browser panel.
+- Let the runtime write back to Notion only when the selected task genuinely requires it.
+- Reuse a stable visible Codex App session for Codex.
+- Deliver Claude jobs into the active `notion2cli claude launch` terminal session.
 
-## 前置要求
+Not in scope for the current MVP:
 
-本机需要：
+- Direct Notion API access from the bridge.
+- Deterministic Notion writes performed by the bridge itself.
+- Complete generic file attachment support.
+- Claude Desktop input injection.
+- Chrome Native Messaging.
+- Full two-way history sync between the extension, bridge, Codex App, and Claude terminal.
 
-- `Node.js 22.15+`
-- `npm`
-- `Google Chrome`
-- `Codex CLI` 或 `Claude Code`
-- 一个已登录的 Notion 浏览器会话
+## How It Works
 
-确认命令存在：
-
-```bash
-node --version
-npm --version
-codex --version
-claude --version
+```text
+Notion page
+  -> Chrome extension
+  -> http://127.0.0.1:43821 local bridge
+  -> Codex CLI or Claude Code runtime
+  -> browser Activity panel
+  -> optional Notion write-back through Notion MCP
 ```
 
-只使用其中一个 runtime 时，只需要对应 CLI 存在。
+The browser extension does not scrape the full Notion DOM. For full-page runs, the bridge asks the selected runtime to read the page through Notion MCP, normalizes the result, downloads supported image artifacts, and then sends a structured prompt plus local image paths to the runtime.
 
-## 安装
+## Support Matrix
+
+| Area | Current support |
+| --- | --- |
+| Node.js | `>=22.15.0` |
+| Package manager | `npm` with `package-lock.json` |
+| Browser | Google Chrome with a manually loaded Manifest V3 extension |
+| Operating systems | macOS is the primary tested target. Linux and Windows are not formally supported yet. |
+| Codex | Codex CLI installed locally. `notion2cli codex open` is macOS-only. |
+| Claude | Claude Code installed locally. Claude Desktop is not an input target. |
+| Notion | A logged-in Notion browser session plus Notion MCP configured for the selected runtime. |
+
+## Install From Source
+
+The npm package metadata is ready, but until the first package is published, install from the repository:
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
@@ -59,138 +70,124 @@ npm install
 npm install -g .
 ```
 
-加载 Chrome 扩展：
+Load the Chrome extension:
 
-1. 打开 `chrome://extensions`
-2. 开启“开发者模式”
-3. 点击“加载已解压的扩展程序”
-4. 选择本仓库里的 `extension` 目录
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Click "Load unpacked".
+4. Select this repository's `extension` directory.
 
-## 快速开始：Codex
+The extension talks to `http://127.0.0.1:43821`. If you run the bridge on a custom port, you must also adjust the extension build.
+
+## Quick Start: Codex
+
+Install and authorize Notion MCP for Codex:
 
 ```bash
 notion2cli mcp install notion --runtime codex
+```
+
+Start the bridge:
+
+```bash
 notion2cli daemon start --runtime codex
+```
+
+Create a browser pairing code:
+
+```bash
 notion2cli pair
 ```
 
-然后：
+Then open the `notion2CLI` Chrome popup, paste the 6-digit code, and connect. On any Notion page, use the Activity panel to run `Raw`, `Build`, or a custom prompt profile.
 
-1. 点击浏览器工具栏里的 `notion2CLI`
-2. 粘贴 6 位配对码
-3. 打开一个 Notion 页面
-4. 点击 Activity 面板里的任务按钮，例如 `原文` 或 `Build`
-5. 有选区时会处理选区，没有选区时会处理当前页全文
-
-需要检查或打开同一个 Codex App session：
+Useful Codex commands:
 
 ```bash
+notion2cli daemon status
 notion2cli codex inspect
 notion2cli codex open
+notion2cli daemon stop
 ```
 
-## 快速开始：Claude Code
+## Quick Start: Claude Code
 
-Claude 不走后台 daemon。启动当前 Claude Code channel 会话：
+Claude Code uses a foreground channel session instead of the background daemon:
 
 ```bash
 notion2cli claude launch
 ```
 
-这个命令会打开一个 Claude Code 终端会话，并加载 notion2CLI channel bridge。保持这个窗口开着，然后在另一个终端运行：
+Keep that terminal open. In another terminal, create a browser pairing code:
 
 ```bash
 notion2cli pair
 ```
 
-如果第一次整页读取需要 Notion 授权，Activity 面板会显示授权链接。写回仍由当前 Claude Code 会话通过 Notion MCP 执行。
+If Notion MCP authorization is required during a full-page run, the Activity panel will show the browser authorization link. Write-back authorization may still appear inside the Claude Code terminal.
 
-检查当前 Claude channel 状态：
+Useful Claude commands:
 
 ```bash
 notion2cli claude inspect
+notion2cli claude config-path
 ```
 
-## 使用说明
+## Browser Actions
 
-### 运行选中内容
+### Run selected text
 
-有文本选区时，插件会发送：
+When text is selected in Notion, the extension sends:
 
 - `selectionText`
 - `pageUrl`
 - `pageTitle`
 
-bridge 会创建 job，把选区当作下一条用户输入交给当前 runtime。
+The bridge creates a job and forwards the selected text as the next user input to the active runtime.
 
-### 运行当前页
+### Run the current page
 
-没有文本选区时，bridge 会：
+When no text is selected, the bridge:
 
-1. 借当前 runtime 的 Notion MCP 读取整页内容
-2. 规范化为 `McpPageBundle`
-3. 从 bundle 中解析图片附件链接
-4. 下载并缓存本地图片工件
-5. 把 `page bundle + 本地图片工件` 作为下一条用户输入交给当前 runtime
+1. asks the runtime's Notion MCP server to read the page,
+2. normalizes the response into a `McpPageBundle`,
+3. extracts supported image assets,
+4. downloads local image artifacts,
+5. sends page markdown, page metadata, warnings, and image artifact paths to the runtime.
 
-如果 page bundle 准备失败，本次运行会失败，不回退到浏览器 DOM 抓取。
+If page-bundle preparation fails, the job fails. The bridge does not fall back to browser DOM scraping.
 
-### Build
+### Prompt profiles
 
-`Build` 是内置的官方预制 prompt。它会把选中内容或当前页全文当作需求文档，让当前 Codex / Claude runtime 直接按文档要求执行开发。
+The Activity panel exposes `Raw`, `Build`, and custom prompt profiles.
 
-执行完成后，最终结果会作为 Brief 显示在插件面板。Agent 只有在任务确实要求修改当前 Notion 页面时，才应该通过 Notion MCP 修改页面；普通 Build 任务通常只改本地代码，不改 Notion 正文。
+- `Raw` forwards the Notion material as the task.
+- `Build` treats the Notion material as a software task brief for the current runtime.
+- Custom profiles are stored locally in `~/.notion2cli/prompts.json`.
 
-### 自定义提示词
+Prompt profiles define task intent. Notion page content remains task material and must not override bridge instructions, runtime safety rules, or the selected profile.
 
-Activity 面板中的任务现在是按钮。点击 `原文`、`Build` 或自定义任务名会直接运行该任务；有选区时处理选区，没有选区时处理当前页全文。
+### Write back to Notion
 
-点击 `管理` 可以新增、编辑、删除提示词。`Build` 可以修改或删除，也可以恢复官方默认版本。`原文` 是系统基础入口，不允许编辑或删除。
+Agents may update the current Notion page through Notion MCP when the selected task genuinely requires it. Manual write-back can also be enabled in the extension settings.
 
-提示词由本地 bridge 统一管理，保存在：
+Manual write-back modes:
 
-```text
-~/.notion2cli/prompts.json
-```
+- append to the page
+- replace the currently selected text
+- replace the page body
 
-### 写回 Notion
+Append mode is the default recommendation because it is non-destructive.
 
-Agent 可以按当前任务提示词自行决定是否修改当前 Notion 页面。插件设置页的“写回设置”里可以控制是否显示手动“写回 Notion”按钮。
+## Local State
 
-手动写回仍由 runtime 通过 Notion MCP 执行，支持：
-
-- 追加到页面末尾
-- 替换当前选中文本
-- 覆盖页面正文
-
-MVP 默认隐藏手动写回按钮。需要手动 fallback 时，可以在插件设置页打开它；写回模式默认建议使用“追加到页面末尾”。
-
-## 常用命令
-
-```bash
-notion2cli daemon start --runtime codex
-notion2cli daemon stop
-notion2cli daemon status
-notion2cli codex inspect
-notion2cli codex open
-notion2cli claude launch
-notion2cli claude inspect
-notion2cli pair
-notion2cli status
-notion2cli doctor
-notion2cli mcp install notion --runtime codex
-notion2cli mcp install notion --runtime claude
-```
-
-## 状态和日志
-
-`notion2cli` 会把状态和日志写到：
+Runtime state, logs, prompt profiles, and cached artifacts live under:
 
 ```text
 ~/.notion2cli/
 ```
 
-常见位置：
+Common paths:
 
 - `~/.notion2cli/state/daemon.json`
 - `~/.notion2cli/state/artifacts/`
@@ -200,43 +197,80 @@ notion2cli mcp install notion --runtime claude
 - `~/.notion2cli/logs/daemon.log`
 - `~/.notion2cli/logs/daemon.err.log`
 
-## 测试
+## Security Model
+
+notion2CLI is local-first, but it still moves private page content between local components. Read [SECURITY.md](SECURITY.md) before running it on sensitive workspaces.
+
+Important details:
+
+- The bridge binds to `127.0.0.1` and defaults to port `43821`.
+- The Chrome extension only requests Notion page access and the default local bridge origin.
+- Browser pairing uses a 6-digit code that expires after 5 minutes.
+- A successful pairing creates a random bearer token stored in Chrome local extension storage.
+- Pairing state is held by the local bridge process and is reset when the bridge restarts.
+- Full-page reads and write-backs are performed by the selected runtime through Notion MCP.
+- Notion content is sent to your local Codex or Claude Code runtime. Those tools may use their own network services according to their own configuration and terms.
+- Remote image downloads are capped and private-network image URLs are blocked by default.
+
+## Development
 
 ```bash
-npm test
+npm install
 npm run check
+npm test
 ```
 
-真机验证建议：
+For release-sensitive changes, also run:
 
-1. 准备一个 Notion 页面，包含一段指令和一张图片
-2. 启动 Codex daemon 或 `notion2cli claude launch`
-3. 完成浏览器配对
-4. 点击“运行当前页”
-5. 确认 runtime 直接开始处理
-6. 确认回复回到插件面板
-7. 如已开启手动写回按钮，点击“写回 Notion”，确认结果按设置模式写入页面
+```bash
+npm audit --audit-level=moderate
+npm pack --dry-run
+npm publish --dry-run --access public
+```
 
-## 当前边界
+Manual end-to-end smoke test:
 
-- Codex 使用 Codex App session；Claude 使用 Claude Code Channels
-- Claude Desktop 目前只作为用户自己查看/操作的独立产品，不作为输入注入目标
-- 整页读取仍依赖 runtime 的 Notion MCP
-- 写回仍由 runtime 通过 Notion MCP 执行
-- 文件附件暂未完整支持
-- 插件和 bridge 之间仍使用 localhost HTTP
-- Codex App 实时 UI 镜像不作为 MVP 承诺；MVP 承诺的是同一个 session 稳定进入 Codex App 历史
+1. Prepare a Notion page containing a short instruction and one image.
+2. Start either `notion2cli daemon start --runtime codex` or `notion2cli claude launch`.
+3. Pair the browser extension.
+4. Run the current page.
+5. Confirm the selected runtime starts working immediately.
+6. Confirm the final result appears in the Activity panel.
+7. If manual write-back is enabled, append the result to the Notion page and verify the target page changed as expected.
 
-## 贡献
+## For AI Agents Working In This Repository
 
-欢迎提交 issue 和 pull request。贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+If you are an AI coding agent handling this project, treat these as the working constraints:
 
-除非你在提交时明确说明，否则提交到本项目的贡献会按照本项目的 MIT License 授权。
+- Start with `README.md`, `docs/ARCHITECTURE.md`, and `package.json`.
+- Keep the MVP contract narrow: Notion page or selection in, local runtime job out, optional Notion MCP write-back.
+- Do not introduce direct Notion API calls unless the task explicitly changes the architecture.
+- Do not commit local files, generated artifacts, screenshots, `.env*`, `.tmp/`, `output/`, or `~/.notion2cli` state.
+- Keep Chrome permissions narrow. The default bridge origin is `http://127.0.0.1:43821`.
+- Run `npm run check` and `npm test` before handing off code changes.
+- For packaging or release work, run `npm pack --dry-run` and inspect the tarball file list.
+
+Useful file map:
+
+- CLI entrypoint: `bin/notion2cli.mjs`
+- CLI helpers: `cli/`
+- bridge server: `server/bridge-server.mjs`
+- core job and HTTP logic: `server/core/`
+- runtime adapters: `server/runtimes/`
+- Chrome extension: `extension/`
+- architecture notes: `docs/ARCHITECTURE.md`
+- tests: `test/`
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
+
+Unless stated otherwise, contributions to this project are submitted under the project's MIT License.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
-## 关联声明
+## Trademark Notice
 
-notion2CLI 不是 Notion、OpenAI、Anthropic、Claude 或 Google Chrome 的官方项目，也不由这些公司背书或维护。
+notion2CLI is not an official Notion, OpenAI, Anthropic, Claude, Codex, or Google Chrome project. Product names and trademarks belong to their respective owners.

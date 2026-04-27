@@ -81,7 +81,7 @@ export class ArtifactStore {
         images.push(artifact);
       } catch (error) {
         const message = error?.message || 'Unknown image download failure';
-        warnings.push(`图片 ${index + 1} 下载失败：${message}`);
+        warnings.push(`Image ${index + 1} download failed: ${message}`);
         this.log('image artifact download failed', {
           jobId,
           index,

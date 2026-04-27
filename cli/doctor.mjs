@@ -40,12 +40,12 @@ async function probeBinary(command, args) {
     const detail = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
     return {
       installed: result.code === 0,
-      detail: detail || `${command} 可执行`,
+      detail: detail || `${command} is executable`,
     };
   } catch (error) {
     return {
       installed: false,
-      detail: error?.message || `${command} 不可用`,
+      detail: error?.message || `${command} is unavailable`,
     };
   }
 }
@@ -60,7 +60,7 @@ async function probeClaudeNotionMcp() {
   } catch (error) {
     return {
       status: 'unknown',
-      detail: error?.message || '无法检查 Claude Code 的 Notion MCP 状态。',
+      detail: error?.message || 'Unable to check Claude Code Notion MCP status.',
     };
   }
 }
@@ -75,7 +75,7 @@ async function probeCodexNotionMcp() {
   } catch (error) {
     return {
       status: 'unknown',
-      detail: error?.message || '无法检查 Codex CLI 的 Notion MCP 状态。',
+      detail: error?.message || 'Unable to check Codex CLI Notion MCP status.',
     };
   }
 }
@@ -84,7 +84,7 @@ function summarizeDaemon(inspection) {
   if (inspection.unmanaged) {
     return {
       status: 'unmanaged',
-      detail: `检测到 ${inspection.host}:${inspection.port} 上有 bridge，但它不是 notion2cli daemon 管理的。`,
+      detail: `Detected ${inspection.host}:${inspection.port} has a bridge running, but it is not managed by notion2cli daemon.`,
       runtime: inspection.bridge?.runtime || null,
     };
   }
@@ -92,7 +92,7 @@ function summarizeDaemon(inspection) {
   if (inspection.running) {
     return {
       status: 'running',
-      detail: `bridge 正在 ${inspection.host}:${inspection.port} 运行。`,
+      detail: `bridge is running at ${inspection.host}:${inspection.port}.`,
       runtime: inspection.bridge?.runtime || null,
       metadata: inspection.metadata,
     };
@@ -101,29 +101,29 @@ function summarizeDaemon(inspection) {
   if (inspection.stale) {
     return {
       status: 'stale',
-      detail: '发现过期 daemon 状态文件，但当前 bridge 不在线。',
+      detail: 'Found a stale daemon state file, but the current bridge is offline.',
       metadata: inspection.metadata,
     };
   }
 
   return {
     status: 'stopped',
-    detail: `当前没有 daemon 在 ${inspection.host}:${inspection.port} 运行。`,
+    detail: `No daemon is running at ${inspection.host}:${inspection.port}.`,
   };
 }
 
 export function formatDoctorReport(report) {
   return [
-    `notion2cli home：${report.appHome}`,
-    `bridge：${report.bridge.detail}`,
-    `Claude Code：${formatBinaryLine(report.runtimes.claude)}`,
-    `Codex CLI：${formatBinaryLine(report.runtimes.codex)}`,
-    `Claude Notion MCP：${report.notionMcp.claude.detail}`,
-    `Codex Notion MCP：${report.notionMcp.codex.detail}`,
-    `Notion MCP 官方地址：${NOTION_MCP_URL}`,
+    `notion2cli home: ${report.appHome}`,
+    `bridge: ${report.bridge.detail}`,
+    `Claude Code: ${formatBinaryLine(report.runtimes.claude)}`,
+    `Codex CLI: ${formatBinaryLine(report.runtimes.codex)}`,
+    `Claude Notion MCP: ${report.notionMcp.claude.detail}`,
+    `Codex Notion MCP: ${report.notionMcp.codex.detail}`,
+    `Official Notion MCP URL: ${NOTION_MCP_URL}`,
   ].join('\n');
 }
 
 function formatBinaryLine(binary) {
-  return binary.installed ? `已安装（${binary.detail}）` : `未安装（${binary.detail}）`;
+  return binary.installed ? `installed (${binary.detail})` : `not installed (${binary.detail})`;
 }

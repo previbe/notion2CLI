@@ -97,7 +97,7 @@ export function buildClaudeChannelPrompt(job, runtimeInfo) {
 function normalizePromptProfile(promptProfile) {
   return promptProfile || {
     id: PROMPT_PROFILE_RAW,
-    name: '原样运行',
+    name: 'Raw',
     instruction: '',
   };
 }
@@ -108,7 +108,7 @@ function buildPromptProfileLines(promptProfile) {
 
   if (!instruction) {
     return [
-      `Profile: ${profile.id || PROMPT_PROFILE_RAW} (${profile.name || '原样运行'}).`,
+      `Profile: ${profile.id || PROMPT_PROFILE_RAW} (${profile.name || 'Raw'}).`,
     ];
   }
 

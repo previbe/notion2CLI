@@ -7,7 +7,7 @@ case "$runtime" in
   codex|standalone|claude)
     ;;
   *)
-    echo "用法：notion2cli-bridge [codex|claude|standalone]" >&2
+    echo "Usage: notion2cli-bridge [codex|claude|standalone]" >&2
     exit 1
     ;;
 esac

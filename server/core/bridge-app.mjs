@@ -211,7 +211,7 @@ export class BridgeApp {
     this.recordJobEvent(jobId, {
       type: 'cancel_requested',
       status: JOB_STATUS_CANCELLING,
-      note: '用户请求停止任务。',
+      note: 'The user requested to stop the task.',
       runtimeMeta: {
         cancelRequested: true,
         pendingApproval: null,
@@ -221,7 +221,7 @@ export class BridgeApp {
     let result = {
       ok: true,
       mode: 'soft',
-      message: '已停止等待这次结果；底层 Agent 可能仍在运行。',
+      message: 'Stopped waiting for this result; the underlying agent may still be running.',
     };
 
     if (typeof this.runtime.cancelJob === 'function') {
@@ -233,7 +233,7 @@ export class BridgeApp {
         result = {
           ok: false,
           mode: 'soft',
-          message: error?.message || '停止请求未被当前 runtime 确认，已停止等待这次结果。',
+          message: error?.message || 'The stop request was not confirmed by the current runtime. Stopped waiting for this result.',
         };
       }
     }
@@ -243,8 +243,8 @@ export class BridgeApp {
       type: 'cancelled',
       status: JOB_STATUS_CANCELLED,
       note: cancelMode === 'soft'
-        ? '已停止等待这次结果；底层 Agent 可能仍在运行。'
-        : '任务已停止。',
+        ? 'Stopped waiting for this result; the underlying agent may still be running.'
+        : 'Task stopped.',
       error: null,
       runtimeMeta: {
         cancelRequested: false,
@@ -386,7 +386,7 @@ export class BridgeApp {
       pageBundle = pageBundleResult.bundle;
       pageBundleWarnings = Array.isArray(pageBundleResult.warnings) ? pageBundleResult.warnings : [];
       if (!pageBundle) {
-        const message = pageBundleWarnings[0] || 'bridge 无法为当前整页请求准备 page bundle。';
+        const message = pageBundleWarnings[0] || 'The bridge could not prepare a page bundle for the current full-page request.';
         throw new Error(message);
       }
 
@@ -399,7 +399,7 @@ export class BridgeApp {
 
       this.recordJobEvent(job.id, {
         type: 'page_bundle_prepared',
-        note: 'bridge 已通过 runtime-backed MCP 预取当前页面内容。',
+        note: 'The bridge prefetched the current page through runtime-backed MCP.',
         extra: {
           warnings: pageBundleWarnings,
           summary: summarizePageBundle(pageBundle),
@@ -443,7 +443,7 @@ export class BridgeApp {
     this.recordJobEvent(job.id, {
       type: 'input_bundle_prepared',
       note: inputBundle.images.length
-        ? `已准备 ${inputBundle.images.length} 个本地图片工件。`
+        ? `Prepared ${inputBundle.images.length} local image artifacts.`
         : null,
       extra: inputBundle.warnings.length ? { warnings: inputBundle.warnings } : null,
       inputBundle,

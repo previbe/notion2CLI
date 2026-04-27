@@ -23,7 +23,7 @@ export class ClaudeRuntime {
       ? options.extraArgs
       : parseArgs(process.env.NOTION2CLI_CLAUDE_EXTRA_ARGS || '');
     this.ready = false;
-    this.statusMessage = '等待检查 Claude Code。';
+    this.statusMessage = 'Waiting to check Claude Code.';
     this.runningJobs = new Map();
     this.probeSessions = new Set();
     this.cachedMcpStatus = null;
@@ -35,11 +35,11 @@ export class ClaudeRuntime {
       const result = await runCommand('claude', ['--version'], { cwd: this.cwd, timeoutMs: 4000 });
       this.ready = result.code === 0;
       this.statusMessage = this.ready
-        ? `Claude Code 已就绪（${compactCommandOutput(result) || 'version unknown'}）。`
-        : (result.stderr.trim() || 'Claude Code 未就绪。');
+        ? `Claude Code is ready (${compactCommandOutput(result) || 'version unknown'}).`
+        : (result.stderr.trim() || 'Claude Code is not ready.');
     } catch (error) {
       this.ready = false;
-      this.statusMessage = error?.message || '无法启动 claude 命令。';
+      this.statusMessage = error?.message || 'Unable to start the claude command.';
     }
   }
 
@@ -168,7 +168,7 @@ export class ClaudeRuntime {
 
     this.context.markJobRunning(jobId, {
       type: 'claude_cli_approval_resolved',
-      note: '已允许 Claude Code 继续执行。',
+      note: 'Allowed Claude Code to continue.',
       runtimeMeta: buildRuntimeMeta({
         approvalResponse: resolution.action,
         pendingApproval: null,
@@ -186,7 +186,7 @@ export class ClaudeRuntime {
       };
     }
 
-    session.cancel('用户停止了任务。');
+    session.cancel('The user stopped the task.');
     this.runningJobs.delete(jobId);
     return {
       ok: true,
@@ -237,7 +237,7 @@ export class ClaudeRuntime {
       } catch {
         value = {
           status: 'unknown',
-          detail: error?.message || '无法检查 Claude Code 的 Notion MCP 状态。',
+          detail: error?.message || 'Unable to check Claude Code Notion MCP status.',
         };
       }
     }
@@ -279,13 +279,13 @@ export class ClaudeRuntime {
         timeoutMs: 300000,
       });
       const output = compactCommandOutput(addResult);
-      notes.push('已执行 `claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp`。');
+      notes.push('Ran `claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp`.');
       if (output) {
         notes.push(output);
       }
 
       if (addResult.code !== 0 && !/already exists|already configured|already added/i.test(output)) {
-        this.context.failJob(job.id, output || '执行 claude mcp add 失败。', {
+        this.context.failJob(job.id, output || 'Failed to run claude mcp add.', {
           type: 'claude_mcp_add_failed',
           runtimeMeta: { runtime: 'claude', exitCode: addResult.code ?? 'unknown' },
         });
@@ -296,13 +296,13 @@ export class ClaudeRuntime {
     this.cachedMcpStatus = null;
     status = await this.getNotionMcpStatus();
     if (status.status === 'unauthenticated') {
-      notes.push('Notion MCP 配置已经存在，但真正的浏览器授权会在第一次整页读取或写回时，直接在 Activity 面板里发起。');
+      notes.push('Notion MCP is already configured. Browser authorization will be started from the Activity panel during the first full-page read or write-back.');
     }
 
     const summary = [
       status.status === 'configured'
-        ? 'Claude Code 已检测到可用的 Notion MCP 连接。'
-        : 'Claude Code 已添加 Notion MCP 配置，但还没有完成浏览器授权。',
+        ? 'Claude Code detected a usable Notion MCP connection.'
+        : 'Claude Code added the Notion MCP configuration, but browser authorization is not complete.',
       status.detail,
       ...notes,
     ].filter(Boolean).join('\n\n');
@@ -355,8 +355,8 @@ export class ClaudeRuntime {
         this.context.markJobWaitingForApproval(jobId, {
           type: waitingType,
           note: pendingApproval.mode === 'url'
-            ? 'Claude Code 需要先完成浏览器授权。'
-            : 'Claude Code 需要用户确认才能继续。',
+            ? 'Claude Code needs browser authorization first.'
+            : 'Claude Code needs user confirmation to continue.',
           runtimeMeta: buildRuntimeMeta({
             phase,
             sessionId: sessionId || null,
@@ -449,21 +449,21 @@ export function parseClaudeMcpList(output) {
   if (!notionLine) {
     return {
       status: 'missing',
-      detail: '未检测到 Claude Code 的 Notion MCP 配置。',
+      detail: 'Claude Code Notion MCP configuration was not detected.',
     };
   }
 
   if (/Needs authentication/i.test(notionLine)) {
     return {
       status: 'unauthenticated',
-      detail: '已检测到 Claude Code 的 Notion MCP 配置，但当前还没有完成授权。',
+      detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
     };
   }
 
   if (/✓ Connected/i.test(notionLine)) {
     return {
       status: 'configured',
-      detail: '检测到 Claude Code 已配置并可使用 Notion MCP。',
+      detail: 'Claude Code is configured and can use Notion MCP.',
     };
   }
 
@@ -480,7 +480,7 @@ export function parseClaudeSessionInitNotionStatus(message) {
   if (!notionServer) {
     return {
       status: 'missing',
-      detail: '未检测到 Claude Code 的 Notion MCP 配置。',
+      detail: 'Claude Code Notion MCP configuration was not detected.',
     };
   }
 
@@ -488,20 +488,20 @@ export function parseClaudeSessionInitNotionStatus(message) {
   if (status === 'connected') {
     return {
       status: 'configured',
-      detail: '检测到 Claude Code 已配置并可使用 Notion MCP。',
+      detail: 'Claude Code is configured and can use Notion MCP.',
     };
   }
 
   if (status === 'needs-auth') {
     return {
       status: 'unauthenticated',
-      detail: 'Claude Code 运行时仍需要先完成一次 Notion 浏览器授权。',
+      detail: 'Claude Code runtime still needs one Notion browser authorization.',
     };
   }
 
   return {
     status: 'unknown',
-    detail: `Claude Code Notion MCP 状态：${notionServer.status || 'unknown'}`,
+    detail: `Claude Code Notion MCP Status: ${notionServer.status || 'unknown'}`,
   };
 }
 

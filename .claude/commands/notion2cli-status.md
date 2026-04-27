@@ -1,14 +1,14 @@
-查看当前 notion2CLI bridge 状态。
+Inspect the current notion2CLI bridge status.
 
-请直接运行：
+Run this command directly:
 
 ```bash
 notion2cli status
 ```
 
-然后用中文简短总结：
+Then briefly summarize:
 
-- bridge 是否可达
-- 当前 runtime 是什么
-- 当前是否已经配对
-- `runtime.standalone` 是否为 true
+- whether the bridge is reachable
+- which runtime is active
+- whether the browser is paired
+- `runtime.standalone` is true

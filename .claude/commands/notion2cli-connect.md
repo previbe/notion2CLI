@@ -1,9 +1,9 @@
-生成一个新的 notion2CLI 浏览器配对码。
+Generate a new notion2CLI browser pairing code.
 
-请直接运行：
+Run this command directly:
 
 ```bash
 notion2cli pair
 ```
 
-不要自己编造配对码。把命令返回的 6 位数字原样展示给用户，并提醒用户去 Chrome 扩展弹窗里粘贴它。
+Do not invent a pairing code. Show the exact 6-digit code returned by the command, and tell the user to paste it into the Chrome extension popup.

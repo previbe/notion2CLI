@@ -24,7 +24,7 @@ export async function resolveInputArtifacts({ job, pageBundle, artifactStore, lo
         source: 'page-bundle',
       };
     }
-    warnings.push('MCP 页面 bundle 中声明了图片附件，但 bridge 未能成功下载任何本地图片工件。');
+    warnings.push('The MCP page bundle declared image attachments, but the bridge could not download any local image artifacts.');
   }
 
   return {

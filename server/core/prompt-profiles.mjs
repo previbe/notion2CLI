@@ -47,7 +47,7 @@ The Brief must include:
 const BUILTIN_PROFILES = [
   {
     id: PROMPT_PROFILE_RAW,
-    name: '原文',
+    name: 'Raw',
     instruction: '',
     source: 'builtin',
     builtin: true,

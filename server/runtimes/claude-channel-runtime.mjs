@@ -19,7 +19,7 @@ export class ClaudeChannelRuntime {
     this.context = null;
     this.cwd = options.cwd || process.cwd();
     this.connected = false;
-    this.statusMessage = '等待 Claude Code channel 会话附着。';
+    this.statusMessage = 'Waiting for a Claude Code channel session to attach.';
     this.channelName = buildClaudeChannelName(this.cwd);
     this.runningJobs = new Map();
     this.turnCount = 0;
@@ -113,7 +113,7 @@ export class ClaudeChannelRuntime {
     await this.workerRuntime.start(context);
     await this.mcp.connect(new StdioServerTransport());
     this.connected = true;
-    this.statusMessage = 'Claude Code channel 会话已附着 notion2cli bridge。';
+    this.statusMessage = 'Claude Code channel session is attached to the notion2cli bridge.';
   }
 
   async stop() {
@@ -289,7 +289,7 @@ export class ClaudeChannelRuntime {
       }
 
       this.runningJobs.delete(jobId);
-      this.context.failJob(jobId, 'Claude Code 已收到 channel 事件，但没有在超时时间内调用 notion2cli reply tool。', {
+      this.context.failJob(jobId, 'Claude Code received the channel event but did not call the notion2cli reply tool before the timeout.', {
         type: 'claude_channel_reply_timeout',
         runtimeMeta: buildRuntimeMeta({
           sessionId: this.channelName,

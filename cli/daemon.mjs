@@ -35,7 +35,7 @@ export async function inspectDaemon(options = {}) {
   try {
     bridge = await fetchBridgeStatus({ host, port });
   } catch (error) {
-    bridgeError = error?.message || 'bridge 不可达';
+    bridgeError = error?.message || 'bridge is not reachable';
   }
 
   return {
@@ -54,11 +54,11 @@ export async function inspectDaemon(options = {}) {
 export async function startDaemon(options = {}) {
   const runtime = String(options.runtime || '').trim();
   if (!runtime) {
-    throw new Error('缺少 `--runtime`。可选值：codex、standalone。Claude 请使用 `notion2cli claude launch`。');
+    throw new Error('Missing `--runtime`. Valid values: codex, standalone. Use `notion2cli claude launch` for Claude.');
   }
 
   if (!['codex', 'standalone'].includes(runtime)) {
-    throw new Error('daemon 当前只支持 `codex` 或 `standalone`。Claude 请使用 `notion2cli claude launch`。');
+    throw new Error('daemon currently supports only `codex` or `standalone`. Use `notion2cli claude launch` for Claude.');
   }
 
   const host = options.host || HOST;
@@ -79,9 +79,9 @@ export async function startDaemon(options = {}) {
     }
 
     throw new Error([
-      `已有 notion2cli daemon 正在运行：${inspection.bridge?.runtime?.label || inspection.metadata?.runtime || 'unknown runtime'}`,
-      inspection.metadata?.cwd ? `工作目录：${inspection.metadata.cwd}` : null,
-      '先运行 `notion2cli daemon stop`，再启动新的 daemon。',
+      `A notion2cli daemon is already running: ${inspection.bridge?.runtime?.label || inspection.metadata?.runtime || 'unknown runtime'}`,
+      inspection.metadata?.cwd ? `Working directory: ${inspection.metadata.cwd}` : null,
+      'Run `notion2cli daemon stop` before starting a new daemon.',
     ].filter(Boolean).join('\n'));
   }
 
@@ -136,13 +136,13 @@ export async function stopDaemon() {
   const inspection = await inspectDaemon();
   if (!inspection.metadata) {
     if (inspection.bridge) {
-      throw new Error(`检测到 ${inspection.host}:${inspection.port} 上有 bridge，但它不是 notion2cli 管理的 daemon。请手动停止它。`);
+      throw new Error(`Detected a bridge at ${inspection.host}:${inspection.port}, but it is not managed by notion2cli daemon. Stop it manually.`);
     }
 
     return {
       ok: true,
       stopped: false,
-      message: '当前没有 notion2cli daemon 在运行。',
+      message: 'No notion2cli daemon is running.',
     };
   }
 
@@ -152,7 +152,7 @@ export async function stopDaemon() {
       ok: true,
       stopped: true,
       stale: true,
-      message: 'bridge 已不在线，已清理过期 daemon 状态。',
+      message: 'bridge is offline. Stale daemon state was cleaned up.',
     };
   }
 
@@ -166,7 +166,7 @@ export async function stopDaemon() {
         ok: true,
         stopped: true,
         stale: true,
-        message: 'daemon 进程已不存在，已清理状态文件。',
+        message: 'daemon process no longer exists. State file was cleaned up.',
       };
     }
 
@@ -233,7 +233,7 @@ async function startDetachedDaemon({ runtime, cwd, host, port }) {
     const logTail = await readLogTail(paths.daemonErrLog);
     throw new Error([
       error.message,
-      logTail ? '最近 daemon 错误日志：\n' + logTail : null,
+      logTail ? 'Recent daemon error log:\n' + logTail : null,
     ].filter(Boolean).join('\n\n'));
   }
 
@@ -268,7 +268,7 @@ async function waitForBridge({ host, port, timeoutMs }) {
     }
   }
 
-  throw new Error(lastError?.message || 'daemon 启动超时。');
+  throw new Error(lastError?.message || 'Timed out while starting daemon.');
 }
 
 async function waitForBridgeToStop({ host, port, timeoutMs }) {
@@ -283,7 +283,7 @@ async function waitForBridgeToStop({ host, port, timeoutMs }) {
     }
   }
 
-  throw new Error('等待 daemon 停止超时。');
+  throw new Error('Timed out while waiting for daemon to stop.');
 }
 
 async function readLogTail(filePath) {

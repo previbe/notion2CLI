@@ -57,7 +57,7 @@ async function getBridgeStatus() {
 
 async function pairBridge(code) {
   if (!code) {
-    throw new Error('请输入 6 位配对码');
+    throw new Error('Enter the 6-digit pairing code');
   }
 
   const payload = {
@@ -89,7 +89,7 @@ async function clearPairing() {
 async function getPromptProfiles() {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson('/api/prompt-profiles', {
@@ -102,7 +102,7 @@ async function getPromptProfiles() {
 async function createPromptProfile(profile) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson('/api/prompt-profiles', {
@@ -118,7 +118,7 @@ async function createPromptProfile(profile) {
 async function updatePromptProfile(profileId, profile) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson(`/api/prompt-profiles/${encodeURIComponent(profileId || '')}`, {
@@ -134,7 +134,7 @@ async function updatePromptProfile(profileId, profile) {
 async function deletePromptProfile(profileId) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson(`/api/prompt-profiles/${encodeURIComponent(profileId || '')}`, {
@@ -148,7 +148,7 @@ async function deletePromptProfile(profileId) {
 async function resetPromptProfile(profileId) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson(`/api/prompt-profiles/${encodeURIComponent(profileId || '')}/reset`, {
@@ -162,7 +162,7 @@ async function resetPromptProfile(profileId) {
 async function submitNotionAction(payload) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson('/api/jobs', {
@@ -178,7 +178,7 @@ async function submitNotionAction(payload) {
 async function getJobStatus(jobId) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson(`/api/jobs/${jobId}`, {
@@ -191,7 +191,7 @@ async function getJobStatus(jobId) {
 async function cancelJob(jobId) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson(`/api/jobs/${jobId}/cancel`, {
@@ -205,7 +205,7 @@ async function cancelJob(jobId) {
 async function resolveJobApproval(jobId, resolution) {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson(`/api/jobs/${jobId}/approval`, {
@@ -221,7 +221,7 @@ async function resolveJobApproval(jobId, resolution) {
 async function openCodexApp() {
   const token = await getStoredToken();
   if (!token) {
-    throw new Error('浏览器尚未和本地 bridge 配对');
+    throw new Error('The browser is not paired with the local bridge');
   }
 
   return fetchJson('/api/session/open', {
@@ -243,18 +243,18 @@ async function fetchJson(pathname, options = {}) {
   try {
     response = await fetch(`${BRIDGE_ORIGIN}${pathname}`, options);
   } catch {
-    throw new Error('无法连接本地 bridge。请确认 notion2CLI bridge 已启动。');
+    throw new Error('Unable to connect to the local bridge. Make sure the notion2CLI bridge is running.');
   }
 
   let payload;
   try {
     payload = await response.json();
   } catch {
-    throw new Error('bridge 返回了不可识别的数据');
+    throw new Error('bridge returned unrecognized data');
   }
 
   if (!response.ok || payload.ok === false) {
-    throw new Error(payload.error || `bridge 请求失败（${response.status}）`);
+    throw new Error(payload.error || `bridge request failed (${response.status})`);
   }
 
   return payload;

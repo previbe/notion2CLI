@@ -69,7 +69,7 @@ async function main(argv) {
       await handleMcp(rest);
       return;
     default:
-      throw new Error(`未知命令：${command}\n\n${buildUsageHint()}`);
+      throw new Error(`Unknown command: ${command}\n\n${buildUsageHint()}`);
   }
 }
 
@@ -80,8 +80,8 @@ async function handlePair(argv) {
 
   if (!status.runtime?.ready) {
     throw new Error([
-      `当前 runtime 未就绪：${status.runtime?.statusMessage || 'unknown status'}`,
-      status.runtime?.launchCommand ? `先启动：${status.runtime.launchCommand}` : null,
+      `Current runtime is not ready: ${status.runtime?.statusMessage || 'unknown status'}`,
+      status.runtime?.launchCommand ? `Start first: ${status.runtime.launchCommand}` : null,
     ].filter(Boolean).join('\n'));
   }
 
@@ -96,13 +96,13 @@ async function handlePair(argv) {
   }
 
   process.stdout.write([
-    `运行时：${status.runtime?.label || 'Unknown Runtime'}`,
-    `配对码：${pair.code}`,
-    `有效期至：${pair.expiresAt}`,
+    `Runtime: ${status.runtime?.label || 'Unknown Runtime'}`,
+    `Pairing code: ${pair.code}`,
+    `Expires at: ${pair.expiresAt}`,
     status.runtime?.standalone
-      ? '提示：当前连到的是 standalone 调试 runtime。浏览器会收到模拟结果，不会调用真实 Claude/Codex 会话。'
+      ? 'Note: you are connected to the standalone debug runtime. Browser actions return simulated results and do not call a real Claude/Codex session.'
       : null,
-    '下一步：打开浏览器工具栏中的 notion2CLI，输入这个配对码并点击连接。',
+    'Next: open notion2CLI from the browser toolbar, enter this pairing code, and click connect.',
   ].filter(Boolean).join('\n') + '\n');
 }
 
@@ -116,10 +116,10 @@ async function handleStatus(argv) {
   } catch (error) {
     const inspection = await inspectDaemon(target);
     const detail = inspection.metadata
-      ? `检测到 daemon 状态文件：${inspection.metadata.runtime} @ ${inspection.metadata.cwd}`
-      : '当前没有已记录的 daemon。';
+      ? `Found daemon state file: ${inspection.metadata.runtime} @ ${inspection.metadata.cwd}`
+      : 'No recorded daemon was found.';
     throw new Error([
-      `notion2CLI bridge 不可达：${target.host}:${target.port} 无响应。`,
+      `notion2CLI bridge is not reachable: ${target.host}:${target.port} did not respond.`,
       detail,
       error.message,
     ].join('\n'));
@@ -159,19 +159,19 @@ async function handleDaemon(argv) {
 
       if (result.alreadyRunning) {
         process.stdout.write([
-          `daemon 已在运行：${result.metadata.runtime}`,
-          `地址：http://${result.metadata.host}:${result.metadata.port}`,
-          `工作目录：${result.metadata.cwd}`,
+          `daemon is already running: ${result.metadata.runtime}`,
+          `Address: http://${result.metadata.host}:${result.metadata.port}`,
+          `Working directory: ${result.metadata.cwd}`,
         ].join('\n') + '\n');
         return;
       }
 
       process.stdout.write([
-        options.foreground ? 'notion2cli daemon 已以前台模式启动。' : 'notion2cli daemon 已在后台启动。',
-        `运行时：${result.metadata?.runtime || options.runtime}`,
-        `地址：http://${result.metadata?.host || options.host || HOST}:${result.metadata?.port || options.port || DEFAULT_PORT}`,
-        result.metadata?.cwd ? `工作目录：${result.metadata.cwd}` : null,
-        options.foreground ? '按 Ctrl+C 可停止当前 daemon。' : null,
+        options.foreground ? 'notion2cli daemon started in foreground mode.' : 'notion2cli daemon started in the background.',
+        `Runtime: ${result.metadata?.runtime || options.runtime}`,
+        `Address: http://${result.metadata?.host || options.host || HOST}:${result.metadata?.port || options.port || DEFAULT_PORT}`,
+        result.metadata?.cwd ? `Working directory: ${result.metadata.cwd}` : null,
+        options.foreground ? 'Press Ctrl+C to stop the current daemon.' : null,
       ].filter(Boolean).join('\n') + '\n');
       return;
     }
@@ -191,7 +191,7 @@ async function handleDaemon(argv) {
         return;
       }
 
-      process.stdout.write(`${result.message || 'notion2cli daemon 已停止。'}\n`);
+      process.stdout.write(`${result.message || 'notion2cli daemon stopped.'}\n`);
       return;
     }
     case 'status': {
@@ -209,7 +209,7 @@ async function handleDaemon(argv) {
     }
     default:
       throw new Error([
-        '用法：',
+        'Usage:',
         '  notion2cli daemon start --runtime codex',
         '  notion2cli daemon start --runtime standalone --foreground',
         '  notion2cli daemon stop',
@@ -221,7 +221,7 @@ async function handleDaemon(argv) {
 async function handleMcp(argv) {
   const [subcommand, target, ...rest] = argv;
   if (subcommand !== 'install' || target !== 'notion') {
-    throw new Error('用法：notion2cli mcp install notion --runtime codex|claude');
+    throw new Error('Usage: notion2cli mcp install notion --runtime codex|claude');
   }
 
   const options = parseArgv(rest);
@@ -261,7 +261,7 @@ async function handleCodex(argv) {
       await handleCodexOpen(rest);
       return;
     default:
-      throw new Error('用法：notion2cli codex attach|inspect|open');
+      throw new Error('Usage: notion2cli codex attach|inspect|open');
   }
 }
 
@@ -271,15 +271,15 @@ async function handleCodexAttach(argv) {
   const status = await fetchBridgeStatus(target);
 
   if (status.runtime?.id !== 'codex') {
-    throw new Error('当前 daemon 不是 Codex runtime。先运行 `notion2cli daemon start --runtime codex`。');
+    throw new Error('The current daemon is not using the Codex runtime. Run `notion2cli daemon start --runtime codex` first.');
   }
 
   if (!status.runtime?.ready) {
-    throw new Error(status.runtime?.statusMessage || 'Codex runtime 未就绪。');
+    throw new Error(status.runtime?.statusMessage || 'Codex runtime is not ready.');
   }
 
   if (!status.session?.threadId || !status.session?.wsUrl) {
-    throw new Error('当前 Codex 会话还没有准备好。请先重新启动 daemon。');
+    throw new Error('The current Codex session is not ready. Restart the daemon first.');
   }
 
   const args = options.remoteOnly || !status.session.latestAssistantAt
@@ -305,9 +305,9 @@ async function handleCodexAttach(argv) {
   });
   if (result.code !== 0) {
     throw new Error([
-      `Codex attach 退出（code=${result.code ?? 'unknown'}${result.signal ? `, signal=${result.signal}` : ''}）。`,
+      `Codex attach exited (code=${result.code ?? 'unknown'}${result.signal ? `, signal=${result.signal}` : ''}).`,
       args[0] === 'resume'
-        ? '如果错误来自 Codex resume session 文件缺失，可以先用 `notion2cli codex attach --remote-only` 直接连接当前 daemon。'
+        ? 'If the error is caused by a missing Codex resume session file, use `notion2cli codex attach --remote-only` to connect directly to the current daemon.'
         : null,
     ].filter(Boolean).join('\n'));
   }
@@ -319,7 +319,7 @@ async function handleCodexInspect(argv) {
   const status = await fetchBridgeStatus(target);
 
   if (status.runtime?.id !== 'codex') {
-    throw new Error('当前 daemon 不是 Codex runtime。先运行 `notion2cli daemon start --runtime codex`。');
+    throw new Error('The current daemon is not using the Codex runtime. Run `notion2cli daemon start --runtime codex` first.');
   }
 
   if (options.json) {
@@ -340,11 +340,11 @@ async function handleCodexOpen(argv) {
   const status = await fetchBridgeStatus(target);
 
   if (status.runtime?.id !== 'codex') {
-    throw new Error('当前 daemon 不是 Codex runtime。先运行 `notion2cli daemon start --runtime codex`。');
+    throw new Error('The current daemon is not using the Codex runtime. Run `notion2cli daemon start --runtime codex` first.');
   }
 
   if (process.platform !== 'darwin') {
-    throw new Error('当前自动打开 Codex App 只支持 macOS。请手动打开 Codex App 后查看 notion2CLI session。');
+    throw new Error('Opening Codex App automatically is currently supported only on macOS. Open Codex App manually and check the notion2CLI session.');
   }
 
   const result = await runCommand('open', ['-b', 'com.openai.codex'], {
@@ -353,7 +353,7 @@ async function handleCodexOpen(argv) {
   });
   const output = compactCommandOutput(result);
   if (result.code !== 0) {
-    throw new Error(output || '无法打开 Codex App。');
+    throw new Error(output || 'Unable to open Codex App.');
   }
 
   if (options.json) {
@@ -365,10 +365,10 @@ async function handleCodexOpen(argv) {
   }
 
   process.stdout.write([
-    '已打开 Codex App。',
-    status.session?.threadName ? `会话：${status.session.threadName}` : null,
-    status.session?.threadId ? `Thread ID：${status.session.threadId}` : null,
-    '如果 Codex App 已经打开但没有立即跳到该会话，请在最近会话里查看 notion2CLI session。',
+    'Codex App opened.',
+    status.session?.threadName ? `Session: ${status.session.threadName}` : null,
+    status.session?.threadId ? `Thread ID: ${status.session.threadId}` : null,
+    'If Codex App is already open and does not switch immediately, check recent sessions for the notion2CLI session.',
   ].filter(Boolean).join('\n') + '\n');
 }
 
@@ -386,7 +386,7 @@ async function handleClaude(argv) {
       await handleClaudeConfigPath(rest);
       return;
     default:
-      throw new Error('用法：notion2cli claude launch|inspect|config-path');
+      throw new Error('Usage: notion2cli claude launch|inspect|config-path');
   }
 }
 
@@ -437,7 +437,7 @@ async function handleClaudeInspect(argv) {
   const status = await fetchBridgeStatus(target);
 
   if (status.runtime?.id !== 'claude') {
-    throw new Error('当前 bridge 不是 Claude runtime。先运行 `notion2cli claude launch`。');
+    throw new Error('The current bridge is not using the Claude runtime. Run `notion2cli claude launch` first.');
   }
 
   if (options.json) {
@@ -471,8 +471,8 @@ async function handleClaudeConfigPath(argv) {
   }
 
   process.stdout.write([
-    `channel：${configs.channelConfigPath}`,
-    `worker：${configs.workerConfigPath}`,
+    `channel: ${configs.channelConfigPath}`,
+    `worker: ${configs.workerConfigPath}`,
   ].join('\n') + '\n');
 }
 
@@ -486,13 +486,13 @@ async function installCodexNotionMcp() {
       timeoutMs: 300000,
     });
     const output = compactCommandOutput(addResult);
-    notes.push('已执行 `codex mcp add notion --url https://mcp.notion.com/mcp`。');
+    notes.push('Ran `codex mcp add notion --url https://mcp.notion.com/mcp`.');
     if (output) {
       notes.push(output);
     }
 
     if (addResult.code !== 0 && !/already exists|already configured|already added/i.test(output)) {
-      throw new Error(output || '执行 codex mcp add 失败。');
+      throw new Error(output || 'Failed to run codex mcp add.');
     }
   }
 
@@ -503,13 +503,13 @@ async function installCodexNotionMcp() {
       timeoutMs: 300000,
     });
     const output = compactCommandOutput(loginResult);
-    notes.push('已执行 `codex mcp login notion`。');
+    notes.push('Ran `codex mcp login notion`.');
     if (output) {
       notes.push(output);
     }
 
     if (loginResult.code !== 0) {
-      throw new Error(output || '执行 codex mcp login 失败。');
+      throw new Error(output || 'Failed to run codex mcp login.');
     }
   }
 
@@ -520,8 +520,8 @@ async function installCodexNotionMcp() {
     notionMcp: status,
     summary: [
       status.status === 'configured'
-        ? 'Codex CLI 的 Notion MCP 已可用。'
-        : 'Codex CLI 的 Notion MCP 仍未达到可用状态。',
+        ? 'Codex CLI Notion MCP is ready.'
+        : 'Codex CLI Notion MCP is still not ready.',
       status.detail,
       ...notes,
     ].filter(Boolean).join('\n\n'),
@@ -547,13 +547,13 @@ async function installClaudeNotionMcp() {
       timeoutMs: 300000,
     });
     const output = compactCommandOutput(addResult);
-    notes.push('已执行 `claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp`。');
+    notes.push('Ran `claude mcp add --scope user --transport http notion https://mcp.notion.com/mcp`.');
     if (output) {
       notes.push(output);
     }
 
     if (addResult.code !== 0 && !/already exists|already configured|already added/i.test(output)) {
-      throw new Error(output || '执行 claude mcp add 失败。');
+      throw new Error(output || 'Failed to run claude mcp add.');
     }
   }
 
@@ -564,8 +564,8 @@ async function installClaudeNotionMcp() {
     notionMcp: status,
     summary: [
       status.status === 'configured'
-        ? 'Claude Code 的 Notion MCP 已可用。'
-        : 'Claude Code 的 Notion MCP 已添加，但可能还需要在 Claude 会话中完成授权。',
+        ? 'Claude Code Notion MCP is ready.'
+        : 'Claude Code Notion MCP has been added, but authorization may still need to be completed in a Claude session.',
       status.detail,
       ...notes,
     ].filter(Boolean).join('\n\n'),
@@ -582,7 +582,7 @@ async function probeCodexNotionMcp() {
   } catch (error) {
     return {
       status: 'unknown',
-      detail: error?.message || '无法检查 Codex CLI 的 Notion MCP 状态。',
+      detail: error?.message || 'Unable to check Codex CLI Notion MCP status.',
     };
   }
 }
@@ -597,7 +597,7 @@ async function probeClaudeNotionMcp() {
   } catch (error) {
     return {
       status: 'unknown',
-      detail: error?.message || '无法检查 Claude Code 的 Notion MCP 状态。',
+      detail: error?.message || 'Unable to check Claude Code Notion MCP status.',
     };
   }
 }
@@ -619,7 +619,7 @@ function resolveMcpRuntime(runtimeOption) {
     return runtimeOption;
   }
 
-  throw new Error('缺少 `--runtime`，或值不是 `claude` / `codex`。');
+  throw new Error('Missing `--runtime`, or the value is not `claude` / `codex`.');
 }
 
 function compactCommandOutput(result) {
@@ -634,47 +634,47 @@ function compactCommandOutput(result) {
 function formatDaemonStatus(status) {
   if (status.unmanaged) {
     return [
-      `检测到 ${status.host}:${status.port} 上有 bridge，但它不是 notion2cli daemon 管理的。`,
-      `当前 runtime：${status.bridge?.runtime?.label || 'unknown'}`,
-      '如果这是旧版 bridge，请先手动停止它，再运行 `notion2cli daemon start ...`。',
+      `Detected ${status.host}:${status.port} has a bridge running, but it is not managed by notion2cli daemon.`,
+      `Current runtime: ${status.bridge?.runtime?.label || 'unknown'}`,
+      'If this is an old bridge, stop it manually before running `notion2cli daemon start ...`.',
     ].join('\n') + '\n';
   }
 
   if (status.running) {
     return [
-      'notion2cli daemon 正在运行。',
-      `地址：http://${status.host}:${status.port}`,
-      `运行时：${status.bridge?.runtime?.label || status.metadata?.runtime || 'unknown'}`,
+      'notion2cli daemon is running.',
+      `Address: http://${status.host}:${status.port}`,
+      `Runtime: ${status.bridge?.runtime?.label || status.metadata?.runtime || 'unknown'}`,
       status.bridge?.runtime?.id === 'codex' && status.bridge?.session?.threadId
-        ? `Attach：notion2cli codex attach`
+        ? `Attach: notion2cli codex attach`
         : null,
       status.bridge?.runtime?.id === 'codex' && status.bridge?.session?.threadId
-        ? `Codex App：${status.bridge.session.threadName || status.bridge.session.threadId}（${status.bridge.session.appVisible ? 'App 可见' : '等待同步'}）`
+        ? `Codex App: ${status.bridge.session.threadName || status.bridge.session.threadId} (${status.bridge.session.appVisible ? 'App visible' : 'waiting for sync'})`
         : null,
       status.bridge?.runtime?.id === 'claude' && status.bridge?.session?.threadId
-        ? `Claude Channel：${status.bridge.session.threadName || status.bridge.session.threadId}`
+        ? `Claude Channel: ${status.bridge.session.threadName || status.bridge.session.threadId}`
         : null,
-      status.metadata?.cwd ? `工作目录：${status.metadata.cwd}` : null,
-      status.metadata?.pid ? `PID：${status.metadata.pid}` : null,
+      status.metadata?.cwd ? `Working directory: ${status.metadata.cwd}` : null,
+      status.metadata?.pid ? `PID: ${status.metadata.pid}` : null,
     ].filter(Boolean).join('\n') + '\n';
   }
 
   if (status.stale) {
     return [
-      '检测到过期的 daemon 状态文件。',
-      status.metadata?.cwd ? `上次工作目录：${status.metadata.cwd}` : null,
-      '运行 `notion2cli daemon stop` 会清理这条记录。',
+      'Found a stale daemon state file.',
+      status.metadata?.cwd ? `Previous working directory: ${status.metadata.cwd}` : null,
+      'Run `notion2cli daemon stop` to clean up this record.',
     ].filter(Boolean).join('\n') + '\n';
   }
 
-  return '当前没有 notion2cli daemon 在运行。\n';
+  return 'No notion2cli daemon is running.\n';
 }
 
 function printHelp() {
   process.stdout.write([
     'notion2cli',
     '',
-    '命令：',
+    'Commands:',
     '  notion2cli daemon start --runtime codex',
     '  notion2cli daemon start --runtime standalone --foreground',
     '  notion2cli daemon stop',
@@ -692,9 +692,9 @@ function printHelp() {
     '  notion2cli mcp install notion --runtime codex',
     '  notion2cli mcp install notion --runtime claude',
     '',
-    '说明：',
-    '  - `codex` 主流程使用本地 daemon 和 Codex App session。',
-    '  - `claude` 主流程使用 `notion2cli claude launch` 附着当前 Claude Code channel session。',
+    'Notes:',
+    '  - `codex` uses a local daemon and Codex App session.',
+    '  - `claude` uses `notion2cli claude launch` to attach the active Claude Code channel session.',
   ].join('\n') + '\n');
 }
 
@@ -702,23 +702,23 @@ function formatCodexSession(status) {
   const session = status.session || null;
   if (!session?.threadId) {
     return [
-      '当前没有已准备好的 Codex App session。',
-      status.runtime?.statusMessage ? `状态：${status.runtime.statusMessage}` : null,
+      'No Codex App session is ready.',
+      status.runtime?.statusMessage ? `Status: ${status.runtime.statusMessage}` : null,
     ].filter(Boolean).join('\n') + '\n';
   }
 
   return [
     'Codex App session',
-    `名称：${session.threadName || 'notion2CLI'}`,
-    `Thread ID：${session.threadId}`,
-    session.threadPath ? `历史文件：${session.threadPath}` : null,
-    `App 可见：${session.appVisible ? '是' : '未确认'}`,
-    `Turns：${session.turnCount ?? 0}`,
-    session.lastVerifiedAt ? `上次校验：${session.lastVerifiedAt}` : null,
-    session.lastVerificationError ? `校验提示：${session.lastVerificationError}` : null,
-    session.latestUserMessage ? `最近用户输入：${compactOneLine(session.latestUserMessage)}` : null,
-    session.latestAssistantMessage ? `最近 Codex 回复：${compactOneLine(session.latestAssistantMessage)}` : null,
-    '打开：notion2cli codex open',
+    `Name: ${session.threadName || 'notion2CLI'}`,
+    `Thread ID: ${session.threadId}`,
+    session.threadPath ? `History file: ${session.threadPath}` : null,
+    `App visible: ${session.appVisible ? 'yes' : 'not confirmed'}`,
+    `Turns: ${session.turnCount ?? 0}`,
+    session.lastVerifiedAt ? `Last verified at: ${session.lastVerifiedAt}` : null,
+    session.lastVerificationError ? `Verification note: ${session.lastVerificationError}` : null,
+    session.latestUserMessage ? `Latest user input: ${compactOneLine(session.latestUserMessage)}` : null,
+    session.latestAssistantMessage ? `Latest Codex reply: ${compactOneLine(session.latestAssistantMessage)}` : null,
+    'Open: notion2cli codex open',
   ].filter(Boolean).join('\n') + '\n';
 }
 
@@ -726,24 +726,24 @@ function formatClaudeSession(status) {
   const session = status.session || null;
   if (!session?.sessionId && !session?.threadId) {
     return [
-      '当前没有已附着的 Claude Code channel session。',
-      status.runtime?.statusMessage ? `状态：${status.runtime.statusMessage}` : null,
-      '启动：notion2cli claude launch',
+      'No Claude Code channel session is attached.',
+      status.runtime?.statusMessage ? `Status: ${status.runtime.statusMessage}` : null,
+      'Launch: notion2cli claude launch',
     ].filter(Boolean).join('\n') + '\n';
   }
 
   return [
     'Claude Code channel session',
-    `名称：${session.sessionName || session.threadName || 'notion2CLI'}`,
-    `Session ID：${session.sessionId || session.threadId}`,
-    `Transport：${session.transport || 'claude-channel'}`,
-    `当前会话可见：${session.visibleInNativeClient || session.appVisible ? '是' : '未确认'}`,
-    `Turns：${session.turnCount ?? 0}`,
-    status.notionMcp?.status ? `Notion MCP：${status.notionMcp.status}` : null,
-    status.notionMcp?.detail ? `Notion MCP 详情：${status.notionMcp.detail}` : null,
-    session.latestUserMessage ? `最近用户输入：${compactOneLine(session.latestUserMessage)}` : null,
-    session.latestAssistantMessage ? `最近 Claude 回复：${compactOneLine(session.latestAssistantMessage)}` : null,
-    '启动：notion2cli claude launch',
+    `Name: ${session.sessionName || session.threadName || 'notion2CLI'}`,
+    `Session ID: ${session.sessionId || session.threadId}`,
+    `Transport: ${session.transport || 'claude-channel'}`,
+    `Current session visible: ${session.visibleInNativeClient || session.appVisible ? 'yes' : 'not confirmed'}`,
+    `Turns: ${session.turnCount ?? 0}`,
+    status.notionMcp?.status ? `Notion MCP: ${status.notionMcp.status}` : null,
+    status.notionMcp?.detail ? `Notion MCP detail: ${status.notionMcp.detail}` : null,
+    session.latestUserMessage ? `Latest user input: ${compactOneLine(session.latestUserMessage)}` : null,
+    session.latestAssistantMessage ? `Latest Claude reply: ${compactOneLine(session.latestAssistantMessage)}` : null,
+    'Launch: notion2cli claude launch',
   ].filter(Boolean).join('\n') + '\n';
 }
 
@@ -805,11 +805,11 @@ function compactOneLine(value, maxLength = 160) {
     return text;
   }
 
-  return `${text.slice(0, maxLength - 1)}…`;
+  return `${text.slice(0, maxLength - 1)}...`;
 }
 
 function buildUsageHint() {
-  return '运行 `notion2cli --help` 查看可用命令。';
+  return 'Run `notion2cli --help` to see available commands.';
 }
 
 function printJson(value) {

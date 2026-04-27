@@ -15,7 +15,7 @@ export class RuntimeBackedNotionPageBundleProvider {
       return {
         bundle: null,
         warnings: [
-          `当前 runtime（${this.runtime?.id || 'unknown'}）还不支持 bridge 侧的页面预取。`,
+          `The current runtime (${this.runtime?.id || 'unknown'}) does not support bridge-side page prefetching yet.`,
         ],
       };
     }
