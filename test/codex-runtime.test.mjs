@@ -136,7 +136,7 @@ test('job schema accepts the official Build prompt profile and rejects unknown p
 
   assert.equal(buildPayload.promptProfileId, 'build');
   assert.equal(buildPayload.promptProfile.name, 'Build');
-  assert.match(buildPayload.promptProfile.instruction, /PreVibe/);
+  assert.match(buildPayload.promptProfile.instruction, /Turn the requirements in the input document into concrete changes/);
 
   assert.throws(() => {
     parseJobRequest({
@@ -247,11 +247,14 @@ test('claude write-back prompt uses the shared structured action rules', () => {
   });
 
   assert.match(prompt, /You are handling a notion2cli browser action for the local Claude Code runtime\./);
-  assert.match(prompt, /If action is "write_reply_to_notion", first resolve the target page from pageUrl using Notion MCP/);
-  assert.match(prompt, /For "write_reply_to_notion" with writeMode "append_markdown_section", append replyTextToWrite/);
-  assert.match(prompt, /"writeSectionTitle": "notion2CLI"/);
-  assert.match(prompt, /Selected prompt profile: 原样运行 \(raw\)\./);
-  assert.match(prompt, /Return only the final user-facing Brief text\./);
+  assert.match(prompt, /Resolve the target page from pageUrl using Notion MCP before writing/);
+  assert.match(prompt, /writeMode=append_markdown_section: append replyTextToWrite/);
+  assert.match(prompt, /"writeSectionTitle":"notion2CLI"/);
+  assert.match(prompt, /Profile: raw \(原样运行\)\./);
+  assert.match(prompt, /Return only final Brief text\./);
+  assert.doesNotMatch(prompt, /action=forward_selection_text/);
+  assert.doesNotMatch(prompt, /action=forward_full_page_via_mcp/);
+  assert.doesNotMatch(prompt, /install_notion_mcp/);
 });
 
 test('claude channel prompt asks the session to reply through the browser tool', () => {
@@ -286,10 +289,15 @@ test('claude channel prompt asks the session to reply through the browser tool',
   });
 
   assert.match(prompt, /the active Claude Code channel session/);
-  assert.match(prompt, /browser reply tool named "reply"/);
+  assert.match(prompt, /Reply tool: call "reply" exactly once/);
   assert.match(prompt, /call "reply" exactly once with chat_id "job-456"/);
-  assert.match(prompt, /"jobId": "job-456"/);
-  assert.match(prompt, /Return only the final user-facing Brief text\./);
+  assert.match(prompt, /"jobId":"job-456"/);
+  assert.match(prompt, /action=forward_selection_text: selectionText is authoritative/);
+  assert.match(prompt, /Return only final Brief text\./);
+  assert.doesNotMatch(prompt, /replyTextToWrite/);
+  assert.doesNotMatch(prompt, /writeMode=/);
+  assert.doesNotMatch(prompt, /install_notion_mcp/);
+  assert.doesNotMatch(prompt, /PageBundle markdown/);
 });
 
 test('Build prompt profile is injected as task intent', () => {
@@ -309,7 +317,7 @@ test('Build prompt profile is injected as task intent', () => {
     promptProfile: {
       id: 'build',
       name: 'Build',
-      instruction: 'PreVibe 是一套将文档推进到软件的开发系统。最终输出 Brief。',
+      instruction: 'Turn the requirements in the input document into concrete changes in the current codebase, then finish with a Brief.',
     },
     source: 'test',
     createdAt: '2026-04-20T00:00:00.000Z',
@@ -330,10 +338,13 @@ test('Build prompt profile is injected as task intent', () => {
     notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
   });
 
-  assert.match(prompt, /Selected prompt profile: Build \(build\)\./);
+  assert.match(prompt, /Profile: build \(Build\)\. Instruction:/);
   assert.match(prompt, /<<<N2C_PROMPT_PROFILE_INSTRUCTION/);
-  assert.match(prompt, /PreVibe 是一套将文档推进到软件的开发系统/);
-  assert.match(prompt, /If promptProfile\.id is not "raw", treat the prompt profile instruction as the task intent/);
-  assert.match(prompt, /"promptProfile": \{\n    "id": "build"/);
+  assert.match(prompt, /Turn the requirements in the input document into concrete changes/);
+  assert.match(prompt, /promptProfile\.id is not "raw": use the prompt profile instruction as the task intent/);
+  assert.match(prompt, /"promptProfile":\{"id":"build","name":"Build"\}/);
   assert.match(prompt, /<<<N2C_PAGE_BUNDLE_MARKDOWN/);
+  assert.doesNotMatch(prompt, /replyTextToWrite/);
+  assert.doesNotMatch(prompt, /writeMode=/);
+  assert.doesNotMatch(prompt, /install_notion_mcp/);
 });

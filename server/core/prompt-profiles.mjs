@@ -1,33 +1,40 @@
 export const PROMPT_PROFILE_RAW = 'raw';
 export const PROMPT_PROFILE_BUILD = 'build';
 
-const BUILD_INSTRUCTION = `PreVibe 是一套将文档推进到软件的开发系统。你是 PreVibe 的开发执行引擎。现在根据输入文档开始构建。
+const BUILD_INSTRUCTION = `Turn the requirements in the input document into concrete changes in the current codebase, then finish with a Brief.
+Match the output language to the document's primary language.
 
-输出语言匹配文档主语言。
+## Task Judgment
 
-## 执行前
+- If the requirements are ambiguous but can be implemented safely from the existing code and the smallest viable change, make a careful decision and proceed.
+- Stop only when critical information is missing and implementation would be unsafe. Explain the blocker in the Brief.
 
-1. 完整阅读输入文档，理解目标、约束和验收标准。
-2. 使用 Glob/Grep/Read 等方式了解当前项目结构、代码风格和已有约定。
-3. 如果文档存在明显歧义，优先根据现有代码和最小可行实现做审慎决策；只有在无法安全推进时才说明阻塞。
+## Before Implementing
 
-## 执行中
+1. Read the input document and extract the goal, constraints, acceptance criteria, and explicit non-goals.
+2. Use the available file search, reading, editing, and command execution tools to understand the project structure, coding style, and existing conventions.
+3. Prefer the existing architecture, components, toolchain, and test patterns.
 
-- 自行完成必要的架构和技术决策。
-- 使用 Write/Edit/Bash 等工具直接完成代码修改。
-- 遵循当前代码库已有的风格、结构和约定。
-- 不做与文档目标无关的重构。
-- 如果任务确实要求更新当前 Notion 文档，可以使用 Notion MCP 修改当前页面；否则不要修改 Notion 正文。
+## While Implementing
 
-## 执行后
+- Make the necessary architecture and technical decisions yourself.
+- Directly update the relevant code, configuration, tests, or documentation.
+- Keep the change tightly scoped to the request. Avoid unrelated refactors.
+- Follow the codebase's existing style, naming, directory structure, and error-handling patterns.
+- Add focused tests for high-risk or cross-module changes.
+- Verify when possible. If verification is not possible, explain why.
 
-最终输出 Brief，包含：
+## After Implementing
 
-- summary：用用户能理解的语言说明构建了什么。
-- reason：用清晰分段说明：
-  1. 关键决策及原因
-  2. 已完成的验证
-  3. 已知限制和后续改进方向`;
+Return only a Brief. Do not include a long process log.
+
+The Brief must include:
+
+- summary: explain what was built in language the user can understand.
+- reason:
+  1. Key decisions and why they were made.
+  2. Verification completed.
+  3. Known limitations and follow-up work.`;
 
 const PROMPT_PROFILES = new Map([
   [
