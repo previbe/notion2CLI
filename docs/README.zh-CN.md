@@ -1,6 +1,6 @@
 # notion2CLI
 
-[English README](README.md) | [架构说明](docs/ARCHITECTURE.md) | [安全策略](SECURITY.md) | [隐私政策](PRIVACY.md) | [贡献指南](CONTRIBUTING.md)
+[English README](../README.md) | [架构说明](ARCHITECTURE.md) | [安全策略](../SECURITY.md) | [隐私政策](../PRIVACY.md) | [贡献指南](../CONTRIBUTING.md)
 
 > 英文 `README.md` 是项目主 README。本文是中文阅读辅助，产品界面、CLI 输出、贡献流程和默认文档仍以英文为准。
 
@@ -201,7 +201,7 @@ Prompt profile 定义任务意图。Notion 页面内容只是任务素材，不�
 
 ## 安全模型
 
-notion2CLI 是 local-first 工具，但它仍然会在本地组件之间移动私有页面内容。在敏感 workspace 上运行之前，请阅读 [SECURITY.md](SECURITY.md)。
+notion2CLI 是 local-first 工具，但它仍然会在本地组件之间移动私有页面内容。在敏感 workspace 上运行之前，请阅读 [SECURITY.md](../SECURITY.md)。
 
 关键点：
 
@@ -284,7 +284,7 @@ npm run package:extension
 
 ## 贡献
 
-欢迎提交 issues 和 pull requests。开 PR 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎提交 issues 和 pull requests。开 PR 前请阅读 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
 除非另有说明，提交到本项目的贡献都按项目 MIT License 授权。
 

@@ -22,7 +22,7 @@ const EXTENSIONLESS_TEXT_FILES = new Set([
   'notion2cli-status',
 ]);
 const CJK_ALLOWED_FILES = new Set([
-  'README.zh-CN.md',
+  'docs/README.zh-CN.md',
   'docs/release/RELEASE_GUIDE.zh-CN.md',
 ]);
 

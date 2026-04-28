@@ -1,6 +1,6 @@
 {
   "name": "notion2cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "A local-first bridge that runs Notion page content as the next input in a local Codex or Claude Code session.",
   "license": "MIT",
@@ -38,7 +38,6 @@
     "LICENSE",
     "PRIVACY.md",
     "README.md",
-    "README.zh-CN.md",
     "SECURITY.md",
     "chrome-store/",
     "marketing/"
