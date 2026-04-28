@@ -349,7 +349,7 @@ function baseCss() {
     .badge { width: max-content; padding: 7px 11px; border-radius: 999px; border: 1px solid rgba(92, 122, 74, 0.20); background: rgba(255,255,255,0.66); color: #466139; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
     h1 { margin: 0; font-size: 35px; line-height: 1.04; letter-spacing: -0.025em; max-width: 700px; }
     .headline p { margin: 0; max-width: 650px; color: var(--muted); font-size: 16px; line-height: 1.48; }
-    .browser { position: absolute; left: 44px; right: 44px; bottom: 38px; height: 560px; border: 1px solid rgba(51,60,45,.14); border-radius: 22px; background: rgba(255,255,255,.72); box-shadow: 0 24px 70px rgba(51,60,45,.14); overflow: hidden; }
+    .browser { position: absolute; left: 44px; right: 44px; bottom: 34px; height: 525px; border: 1px solid rgba(51,60,45,.14); border-radius: 22px; background: rgba(255,255,255,.72); box-shadow: 0 24px 70px rgba(51,60,45,.14); overflow: hidden; }
     .browser-top { height: 48px; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); background: rgba(250,250,248,.92); }
     .traffic { display: flex; gap: 7px; }
     .traffic span { width: 11px; height: 11px; border-radius: 999px; background: #e8705a; }
