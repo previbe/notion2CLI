@@ -23,6 +23,7 @@ const EXTENSIONLESS_TEXT_FILES = new Set([
 ]);
 const CJK_ALLOWED_FILES = new Set([
   'README.zh-CN.md',
+  'docs/release/RELEASE_GUIDE.zh-CN.md',
 ]);
 
 await checkEnglishOnlyText();
