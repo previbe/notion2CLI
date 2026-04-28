@@ -19,7 +19,7 @@ const browser = await chromium.launch({
 try {
   const page = await browser.newPage({
     viewport: { width: 440, height: 280 },
-    deviceScaleFactor: 1,
+    deviceScaleFactor: 2,
   });
 
   await page.setContent(renderTile(), { waitUntil: 'load' });
@@ -27,6 +27,7 @@ try {
     path: outputFile,
     fullPage: false,
     omitBackground: false,
+    scale: 'css',
   });
 } finally {
   await browser.close();
@@ -84,25 +85,25 @@ function renderTile() {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 7px 10px 7px 8px;
+      padding: 8px 12px 8px 9px;
       border: 1px solid rgba(92, 122, 74, 0.18);
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.76);
       color: #3f5636;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 850;
       box-shadow: 0 8px 24px rgba(51, 60, 45, 0.08);
     }
 
     .mark {
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       display: grid;
       place-items: center;
       border-radius: 7px;
       background: var(--ink);
       color: #f8f2ea;
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 900;
     }
 
@@ -121,11 +122,11 @@ function renderTile() {
     }
 
     .pill {
-      padding: 7px 9px;
+      padding: 9px 11px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.78);
       color: rgba(32, 36, 31, 0.74);
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 800;
       border: 1px solid rgba(51, 60, 45, 0.10);
     }

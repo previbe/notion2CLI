@@ -11,8 +11,8 @@ const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 const scenes = [
   {
     file: '01-run-selected-task.png',
-    title: 'Run selected Notion text as the next local AI task',
-    subtitle: 'A product lead highlights a real brief. notion2CLI sends only that selected text to Codex or Claude Code.',
+    title: 'Run selected text',
+    subtitle: 'Highlight a real Notion brief and send just that selection to Codex or Claude Code.',
     badge: 'Selected text',
     notionTitle: 'Beta onboarding polish',
     panelMode: 'Build',
@@ -35,8 +35,8 @@ const scenes = [
   },
   {
     file: '02-full-page-prd.png',
-    title: 'Turn a full Notion PRD into an implementation plan',
-    subtitle: 'When no text is selected, the local runtime reads the page through Notion MCP and prepares the next coding task.',
+    title: 'Turn a PRD into a plan',
+    subtitle: 'Run the whole page when no text is selected. notion2CLI prepares the local task context.',
     badge: 'Full page run',
     notionTitle: 'Support inbox triage v2',
     panelMode: 'Build',
@@ -55,8 +55,8 @@ const scenes = [
   },
   {
     file: '03-result-in-activity-panel.png',
-    title: 'See the assistant result back inside Notion',
-    subtitle: 'The Activity panel keeps the latest reply next to the source plan, so the team can review before writing back.',
+    title: 'Review results in Notion',
+    subtitle: 'Keep the assistant reply next to the source plan before copying or writing back.',
     badge: 'Result review',
     notionTitle: 'Mobile checkout bug bash',
     panelMode: 'Raw',
@@ -77,15 +77,15 @@ const scenes = [
   },
   {
     file: '04-local-bridge-setup.png',
-    title: 'Pair Chrome with your local CLI session',
-    subtitle: 'The popup shows exactly what to run locally, then pairs the browser with a short-lived code.',
+    title: 'Pair Chrome with local CLI',
+    subtitle: 'Start the local bridge, pair once, and keep page content on your machine.',
     badge: 'Local-first setup',
     mode: 'popup',
   },
   {
     file: '05-prompt-profiles.png',
-    title: 'Use prompt profiles for repeatable Notion workflows',
-    subtitle: 'Switch from raw notes to build briefs, bug triage, launch copy, or your own team-specific workflow.',
+    title: 'Reuse prompt profiles',
+    subtitle: 'Switch between build briefs, bug triage, launch checks, and team-specific workflows.',
     badge: 'Prompt profiles',
     notionTitle: 'Launch day checklist',
     panelMode: 'Ship Checklist',
@@ -114,7 +114,7 @@ const browser = await chromium.launch({
 try {
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
-    deviceScaleFactor: 1,
+    deviceScaleFactor: 2,
   });
 
   for (const scene of scenes) {
@@ -122,6 +122,7 @@ try {
     await page.screenshot({
       path: path.join(outputDir, scene.file),
       fullPage: false,
+      scale: 'css',
     });
   }
 } finally {
@@ -345,32 +346,32 @@ function baseCss() {
         #f7f1e8;
     }
     .frame { position: relative; width: 1280px; height: 800px; padding: 38px 44px 42px; }
-    .headline { display: grid; gap: 8px; width: 690px; position: relative; z-index: 2; }
-    .badge { width: max-content; padding: 7px 11px; border-radius: 999px; border: 1px solid rgba(92, 122, 74, 0.20); background: rgba(255,255,255,0.66); color: #466139; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-    h1 { margin: 0; font-size: 35px; line-height: 1.04; letter-spacing: -0.025em; max-width: 700px; }
-    .headline p { margin: 0; max-width: 650px; color: var(--muted); font-size: 16px; line-height: 1.48; }
+    .headline { display: grid; gap: 9px; width: 760px; position: relative; z-index: 2; }
+    .badge { width: max-content; padding: 8px 12px; border-radius: 999px; border: 1px solid rgba(92, 122, 74, 0.20); background: rgba(255,255,255,0.72); color: #466139; font-size: 13px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 48px; line-height: 1; letter-spacing: -0.025em; max-width: 780px; }
+    .headline p { margin: 0; max-width: 720px; color: rgba(32, 36, 31, 0.70); font-size: 19px; line-height: 1.42; }
     .browser { position: absolute; left: 44px; right: 44px; bottom: 34px; height: 525px; border: 1px solid rgba(51,60,45,.14); border-radius: 22px; background: rgba(255,255,255,.72); box-shadow: 0 24px 70px rgba(51,60,45,.14); overflow: hidden; }
     .browser-top { height: 48px; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); background: rgba(250,250,248,.92); }
     .traffic { display: flex; gap: 7px; }
     .traffic span { width: 11px; height: 11px; border-radius: 999px; background: #e8705a; }
     .traffic span:nth-child(2) { background: #e5b84b; }
     .traffic span:nth-child(3) { background: #69b86f; }
-    .address { flex: 1; height: 28px; display: flex; align-items: center; padding: 0 14px; border-radius: 999px; background: white; color: rgba(32,36,31,.52); font-size: 13px; }
+    .address { flex: 1; height: 28px; display: flex; align-items: center; padding: 0 14px; border-radius: 999px; background: white; color: rgba(32,36,31,.58); font-size: 14px; }
     .toolbar-pill { padding: 7px 10px; border-radius: 10px; background: rgba(92,122,74,.12); color: #476139; font-size: 12px; font-weight: 800; }
     .workspace { position: relative; height: calc(100% - 48px); display: grid; grid-template-columns: 210px 1fr; background: #fffdfa; }
     .sidebar { padding: 24px 18px; border-right: 1px solid var(--line); background: #f7f3ed; }
-    .workspace-name { font-weight: 850; margin-bottom: 22px; }
+    .workspace-name { font-size: 16px; font-weight: 850; margin-bottom: 22px; }
     nav { display: grid; gap: 8px; }
-    nav span { padding: 9px 10px; border-radius: 9px; color: rgba(32,36,31,.62); font-size: 13px; font-weight: 650; }
+    nav span { padding: 10px 10px; border-radius: 9px; color: rgba(32,36,31,.66); font-size: 14px; font-weight: 700; }
     nav .active { background: white; color: var(--ink); box-shadow: 0 3px 12px rgba(51,60,45,.08); }
     .notion-page { padding: 34px 440px 40px 54px; overflow: hidden; }
     .crumb { color: rgba(32,36,31,.43); font-size: 12px; margin-bottom: 14px; }
-    h2 { margin: 0 0 12px; font-size: 36px; letter-spacing: -0.03em; }
-    h3 { margin: 22px 0 8px; font-size: 16px; }
+    h2 { margin: 0 0 12px; font-size: 40px; letter-spacing: -0.03em; }
+    h3 { margin: 22px 0 8px; font-size: 18px; }
     .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
     .meta-row span { padding: 6px 9px; border-radius: 999px; background: #f2eee6; color: rgba(32,36,31,.62); font-size: 12px; font-weight: 700; }
     .callout { border: 1px solid rgba(92,122,74,.16); border-radius: 12px; background: rgba(92,122,74,.08); padding: 12px 14px; }
-    .callout p, .task-grid p, li, .notion-text { color: rgba(32,36,31,.72); font-size: 14px; line-height: 1.55; }
+    .callout p, .task-grid p, li, .notion-text { color: rgba(32,36,31,.76); font-size: 15px; line-height: 1.55; }
     .callout p { margin: 5px 0 0; }
     .notion-text { margin: 0; padding: 8px 10px; border-radius: 10px; }
     .notion-text.selected { background: rgba(64, 118, 230, .16); box-shadow: inset 0 0 0 1px rgba(64, 118, 230, .16); }
@@ -378,26 +379,26 @@ function baseCss() {
     .task-grid div { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fff; }
     .task-grid p { margin: 5px 0 0; }
     ul { margin: 8px 0 0; padding-left: 19px; }
-    .activity { position: absolute; right: 24px; bottom: 24px; width: 360px; border-radius: 20px; overflow: hidden; box-shadow: 0 24px 58px rgba(45,57,72,.18); filter: drop-shadow(0 20px 44px rgba(45,57,72,.10)); }
+    .activity { position: absolute; top: 24px; right: 22px; width: 386px; border-radius: 20px; overflow: hidden; box-shadow: 0 24px 58px rgba(45,57,72,.18); filter: drop-shadow(0 20px 44px rgba(45,57,72,.10)); }
     .activity-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 13px 14px; border: 1px solid rgba(132,147,164,.28); border-bottom: 0; border-radius: 20px 20px 0 0; background: rgba(239,242,246,.98); }
     .ready-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--green); box-shadow: 0 0 0 4px rgba(92,122,74,.14); }
     .eyebrow { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: rgba(36,48,65,.52); }
-    .panel-title { margin-top: 2px; max-width: 225px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 800; color: #243041; }
+    .panel-title { margin-top: 2px; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 850; color: #243041; }
     .collapse { width: 34px; height: 34px; border: 0; border-radius: 12px; background: rgba(255,255,255,.44); color: #243041; font-size: 18px; }
-    .activity-body { max-height: 490px; padding: 18px 20px 20px; border: 1px solid rgba(132,147,164,.28); border-top: 1px solid rgba(132,147,164,.18); border-radius: 0 0 20px 20px; background: rgba(248,250,252,.98); }
+    .activity-body { max-height: 328px; padding: 18px 20px 20px; border: 1px solid rgba(132,147,164,.28); border-top: 1px solid rgba(132,147,164,.18); border-radius: 0 0 20px 20px; background: rgba(248,250,252,.98); }
     .task-head, .job-meta, .brief-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .task-head span, .brief-head strong { font-size: 12px; font-weight: 850; color: #243041; }
+    .task-head span, .brief-head strong { font-size: 13px; font-weight: 850; color: #243041; }
     .task-head button, .icon-button { border: 0; background: transparent; color: rgba(36,48,65,.56); font-size: 11px; font-weight: 800; }
     .task-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-    .task-list button { min-height: 34px; padding: 8px 12px; border: 1px solid rgba(132,147,164,.28); border-radius: 10px; background: rgba(255,255,255,.72); color: #243041; font-size: 12px; font-weight: 800; }
+    .task-list button { min-height: 36px; padding: 9px 13px; border: 1px solid rgba(132,147,164,.28); border-radius: 10px; background: rgba(255,255,255,.72); color: #243041; font-size: 13px; font-weight: 800; }
     .task-list .active { background: var(--green); color: #f7f3ea; border-color: rgba(92,122,74,.58); }
-    .hint { margin: 10px 0 0; color: rgba(36,48,65,.72); font-size: 11px; line-height: 1.55; }
+    .hint { margin: 10px 0 0; color: rgba(36,48,65,.76); font-size: 12px; line-height: 1.55; }
     .job-meta { margin-top: 14px; color: rgba(36,48,65,.56); font-size: 11px; }
     .job-meta span:first-child { display: inline-flex; align-items: center; gap: 7px; }
     .mini-spinner { width: 12px; height: 12px; border-radius: 999px; border: 2px solid rgba(92,122,74,.18); border-top-color: rgba(92,122,74,.85); }
     .mini-spinner.done { background: var(--green); border-color: var(--green); box-shadow: 0 0 0 3px rgba(92,122,74,.12); }
     .brief-head { margin-top: 18px; }
-    pre { margin: 10px 0 0; max-height: 192px; overflow: hidden; white-space: pre-wrap; padding: 14px; border-radius: 16px; border: 1px solid rgba(132,147,164,.18); background: rgba(255,255,255,.72); color: #243041; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { margin: 10px 0 0; max-height: 76px; overflow: hidden; white-space: pre-wrap; padding: 14px; border-radius: 16px; border: 1px solid rgba(132,147,164,.18); background: rgba(255,255,255,.72); color: #243041; font: 13px/1.62 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .writeback { margin-top: 12px; padding: 11px 12px; border-radius: 14px; border: 1px solid rgba(132,147,164,.28); background: rgba(255,255,255,.72); color: #243041; font-size: 12px; font-weight: 800; }
     .setup-stage { position: absolute; left: 60px; right: 60px; bottom: 54px; height: 550px; display: grid; grid-template-columns: 1fr 380px; gap: 30px; align-items: stretch; }
     .terminal { align-self: end; height: 415px; border-radius: 18px; overflow: hidden; background: #171b20; color: #d9e2da; box-shadow: 0 24px 70px rgba(23,27,32,.22); }
