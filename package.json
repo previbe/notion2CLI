@@ -36,9 +36,12 @@
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
+    "PRIVACY.md",
     "README.md",
     "README.zh-CN.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "chrome-store/",
+    "marketing/"
   ],
   "bin": {
     "notion2cli": "bin/notion2cli.mjs",

@@ -18,6 +18,7 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 - Chinese release guide for npm, GitHub Release, Chrome Web Store, Product Hunt, and manual launch tasks.
 - Chrome Web Store extension packaging script.
 - Extension icons and manifest icon metadata.
+- npm package file list now includes privacy, Chrome Web Store, and launch marketing materials referenced by the README.
 
 ### Changed
 
