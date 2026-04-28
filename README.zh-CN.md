@@ -241,6 +241,23 @@ npm run package:extension
 6. 确认最终结果出现在 Activity 面板。
 7. 如果启用了手动写回，追加结果到 Notion 页面，并确认目标页面按预期变化。
 
+## 发布材料
+
+公开发布材料位于：
+
+- `docs/release/RELEASE_GUIDE.zh-CN.md`
+- `docs/release/RELEASE_CHECKLIST.md`
+- `docs/release/GITHUB_RELEASE_NOTES.md`
+- `docs/release/NPM_RELEASE.md`
+- `chrome-store/`
+- `marketing/`
+
+生成 Chrome Web Store zip：
+
+```bash
+npm run package:extension
+```
+
 ## 给 AI Agent 的仓库说明
 
 如果你是处理这个项目的 AI coding agent，请按这些约束工作：

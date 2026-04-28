@@ -15,6 +15,7 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 - Privacy policy.
 - Chrome Web Store listing, privacy disclosure, reviewer notes, and asset checklist.
 - npm, GitHub Release, Product Hunt, and social launch materials.
+- Chinese release guide for npm, GitHub Release, Chrome Web Store, Product Hunt, and manual launch tasks.
 - Chrome Web Store extension packaging script.
 - Extension icons and manifest icon metadata.
 

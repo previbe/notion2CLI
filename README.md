@@ -244,6 +244,7 @@ Manual end-to-end smoke test:
 Public launch materials live in:
 
 - `docs/release/RELEASE_CHECKLIST.md`
+- `docs/release/RELEASE_GUIDE.zh-CN.md`
 - `docs/release/GITHUB_RELEASE_NOTES.md`
 - `docs/release/NPM_RELEASE.md`
 - `chrome-store/`
