@@ -12,11 +12,17 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 - Security policy and vulnerability reporting guidance.
 - GitHub Actions CI for syntax checks, tests, audit, and package dry-run.
 - Changelog.
+- Privacy policy.
+- Chrome Web Store listing, privacy disclosure, reviewer notes, and asset checklist.
+- npm, GitHub Release, Product Hunt, and social launch materials.
+- Chrome Web Store extension packaging script.
+- Extension icons and manifest icon metadata.
 
 ### Changed
 
 - Chrome extension localhost permission is narrowed to the default bridge origin.
 - Contribution guide is now English-first for public open-source contributors.
+- README now links release materials and privacy documentation.
 
 ## 0.1.0 - 2026-04-28
 

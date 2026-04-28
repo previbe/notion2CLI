@@ -1,6 +1,6 @@
 # notion2CLI
 
-[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](README.zh-CN.md)
+[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Privacy](PRIVACY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](README.zh-CN.md)
 
 Use a Notion page as the rich-text input surface for a local Codex or Claude Code session.
 
@@ -226,6 +226,7 @@ For release-sensitive changes, also run:
 npm audit --audit-level=moderate
 npm pack --dry-run
 npm publish --dry-run --access public
+npm run package:extension
 ```
 
 Manual end-to-end smoke test:
@@ -237,6 +238,22 @@ Manual end-to-end smoke test:
 5. Confirm the selected runtime starts working immediately.
 6. Confirm the final result appears in the Activity panel.
 7. If manual write-back is enabled, append the result to the Notion page and verify the target page changed as expected.
+
+## Release Materials
+
+Public launch materials live in:
+
+- `docs/release/RELEASE_CHECKLIST.md`
+- `docs/release/GITHUB_RELEASE_NOTES.md`
+- `docs/release/NPM_RELEASE.md`
+- `chrome-store/`
+- `marketing/`
+
+Build the Chrome Web Store zip with:
+
+```bash
+npm run package:extension
+```
 
 ## For AI Agents Working In This Repository
 

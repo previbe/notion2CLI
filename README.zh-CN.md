@@ -1,6 +1,6 @@
 # notion2CLI
 
-[English README](README.md) | [架构说明](docs/ARCHITECTURE.md) | [安全策略](SECURITY.md) | [贡献指南](CONTRIBUTING.md)
+[English README](README.md) | [架构说明](docs/ARCHITECTURE.md) | [安全策略](SECURITY.md) | [隐私政策](PRIVACY.md) | [贡献指南](CONTRIBUTING.md)
 
 > 英文 `README.md` 是项目主 README。本文是中文阅读辅助，产品界面、CLI 输出、贡献流程和默认文档仍以英文为准。
 
@@ -228,6 +228,7 @@ npm test
 npm audit --audit-level=moderate
 npm pack --dry-run
 npm publish --dry-run --access public
+npm run package:extension
 ```
 
 手动端到端 smoke test：
@@ -251,6 +252,7 @@ npm publish --dry-run --access public
 - Chrome permissions 保持窄范围。默认 bridge origin 是 `http://127.0.0.1:43821`。
 - 交付代码改动前运行 `npm run check` 和 `npm test`。
 - 涉及打包或发布时运行 `npm pack --dry-run` 并检查 tarball 文件列表。
+- 发布材料在 `docs/release/`、`chrome-store/` 和 `marketing/`。
 
 常用文件地图：
 

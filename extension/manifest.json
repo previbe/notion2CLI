@@ -3,6 +3,13 @@
   "name": "notion2CLI",
   "version": "0.1.0",
   "description": "Trigger a local Claude Code or Codex workflow directly from a Notion page.",
+  "homepage_url": "https://github.com/previbe/notion2CLI",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": [
     "storage"
   ],
@@ -17,7 +24,13 @@
   },
   "action": {
     "default_title": "notion2CLI",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "content_scripts": [
     {

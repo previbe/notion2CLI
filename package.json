@@ -54,7 +54,13 @@
     "dev:standalone": "node ./bin/notion2cli.mjs daemon start --runtime standalone --foreground",
     "pair": "node ./bin/notion2cli.mjs pair",
     "status": "node ./bin/notion2cli.mjs status",
-    "doctor": "node ./bin/notion2cli.mjs doctor"
+    "doctor": "node ./bin/notion2cli.mjs doctor",
+    "package:extension": "node ./scripts/package-extension.mjs",
+    "package:npm": "mkdir -p dist/npm && npm pack --pack-destination dist/npm",
+    "release:check": "npm run check && npm test && npm audit --omit=dev && npm pack --dry-run && npm publish --dry-run --access public && npm run package:extension"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
