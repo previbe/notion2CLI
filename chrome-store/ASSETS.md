@@ -14,15 +14,26 @@ Create screenshots with test data only.
 
 Recommended screenshot set:
 
-1. Notion page with notion2CLI Activity panel open.
-2. Extension popup showing local bridge status and pairing guidance.
-3. Activity panel after a successful selected-text run.
-4. Prompt profile manager.
-5. Write-back settings with append mode selected.
+1. `assets/release/chrome-web-store/01-run-selected-task.png`
+   - Shows selected Notion text being sent to a local AI task.
+2. `assets/release/chrome-web-store/02-full-page-prd.png`
+   - Shows a full Notion PRD being prepared through runtime-backed Notion MCP.
+3. `assets/release/chrome-web-store/03-result-in-activity-panel.png`
+   - Shows the assistant result returning to the Notion-side Activity panel.
+4. `assets/release/chrome-web-store/04-local-bridge-setup.png`
+   - Shows local CLI setup, pairing, and browser connection.
+5. `assets/release/chrome-web-store/05-prompt-profiles.png`
+   - Shows prompt profiles for repeatable Notion workflows.
 
 Suggested screenshot size:
 
 - Use `1280 x 800` PNG or JPEG for Chrome Web Store listing screenshots.
+
+Generated screenshots are produced by:
+
+```bash
+node scripts/generate-cws-screenshots.mjs
+```
 
 ## Optional Promotional Assets
 
