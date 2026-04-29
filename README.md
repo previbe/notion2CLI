@@ -2,37 +2,19 @@
 
 [Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Privacy](PRIVACY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](docs/README.zh-CN.md)
 
-Use a Notion page as the rich-text input surface for a local Codex or Claude Code session.
+Run Claude Code or Codex directly from Notion.
 
-notion2CLI is a local-first bridge between three things you already run on your machine:
+notion2CLI turns the work you already keep in Notion into executable tasks for your local AI agent. Select a paragraph from a spec, bug report, meeting note, launch plan, or run the whole page, then send it to Claude Code or Codex without copying context into a terminal.
 
-- a Notion page in Chrome
-- a tiny localhost bridge
-- a local AI coding/runtime session, currently Codex CLI or Claude Code
+The result comes back to the browser Activity panel, and when you choose write-back the agent can update the Notion page through your configured Notion MCP setup.
 
-Select text in Notion, or run the whole page, and notion2CLI sends that content as the next user request to the active local runtime. The answer returns to the browser panel. If the task should update the Notion page, the runtime can write back through Notion MCP.
+Use it when your thinking lives in Notion but execution happens in local coding agents:
 
-## Project Status
-
-This is an early MVP. The core contract is intentionally narrow:
-
-- Forward selected Notion text as the next runtime input.
-- Forward the current Notion page as the next runtime input.
-- Resolve full-page content through the runtime's Notion MCP server.
-- Cache Notion page images as local artifacts for the runtime.
-- Return the latest assistant result to the browser panel.
-- Let the runtime write back to Notion only when the selected task genuinely requires it.
-- Reuse a stable visible Codex App session for Codex.
-- Deliver Claude jobs into the active `notion2cli claude launch` terminal session.
-
-Not in scope for the current MVP:
-
-- Direct Notion API access from the bridge.
-- Deterministic Notion writes performed by the bridge itself.
-- Complete generic file attachment support.
-- Claude Desktop input injection.
-- Chrome Native Messaging.
-- Full two-way history sync between the extension, bridge, Codex App, and Claude terminal.
+- turn a product brief into an implementation plan
+- send a selected bug report to Codex or Claude Code
+- ask an agent to review a Notion spec with the full page as context
+- return the answer to the Notion-side panel instead of losing it in a terminal
+- optionally append or write results back to the current Notion page
 
 ## How It Works
 
@@ -45,7 +27,7 @@ Notion page
   -> optional Notion write-back through Notion MCP
 ```
 
-The browser extension does not scrape the full Notion DOM. For full-page runs, the bridge asks the selected runtime to read the page through Notion MCP, normalizes the result, downloads supported image artifacts, and then sends a structured prompt plus local image paths to the runtime.
+notion2CLI is local-first. The Chrome extension talks to a localhost bridge, and the bridge hands work to your selected local runtime. For full-page runs and write-back, the runtime uses your Notion MCP configuration.
 
 ## Support Matrix
 
@@ -59,15 +41,20 @@ The browser extension does not scrape the full Notion DOM. For full-page runs, t
 | Claude | Claude Code installed locally. Claude Desktop is not an input target. |
 | Notion | A logged-in Notion browser session plus Notion MCP configured for the selected runtime. |
 
-## Install From Source
+## Install
 
-The npm package metadata is ready, but until the first package is published, install from the repository:
+Install the CLI:
+
+```bash
+npm install -g notion2cli
+```
+
+Until the Chrome Web Store listing is public, load the extension from source:
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
 cd notion2CLI
 npm install
-npm install -g .
 ```
 
 Load the Chrome extension:

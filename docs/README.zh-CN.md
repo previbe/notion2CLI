@@ -4,37 +4,19 @@
 
 > 英文 `README.md` 是项目主 README。本文是中文阅读辅助，产品界面、CLI 输出、贡献流程和默认文档仍以英文为准。
 
-notion2CLI 把 Notion 页面变成本地 Codex 或 Claude Code 会话的富文本输入界面。
+notion2CLI 让你可以在 Notion 里直接驱动 Claude Code 和 Codex。
 
-它是一个本地优先的桥接工具，连接你机器上的三部分：
+它把你已经写在 Notion 里的需求、Bug、会议记录、产品计划或研究笔记，直接变成本地 AI Agent 可以执行的任务。你可以在 Notion 中选中一段文本作为输入，也可以把整页内容作为上下文交给本地 Agent 执行，不需要再手动复制到终端里。
 
-- Chrome 里的 Notion 页面
-- 一个很小的 localhost bridge
-- 本地 AI 编程运行时，目前支持 Codex CLI 和 Claude Code
+运行结果会回到浏览器里的 Activity 面板；如果你选择写回，Agent 也可以通过 Notion MCP 直接修改当前文档。
 
-你可以在 Notion 中选中文本，也可以直接运行整页。notion2CLI 会把这些内容作为下一条用户请求发送给当前本地运行时，结果会回到浏览器里的 Activity 面板。如果任务确实需要更新 Notion 页面，运行时可以通过 Notion MCP 写回。
+适合这些场景：
 
-## 项目状态
-
-这是早期 MVP，核心契约刻意保持很窄：
-
-- 把 Notion 选中文本作为下一条运行时输入。
-- 把当前 Notion 页面作为下一条运行时输入。
-- 通过运行时的 Notion MCP server 读取整页内容。
-- 将 Notion 页面图片缓存为本地 artifact 后交给运行时。
-- 把最新 assistant 结果返回到浏览器面板。
-- 只有当任务确实需要时，才让运行时通过 Notion MCP 写回 Notion。
-- Codex 会复用稳定、可在 Codex App 中看到的 session。
-- Claude 任务会投递到 `notion2cli claude launch` 启动的当前终端会话。
-
-当前 MVP 暂不做：
-
-- bridge 直接访问 Notion API。
-- bridge 自己确定性写回 Notion。
-- 完整通用文件附件支持。
-- Claude Desktop 输入注入。
-- Chrome Native Messaging。
-- extension、bridge、Codex App、Claude terminal 之间的完整双向历史同步。
+- 把产品 brief 变成实现计划。
+- 把选中的 Bug 描述交给 Codex 或 Claude Code 分析。
+- 让 Agent 带着整页 PRD、会议记录或任务说明一起工作。
+- 在 Notion 侧边面板查看结果，而不是在终端里丢失上下文。
+- 需要时把结果追加或写回到当前 Notion 页面。
 
 ## 工作方式
 
@@ -47,7 +29,7 @@ Notion page
   -> optional Notion write-back through Notion MCP
 ```
 
-浏览器扩展不会抓取完整 Notion DOM。运行整页时，bridge 会要求当前运行时通过 Notion MCP 读取页面，规范化结果，下载支持的图片 artifact，然后把结构化 prompt 和本地图片路径发送给运行时。
+notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge，bridge 再把任务交给你选择的本地运行时。运行整页和写回文档时，运行时会使用你已经配置好的 Notion MCP。
 
 ## 支持范围
 
@@ -61,15 +43,20 @@ Notion page
 | Claude | 本地安装 Claude Code；Claude Desktop 不是输入目标 |
 | Notion | 已登录的 Notion 浏览器会话，并为所选运行时配置 Notion MCP |
 
-## 从源码安装
+## 安装
 
-npm 包元数据已经准备好。在第一次正式发布之前，先从仓库安装：
+安装 CLI：
+
+```bash
+npm install -g notion2cli
+```
+
+Chrome Web Store 上架前，先从源码加载扩展：
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
 cd notion2CLI
 npm install
-npm install -g .
 ```
 
 加载 Chrome 扩展：
