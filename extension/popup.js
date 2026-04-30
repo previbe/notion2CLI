@@ -51,6 +51,8 @@ const installStatus = document.querySelector('[data-install-status]');
 const manualWritebackToggle = document.querySelector('[data-manual-writeback-toggle]');
 const writeModeSelect = document.querySelector('[data-write-mode-select]');
 const writeModeHint = document.querySelector('[data-write-mode-hint]');
+const notificationsToggle = document.querySelector('[data-notifications-toggle]');
+const notificationsStatus = document.querySelector('[data-notifications-status]');
 
 connectButton.addEventListener('click', connectBridge);
 codeInput.addEventListener('input', handleCodeInput);
@@ -64,8 +66,10 @@ writeModeSelect.addEventListener('change', handleWriteModeChange);
 runtimeButtons.forEach((button) => {
   button.addEventListener('click', () => selectRuntime(button.dataset.runtimeButton));
 });
+notificationsToggle.addEventListener('change', handleNotificationsToggle);
 
 loadWriteSettingsPreference();
+syncNotificationsToggle();
 refreshStatus();
 setInterval(() => {
   refreshStatus().catch(() => {});
@@ -638,6 +642,39 @@ function normalizeWriteMode(mode) {
     default:
       return WRITE_MODE_APPEND_SECTION;
   }
+}
+
+async function syncNotificationsToggle() {
+  try {
+    const granted = await chrome.permissions.contains({ permissions: ['notifications'] });
+    notificationsToggle.checked = granted;
+    notificationsStatus.textContent = granted
+      ? 'Browser notifications are enabled.'
+      : 'Browser notifications are disabled. Only the toolbar badge is shown.';
+  } catch (error) {
+    notificationsStatus.textContent = error.message || 'Cannot read notifications permission.';
+  }
+}
+
+async function handleNotificationsToggle() {
+  if (notificationsToggle.checked) {
+    try {
+      const granted = await chrome.permissions.request({ permissions: ['notifications'] });
+      if (!granted) {
+        notificationsToggle.checked = false;
+      }
+    } catch (error) {
+      notificationsToggle.checked = false;
+      notificationsStatus.textContent = error.message || 'Failed to request notifications permission.';
+      return;
+    }
+  } else {
+    try {
+      await chrome.permissions.remove({ permissions: ['notifications'] });
+    } catch {}
+  }
+
+  await syncNotificationsToggle();
 }
 
 function formatJobStatus(status) {

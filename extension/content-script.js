@@ -39,6 +39,14 @@ const state = {
       resettable: false,
     },
     {
+      id: 'previbe',
+      name: 'PreVibe',
+      instruction: '',
+      editable: true,
+      deletable: true,
+      resettable: true,
+    },
+    {
       id: 'build',
       name: 'Build',
       instruction: '',
@@ -78,6 +86,7 @@ const state = {
     status: 'unknown',
     detail: '',
   },
+  notifiedJobEvents: new Set(),
 };
 
 const root = document.createElement('div');
@@ -296,6 +305,12 @@ function bindEvents() {
     updateControls();
   });
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      requestClearJobBadge();
+    }
+  });
+
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') {
       return;
@@ -344,6 +359,11 @@ function setExpanded(nextExpanded) {
   shell.classList.toggle('n2c-shell-expanded', state.expanded);
   menu.setAttribute('aria-hidden', state.expanded ? 'false' : 'true');
   fab.setAttribute('aria-expanded', state.expanded ? 'true' : 'false');
+
+  if (state.expanded
+    && (isTerminalJobStatus(state.currentStatus) || state.currentStatus === 'waiting_for_approval')) {
+    requestClearJobBadge();
+  }
 
   if (state.panelPosition) {
     schedulePanelViewportClamp();
@@ -686,6 +706,8 @@ async function startAction(profileId = state.promptProfileId) {
   state.pendingApproval = null;
   state.currentAction = action;
   state.currentJobId = null;
+  state.notifiedJobEvents = new Set();
+  requestClearJobBadge();
   state.lastSubmission = {
     action,
     pageUrl: window.location.href,
@@ -771,6 +793,8 @@ async function startManualWriteBack() {
   state.busy = true;
   state.stopBusy = false;
   state.currentAction = ACTION_WRITE_REPLY;
+  state.notifiedJobEvents = new Set();
+  requestClearJobBadge();
   renderJobState({
     status: 'sending',
     text: buildWritePendingText(writeMode, runtimeLabel),
@@ -839,6 +863,7 @@ async function stopCurrentJob() {
     state.stopBusy = false;
     state.approvalBusy = false;
     state.pendingApproval = null;
+    requestClearJobBadge();
     renderJobState({
       status: job.status || 'cancelled',
       text: buildCancelStatusText(job),
@@ -873,6 +898,7 @@ function pollJob(jobId) {
       if (shouldIgnorePollResult(jobId)) {
         return;
       }
+      maybeNotify(job);
       if (job.status === 'completed' && isReplyAction(job.action)) {
         clearPolling();
         state.approvalBusy = false;
@@ -1614,6 +1640,7 @@ async function submitApproval(action) {
 
     state.pendingApproval = null;
     state.approvalBusy = false;
+    requestClearJobBadge();
     renderJobState({
       status: 'running',
       text: action === 'accept'
@@ -1670,6 +1697,53 @@ function buildApprovalMessage(pendingApproval) {
   }
 
   return base;
+}
+
+function classifyJobEvent(job) {
+  if (!job) return null;
+  if (job.status === 'completed') return 'completed';
+  if (job.status === 'failed') return 'failed';
+  if (job.status === 'waiting_for_approval') {
+    const approval = job.runtimeMeta?.pendingApproval;
+    if (approval && (approval.mode === 'url' || approval.kind === 'mcp_auth' || approval.url)) {
+      return 'authorization_needed';
+    }
+  }
+  return null;
+}
+
+function maybeNotify(job) {
+  const event = classifyJobEvent(job);
+  if (!event) return;
+
+  const approvalKey = event === 'authorization_needed'
+    ? approvalRequestKey(job.runtimeMeta?.pendingApproval) || 'unknown'
+    : '';
+  const dedupeKey = approvalKey
+    ? `${job.id}:${event}:${approvalKey}`
+    : `${job.id}:${event}`;
+
+  if (state.notifiedJobEvents.has(dedupeKey)) {
+    return;
+  }
+  state.notifiedJobEvents.add(dedupeKey);
+
+  const pageHidden = document.visibilityState !== 'visible' || document.hidden === true;
+
+  sendMessage({
+    type: 'notifyJobEvent',
+    event,
+    jobId: job.id,
+    pageTitle: getPageTitle(),
+    pageUrl: window.location.href,
+    summary: String(buildJobStateText(job) || '').slice(0, 120),
+    shouldShowSystemNotification: pageHidden,
+    pageHidden,
+  }).catch(() => {});
+}
+
+function requestClearJobBadge() {
+  sendMessage({ type: 'clearJobBadge' }).catch(() => {});
 }
 
 function approvalRequestKey(pendingApproval) {

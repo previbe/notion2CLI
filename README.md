@@ -99,7 +99,7 @@ Create a browser pairing code:
 notion2cli pair
 ```
 
-Then open the `notion2CLI` Chrome popup, paste the 6-digit code, and connect. On any Notion page, use the Activity panel to run `Raw`, `Build`, or a custom prompt profile.
+Then open the `notion2CLI` Chrome popup, paste the 6-digit code, and connect. On any Notion page, use the Activity panel to run `Raw`, `PreVibe`, `Build`, or a custom prompt profile.
 
 Useful Codex commands:
 
@@ -159,9 +159,10 @@ If page-bundle preparation fails, the job fails. The bridge does not fall back t
 
 ### Prompt profiles
 
-The Activity panel exposes `Raw`, `Build`, and custom prompt profiles.
+The Activity panel exposes `Raw`, `PreVibe`, `Build`, and custom prompt profiles.
 
 - `Raw` forwards the Notion material as the task.
+- `PreVibe` distills Notion material into a development-ready brief.
 - `Build` treats the Notion material as a software task brief for the current runtime.
 - Custom profiles are stored locally in `~/.notion2cli/prompts.json`.
 

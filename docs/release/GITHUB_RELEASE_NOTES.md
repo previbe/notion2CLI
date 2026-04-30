@@ -14,7 +14,7 @@ Select text in Notion, or run the whole page, and notion2CLI sends that content 
 - Local image artifact preparation for Notion page images.
 - Stable visible Codex App session support.
 - Claude Code channel support through `notion2cli claude launch`.
-- Prompt profiles, including `Raw` and `Build`.
+- Prompt profiles, including `Raw`, `PreVibe`, and `Build`.
 - Optional manual write-back modes: append, replace selection, replace page body.
 
 ## Install
@@ -51,7 +51,7 @@ notion2cli claude launch
 notion2cli pair
 ```
 
-Paste the pairing code into the Chrome extension popup, then open a Notion page and run `Raw`, `Build`, or a custom prompt profile.
+Paste the pairing code into the Chrome extension popup, then open a Notion page and run `Raw`, `PreVibe`, `Build`, or a custom prompt profile.
 
 ## Security Notes
 

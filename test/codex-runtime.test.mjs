@@ -464,3 +464,48 @@ test('Build prompt profile is injected as task intent', () => {
   assert.doesNotMatch(prompt, /writeMode=/);
   assert.doesNotMatch(prompt, /install_notion_mcp/);
 });
+
+test('PreVibe prompt profile is injected as task intent', () => {
+  const prompt = buildClaudeChannelPrompt({
+    id: 'job-previbe',
+    action: 'forward_full_page_via_mcp',
+    pageUrl: 'https://www.notion.so/previbe-page',
+    pageTitle: 'PreVibe Page',
+    selectionText: '',
+    replyTextToWrite: '',
+    writeMode: 'append_markdown_section',
+    writeSectionTitle: 'notion2CLI',
+    sourceReplyJobId: '',
+    installPrompt: '',
+    officialDocUrl: '',
+    promptProfileId: 'previbe',
+    promptProfile: {
+      id: 'previbe',
+      name: 'PreVibe',
+      instruction: 'Move the input document toward a development-ready brief without losing useful information.',
+    },
+    source: 'test',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    inputBundle: {
+      images: [],
+      warnings: [],
+      artifactSource: 'none',
+      pageBundle: {
+        provider: 'test',
+        runtimeId: 'test',
+        truncated: false,
+        warnings: [],
+        stats: {},
+        markdown: '# PreVibe Page\n\nMeeting notes and open questions.',
+      },
+    },
+  }, {
+    notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
+  });
+
+  assert.match(prompt, /Profile: previbe \(PreVibe\)\. Instruction:/);
+  assert.match(prompt, /Move the input document toward a development-ready brief/);
+  assert.match(prompt, /promptProfile\.id is not "raw": use the prompt profile instruction as the task intent/);
+  assert.match(prompt, /"promptProfile":\{"id":"previbe","name":"PreVibe"\}/);
+  assert.match(prompt, /<<<N2C_PAGE_BUNDLE_MARKDOWN/);
+});

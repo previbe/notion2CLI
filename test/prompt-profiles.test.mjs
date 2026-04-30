@@ -18,14 +18,39 @@ async function withStore(fn) {
   }
 }
 
-test('prompt profile store lists protected raw and editable Build profiles', async () => {
+test('prompt profile store lists protected raw, PreVibe, and Build profiles', async () => {
   await withStore(async (store) => {
     const profiles = await store.list();
-    assert.deepEqual(profiles.map((profile) => profile.id), ['raw', 'build']);
+    assert.deepEqual(profiles.map((profile) => profile.id), ['raw', 'previbe', 'build']);
     assert.equal(profiles[0].name, 'Raw');
     assert.equal(profiles[0].editable, false);
-    assert.equal(profiles[1].name, 'Build');
+    assert.equal(profiles[1].name, 'PreVibe');
     assert.equal(profiles[1].editable, true);
+    assert.match(profiles[1].instruction, /development-ready brief/);
+    assert.equal(profiles[2].name, 'Build');
+    assert.equal(profiles[2].editable, true);
+  });
+});
+
+test('prompt profile store keeps PreVibe between raw and overridden Build', async () => {
+  await withStore(async (store) => {
+    await store.writeStore({
+      version: 1,
+      profiles: [
+        {
+          id: 'build',
+          name: 'Ship',
+          instruction: 'Implement the spec.',
+          source: 'builtin_override',
+          order: 20,
+        },
+      ],
+      hiddenBuiltinIds: [],
+    });
+
+    const profiles = await store.list();
+    assert.deepEqual(profiles.map((profile) => profile.id), ['raw', 'previbe', 'build']);
+    assert.equal(profiles[2].name, 'Ship');
   });
 });
 
@@ -71,10 +96,10 @@ test('prompt profile store deletes custom profiles and hides Build', async () =>
     assert.equal(await store.resolve(created.id), null);
 
     await store.delete('build');
-    assert.deepEqual((await store.list()).map((profile) => profile.id), ['raw']);
+    assert.deepEqual((await store.list()).map((profile) => profile.id), ['raw', 'previbe']);
 
     await store.reset('build');
-    assert.deepEqual((await store.list()).map((profile) => profile.id), ['raw', 'build']);
+    assert.deepEqual((await store.list()).map((profile) => profile.id), ['raw', 'previbe', 'build']);
   });
 });
 

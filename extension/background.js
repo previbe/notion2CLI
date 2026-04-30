@@ -2,15 +2,33 @@ const BRIDGE_ORIGIN = 'http://127.0.0.1:43821';
 const STORAGE_KEY = 'notion2cli.bridge.token';
 const LABEL_KEY = 'notion2cli.bridge.label';
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessage(message)
+const BADGE_BG = {
+  completed: '#16a34a',
+  failed: '#dc2626',
+  authorization_needed: '#f59e0b',
+};
+const BADGE_TEXT = {
+  completed: 'OK',
+  failed: '!',
+  authorization_needed: '?',
+};
+const NOTIFICATION_TITLE = {
+  completed: 'notion2CLI · Task completed',
+  failed: 'notion2CLI · Task failed',
+  authorization_needed: 'notion2CLI · Authorization needed',
+};
+
+const notificationTargets = new Map();
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender)
     .then((result) => sendResponse({ ok: true, result }))
     .catch((error) => sendResponse({ ok: false, error: error.message || 'Unknown error' }));
 
   return true;
 });
 
-async function handleMessage(message) {
+async function handleMessage(message, sender) {
   switch (message?.type) {
     case 'getBridgeStatus':
       return getBridgeStatus();
@@ -38,6 +56,10 @@ async function handleMessage(message) {
       return resolveJobApproval(message.jobId, message.resolution);
     case 'openCodexApp':
       return openCodexApp();
+    case 'notifyJobEvent':
+      return notifyJobEvent(message, sender);
+    case 'clearJobBadge':
+      return clearJobBadge(sender?.tab?.id);
     default:
       throw new Error(`Unknown message type: ${message?.type || 'undefined'}`);
   }
@@ -229,6 +251,114 @@ async function openCodexApp() {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+async function notifyJobEvent(msg, sender) {
+  const tabId = sender?.tab?.id;
+  const windowId = sender?.tab?.windowId;
+  const event = msg?.event;
+
+  if (event !== 'completed' && event !== 'failed' && event !== 'authorization_needed') {
+    return { ok: false, reason: 'unknown_event' };
+  }
+
+  let hasPermission = false;
+  try {
+    hasPermission = await chrome.permissions.contains({ permissions: ['notifications'] });
+  } catch {
+    hasPermission = false;
+  }
+
+  const triedSystemNotification = Boolean(msg.shouldShowSystemNotification && hasPermission);
+  let notificationShown = false;
+
+  if (triedSystemNotification && chrome.notifications?.create) {
+    const id = `n2c:${msg.jobId || 'unknown'}:${event}:${Date.now()}`;
+    const message = `${msg.pageTitle || ''} - ${msg.summary || ''}`.slice(0, 200).trim();
+    try {
+      await new Promise((resolve, reject) => {
+        chrome.notifications.create(
+          id,
+          {
+            type: 'basic',
+            iconUrl: 'icons/icon-128.png',
+            title: NOTIFICATION_TITLE[event],
+            message: message || NOTIFICATION_TITLE[event],
+            priority: event === 'failed' ? 2 : 1,
+            requireInteraction: event === 'authorization_needed',
+          },
+          () => {
+            const lastError = chrome.runtime.lastError;
+            if (lastError) {
+              reject(new Error(lastError.message));
+              return;
+            }
+            resolve();
+          },
+        );
+      });
+      notificationTargets.set(id, { tabId, windowId, jobId: msg.jobId });
+      notificationShown = true;
+    } catch {
+      notificationShown = false;
+    }
+  }
+
+  const notificationFailed = triedSystemNotification && !notificationShown;
+  const needBadge = Boolean(msg.pageHidden) || notificationFailed;
+
+  if (tabId != null && needBadge) {
+    try {
+      await chrome.action.setBadgeText({ tabId, text: BADGE_TEXT[event] || '' });
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_BG[event] || '#888' });
+    } catch {}
+  }
+
+  return { ok: true, notificationShown, badgeSet: tabId != null && needBadge };
+}
+
+async function clearJobBadge(tabId) {
+  if (tabId == null) {
+    return { ok: true };
+  }
+  try {
+    await chrome.action.setBadgeText({ tabId, text: '' });
+  } catch {}
+  return { ok: true };
+}
+
+if (chrome.notifications?.onClicked) {
+  chrome.notifications.onClicked.addListener(async (id) => {
+    const target = notificationTargets.get(id);
+    if (target?.tabId != null) {
+      try {
+        if (target.windowId != null) {
+          await chrome.windows.update(target.windowId, { focused: true });
+        }
+        await chrome.tabs.update(target.tabId, { active: true });
+      } catch {
+        try {
+          const tabs = await chrome.tabs.query({
+            url: ['*://www.notion.so/*', '*://notion.so/*'],
+          });
+          if (tabs[0]) {
+            await chrome.tabs.update(tabs[0].id, { active: true });
+          }
+        } catch {}
+      }
+      await clearJobBadge(target.tabId);
+    }
+    notificationTargets.delete(id);
+    try {
+      chrome.notifications.clear(id);
+    } catch {}
+  });
+}
+
+if (chrome.notifications?.onClosed) {
+  chrome.notifications.onClosed.addListener((id) => {
+    notificationTargets.delete(id);
   });
 }
 

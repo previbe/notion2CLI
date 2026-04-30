@@ -101,7 +101,7 @@ notion2cli daemon start --runtime codex
 notion2cli pair
 ```
 
-然后打开 Chrome 工具栏里的 `notion2CLI` popup，粘贴 6 位配对码并连接。进入任意 Notion 页面后，可以在 Activity 面板里运行 `Raw`、`Build` 或自定义 prompt profile。
+然后打开 Chrome 工具栏里的 `notion2CLI` popup，粘贴 6 位配对码并连接。进入任意 Notion 页面后，可以在 Activity 面板里运行 `Raw`、`PreVibe`、`Build` 或自定义 prompt profile。
 
 常用 Codex 命令：
 
@@ -161,9 +161,10 @@ bridge 会创建 job，并把选中文本作为下一条用户输入交给当前
 
 ### Prompt profiles
 
-Activity 面板提供 `Raw`、`Build` 和自定义 prompt profiles。
+Activity 面板提供 `Raw`、`PreVibe`、`Build` 和自定义 prompt profiles。
 
 - `Raw` 会把 Notion 素材原样作为任务输入。
+- `PreVibe` 会把 Notion 素材提炼成可进入开发的 brief。
 - `Build` 会把 Notion 素材当作软件开发任务 brief。
 - 自定义 profiles 存在本地 `~/.notion2cli/prompts.json`。
 

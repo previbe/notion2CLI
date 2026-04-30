@@ -93,7 +93,7 @@ Recommended `1270 x 760` gallery images:
 2. Flow: Notion page -> localhost bridge -> Codex/Claude -> Notion reply.
 3. Codex mode: stable Codex App session receiving a Notion task.
 4. Claude mode: Claude Code terminal channel receiving a Notion task.
-5. Prompt profiles: Raw, Build, and custom tasks.
+5. Prompt profiles: Raw, PreVibe, Build, and custom tasks.
 6. Privacy/local-first: no hosted backend, localhost bridge, MCP.
 
 Recommended `240 x 240` thumbnail:
