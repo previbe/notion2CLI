@@ -1,6 +1,6 @@
 # notion2CLI
 
-[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Privacy](PRIVACY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](docs/README.zh-CN.md)
+[Chrome Web Store](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) | [Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Privacy](PRIVACY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](docs/README.zh-CN.md)
 
 Run Claude Code or Codex directly from Notion.
 
@@ -35,7 +35,7 @@ notion2CLI is local-first. The Chrome extension talks to a localhost bridge, and
 | --- | --- |
 | Node.js | `>=22.15.0` |
 | Package manager | `npm` with `package-lock.json` |
-| Browser | Google Chrome with a manually loaded Manifest V3 extension |
+| Browser | Google Chrome with the [Chrome Web Store extension](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) |
 | Operating systems | macOS is the primary tested target. Linux and Windows are not formally supported yet. |
 | Codex | Codex CLI installed locally. `notion2cli codex open` is macOS-only. |
 | Claude | Claude Code installed locally. Claude Desktop is not an input target. |
@@ -49,7 +49,13 @@ Install the CLI:
 npm install -g notion2cli
 ```
 
-Until the Chrome Web Store listing is public, load the extension from source:
+Install the Chrome extension from the Chrome Web Store:
+
+```text
+https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio
+```
+
+For local development, you can still load the extension from source:
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
@@ -57,7 +63,7 @@ cd notion2CLI
 npm install
 ```
 
-Load the Chrome extension:
+Then load the development extension:
 
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
@@ -227,16 +233,12 @@ Manual end-to-end smoke test:
 6. Confirm the final result appears in the Activity panel.
 7. If manual write-back is enabled, append the result to the Notion page and verify the target page changed as expected.
 
-## Release Materials
+## Release Notes And Packaging
 
-Public launch materials live in:
+Public release and store materials live in:
 
-- `docs/release/RELEASE_CHECKLIST.md`
-- `docs/release/RELEASE_GUIDE.zh-CN.md`
-- `docs/release/GITHUB_RELEASE_NOTES.md`
-- `docs/release/NPM_RELEASE.md`
+- `docs/RELEASE_NOTES.md`
 - `chrome-store/`
-- `marketing/`
 
 Build the Chrome Web Store zip with:
 

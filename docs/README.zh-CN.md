@@ -1,6 +1,6 @@
 # notion2CLI
 
-[English README](../README.md) | [架构说明](ARCHITECTURE.md) | [安全策略](../SECURITY.md) | [隐私政策](../PRIVACY.md) | [贡献指南](../CONTRIBUTING.md)
+[Chrome Web Store](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) | [English README](../README.md) | [架构说明](ARCHITECTURE.md) | [安全策略](../SECURITY.md) | [隐私政策](../PRIVACY.md) | [贡献指南](../CONTRIBUTING.md)
 
 > 英文 `README.md` 是项目主 README。本文是中文阅读辅助，产品界面、CLI 输出、贡献流程和默认文档仍以英文为准。
 
@@ -37,7 +37,7 @@ notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge�
 | --- | --- |
 | Node.js | `>=22.15.0` |
 | 包管理器 | `npm` 和 `package-lock.json` |
-| 浏览器 | Google Chrome，手动加载 Manifest V3 extension |
+| 浏览器 | Google Chrome，并安装 [Chrome Web Store 扩展](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) |
 | 操作系统 | macOS 是主要测试目标；Linux 和 Windows 暂未正式支持 |
 | Codex | 本地安装 Codex CLI；`notion2cli codex open` 仅支持 macOS |
 | Claude | 本地安装 Claude Code；Claude Desktop 不是输入目标 |
@@ -51,7 +51,13 @@ notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge�
 npm install -g notion2cli
 ```
 
-Chrome Web Store 上架前，先从源码加载扩展：
+从 Chrome Web Store 安装扩展：
+
+```text
+https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio
+```
+
+如果是本地开发，仍然可以从源码加载扩展：
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
@@ -59,7 +65,7 @@ cd notion2CLI
 npm install
 ```
 
-加载 Chrome 扩展：
+加载开发版 Chrome 扩展：
 
 1. 打开 `chrome://extensions`。
 2. 启用 Developer mode。
@@ -229,16 +235,12 @@ npm run package:extension
 6. 确认最终结果出现在 Activity 面板。
 7. 如果启用了手动写回，追加结果到 Notion 页面，并确认目标页面按预期变化。
 
-## 发布材料
+## Release Notes 和打包材料
 
-公开发布材料位于：
+公开 release 和商店材料位于：
 
-- `docs/release/RELEASE_GUIDE.zh-CN.md`
-- `docs/release/RELEASE_CHECKLIST.md`
-- `docs/release/GITHUB_RELEASE_NOTES.md`
-- `docs/release/NPM_RELEASE.md`
+- `docs/RELEASE_NOTES.md`
 - `chrome-store/`
-- `marketing/`
 
 生成 Chrome Web Store zip：
 
@@ -257,7 +259,7 @@ npm run package:extension
 - Chrome permissions 保持窄范围。默认 bridge origin 是 `http://127.0.0.1:43821`。
 - 交付代码改动前运行 `npm run check` 和 `npm test`。
 - 涉及打包或发布时运行 `npm pack --dry-run` 并检查 tarball 文件列表。
-- 发布材料在 `docs/release/`、`chrome-store/` 和 `marketing/`。
+- 公开 release note 在 `docs/RELEASE_NOTES.md`，Chrome Web Store 公开材料在 `chrome-store/`。
 
 常用文件地图：
 

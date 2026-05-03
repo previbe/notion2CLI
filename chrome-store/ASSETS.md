@@ -48,7 +48,7 @@ Prepared promotional asset:
 Optional promotional assets to prepare later:
 
 - Marquee promo image.
-- Social preview image for launch posts.
+- Social preview image.
 
 ## Privacy Rules For Screenshots
 
@@ -56,6 +56,4 @@ Optional promotional assets to prepare later:
 - Do not show real customer names, page IDs, tokens, private workspace URLs, private repo names, or local usernames.
 - If using a terminal screenshot, hide absolute paths unless they are the public repository path.
 
-## Product Hunt Asset Notes
-
-See `marketing/PRODUCT_HUNT.md` for Product Hunt-specific asset copy and dimensions.
+Use public product screenshots only. Keep campaign-specific planning outside the repository.

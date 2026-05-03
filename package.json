@@ -29,7 +29,9 @@
     ".claude/commands/",
     "bin/",
     "cli/",
-    "docs/",
+    "docs/ARCHITECTURE.md",
+    "docs/README.zh-CN.md",
+    "docs/RELEASE_NOTES.md",
     "extension/",
     "server/",
     "skills/",
@@ -39,8 +41,7 @@
     "PRIVACY.md",
     "README.md",
     "SECURITY.md",
-    "chrome-store/",
-    "marketing/"
+    "chrome-store/"
   ],
   "bin": {
     "notion2cli": "bin/notion2cli.mjs",

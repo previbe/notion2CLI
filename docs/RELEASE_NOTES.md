@@ -1,4 +1,4 @@
-# notion2CLI v0.1.0
+# notion2CLI v0.1.1
 
 notion2CLI turns a Notion page into the rich-text input surface for a local Codex or Claude Code session.
 
@@ -23,7 +23,11 @@ Select text in Notion, or run the whole page, and notion2CLI sends that content 
 npm install -g notion2cli
 ```
 
-Then load the Chrome extension from the release asset or from the `extension/` directory.
+Then install the Chrome extension from the Chrome Web Store:
+
+```text
+https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio
+```
 
 ## Requirements
 

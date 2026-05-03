@@ -14,3 +14,7 @@ build/
 .nyc_output/
 .claude/settings.local.json
 !assets/release/
+
+# Local launch planning and account-specific release notes.
+docs/release/
+marketing/
