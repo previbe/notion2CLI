@@ -3,6 +3,12 @@ import path from 'node:path';
 import { buildClaudePrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
+import {
+  buildClaudePermissionArgs,
+  buildPermissionStatus,
+  hasClaudePermissionArgs,
+  normalizePermissionMode,
+} from '../core/permission-mode.mjs';
 import { runCommand } from './exec-utils.mjs';
 import { ClaudeCliSession } from './claude-cli-session.mjs';
 import { MCPConfigWatcher } from './mcp-config-watcher.mjs';
@@ -16,10 +22,14 @@ export class ClaudeRuntime {
     this.log = log;
     this.context = null;
     this.cwd = options.cwd || process.cwd();
+    this.permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
     this.model = process.env.NOTION2CLI_CLAUDE_MODEL || '';
-    this.extraArgs = Array.isArray(options.extraArgs)
+    const configuredExtraArgs = Array.isArray(options.extraArgs)
       ? options.extraArgs
       : parseArgs(process.env.NOTION2CLI_CLAUDE_EXTRA_ARGS || '');
+    this.extraArgs = hasClaudePermissionArgs(configuredExtraArgs)
+      ? configuredExtraArgs
+      : [...buildClaudePermissionArgs(this.permissionMode), ...configuredExtraArgs];
     this.ready = false;
     this.statusMessage = 'Waiting to check Claude Code.';
     this.runningJobs = new Map();
@@ -211,8 +221,10 @@ export class ClaudeRuntime {
         launchMode: 'dedicated-cli',
         ready: this.ready,
         standalone: false,
+        cwd: this.cwd,
+        ...buildPermissionStatus(this.id, this.permissionMode),
         pairingCommand: 'notion2cli pair',
-        launchCommand: 'notion2cli claude launch',
+        launchCommand: buildClaudeLaunchCommand(this.permissionMode),
         statusMessage: this.statusMessage,
       },
       notionMcp: await this.getNotionMcpStatus(),
@@ -511,6 +523,15 @@ function buildRuntimeMeta(overrides = {}) {
     transport: 'cli-stream-json',
     ...overrides,
   };
+}
+
+function buildClaudeLaunchCommand(permissionMode) {
+  const mode = normalizePermissionMode(permissionMode);
+  if (mode === 'default') {
+    return 'notion2cli claude launch';
+  }
+
+  return `notion2cli claude launch --permission-mode ${mode}`;
 }
 
 function buildClaudeNotionAuthBootstrapPrompt() {

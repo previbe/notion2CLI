@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BridgeApp } from './core/bridge-app.mjs';
 import { DEFAULT_PORT, HOST } from './core/constants.mjs';
+import { normalizePermissionMode } from './core/permission-mode.mjs';
 import { createBridgeHttpServer } from './core/http-server.mjs';
 import { ClaudeChannelRuntime } from './runtimes/claude-channel-runtime.mjs';
 import { ClaudeRuntime } from './runtimes/claude-runtime.mjs';
@@ -15,8 +16,9 @@ export async function startBridgeServer(options = {}) {
   const host = options.host || HOST;
   const port = Number(options.port || DEFAULT_PORT);
   const cwd = options.cwd || process.env.NOTION2CLI_WORKSPACE_CWD || process.cwd();
+  const permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
   const log = options.log || createLogger();
-  const runtime = createRuntime(runtimeId, log, { cwd });
+  const runtime = createRuntime(runtimeId, log, { cwd, permissionMode });
   const app = new BridgeApp({ runtime, log });
   const httpServer = createBridgeHttpServer(app, log, { host, port });
 
@@ -53,6 +55,7 @@ export async function startBridgeServer(options = {}) {
     shutdown,
     runtimeId,
     cwd,
+    permissionMode,
   };
 }
 
@@ -78,6 +81,7 @@ function parseOptions(argv, env) {
     host: env.NOTION2CLI_HOST || HOST,
     port: Number(env.NOTION2CLI_PORT || DEFAULT_PORT),
     cwd: env.NOTION2CLI_WORKSPACE_CWD || process.cwd(),
+    permissionMode: normalizePermissionMode(env.NOTION2CLI_PERMISSION_MODE),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -104,6 +108,12 @@ function parseOptions(argv, env) {
 
     if (arg === '--cwd' && next) {
       options.cwd = path.resolve(next);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--permission-mode' && next) {
+      options.permissionMode = normalizePermissionMode(next);
       index += 1;
     }
   }

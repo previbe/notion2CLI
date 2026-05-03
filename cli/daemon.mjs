@@ -4,6 +4,7 @@ import { open, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { DEFAULT_PORT, HOST } from '../server/core/constants.mjs';
+import { normalizePermissionMode } from '../server/core/permission-mode.mjs';
 import { startBridgeServer } from '../server/bridge-server.mjs';
 import { fetchBridgeStatus } from './http-client.mjs';
 import {
@@ -65,11 +66,13 @@ export async function startDaemon(options = {}) {
   const port = Number(options.port || DEFAULT_PORT);
   const cwd = resolveWorkspaceCwd(options.cwd);
   const foreground = Boolean(options.foreground);
+  const permissionMode = normalizePermissionMode(options.permissionMode || options['permission-mode'] || process.env.NOTION2CLI_PERMISSION_MODE);
   const inspection = await inspectDaemon({ host, port });
 
   if (inspection.running) {
     const current = inspection.metadata;
-    if (current && current.runtime === runtime && current.cwd === cwd) {
+    const currentPermissionMode = normalizePermissionMode(current?.permissionMode || current?.permission_mode);
+    if (current && current.runtime === runtime && current.cwd === cwd && currentPermissionMode === permissionMode) {
       return {
         ok: true,
         alreadyRunning: true,
@@ -81,6 +84,7 @@ export async function startDaemon(options = {}) {
     throw new Error([
       `A notion2cli daemon is already running: ${inspection.bridge?.runtime?.label || inspection.metadata?.runtime || 'unknown runtime'}`,
       inspection.metadata?.cwd ? `Working directory: ${inspection.metadata.cwd}` : null,
+      `Permission mode: ${currentPermissionMode}`,
       'Run `notion2cli daemon stop` before starting a new daemon.',
     ].filter(Boolean).join('\n'));
   }
@@ -90,7 +94,7 @@ export async function startDaemon(options = {}) {
   }
 
   if (foreground) {
-    const metadata = await runManagedDaemon({ runtime, cwd, host, port, mode: 'foreground' });
+    const metadata = await runManagedDaemon({ runtime, cwd, host, port, permissionMode, mode: 'foreground' });
     return {
       ok: true,
       started: true,
@@ -99,7 +103,7 @@ export async function startDaemon(options = {}) {
     };
   }
 
-  return startDetachedDaemon({ runtime, cwd, host, port });
+  return startDetachedDaemon({ runtime, cwd, host, port, permissionMode });
 }
 
 export async function runManagedDaemon(options = {}) {
@@ -107,10 +111,12 @@ export async function runManagedDaemon(options = {}) {
   const host = options.host || HOST;
   const port = Number(options.port || DEFAULT_PORT);
   const cwd = resolveWorkspaceCwd(options.cwd);
+  const permissionMode = normalizePermissionMode(options.permissionMode || options['permission-mode'] || process.env.NOTION2CLI_PERMISSION_MODE);
   const paths = await ensureAppDirs();
   const metadata = {
     pid: process.pid,
     runtime,
+    permissionMode,
     host,
     port,
     cwd,
@@ -128,6 +134,7 @@ export async function runManagedDaemon(options = {}) {
     host,
     port,
     cwd,
+    permissionMode,
   });
   return metadata;
 }
@@ -188,7 +195,7 @@ export async function stopDaemon() {
   };
 }
 
-async function startDetachedDaemon({ runtime, cwd, host, port }) {
+async function startDetachedDaemon({ runtime, cwd, host, port, permissionMode }) {
   const paths = await ensureAppDirs();
   const stdoutHandle = await open(paths.daemonOutLog, 'a');
   const stderrHandle = await open(paths.daemonErrLog, 'a');
@@ -207,6 +214,8 @@ async function startDetachedDaemon({ runtime, cwd, host, port }) {
       host,
       '--port',
       String(port),
+      '--permission-mode',
+      permissionMode,
     ],
     {
       detached: true,
@@ -214,6 +223,7 @@ async function startDetachedDaemon({ runtime, cwd, host, port }) {
       env: {
         ...process.env,
         NOTION2CLI_DAEMON_MODE: 'background',
+        NOTION2CLI_PERMISSION_MODE: permissionMode,
       },
       stdio: ['ignore', stdoutHandle.fd, stderrHandle.fd],
     },

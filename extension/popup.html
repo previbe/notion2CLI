@@ -35,6 +35,17 @@
             </div>
           </div>
           <p class="step-body" data-step-body>If a command is needed, the shortest path appears here.</p>
+          <div class="permission-setup hidden" data-permission-setup>
+            <label class="field compact-field">
+              <span>CLI permissions</span>
+              <select data-permission-mode-select>
+                <option value="default">Default</option>
+                <option value="auto-review">Auto review</option>
+                <option value="full-access">Full access</option>
+              </select>
+            </label>
+            <p class="config-note" data-permission-mode-hint>Recommended. Uses the runtime default safety checks.</p>
+          </div>
           <div class="command-stack" data-command-stack>
             <div class="command-block" data-command-block>
               <div class="command-label" data-step-command-label>Launch command</div>

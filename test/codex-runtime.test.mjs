@@ -9,6 +9,12 @@ import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtim
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
 import { CodexLiveSession, buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
+import {
+  buildClaudePermissionArgs,
+  buildCodexThreadPermissionParams,
+  buildCodexTurnPermissionParams,
+  normalizePermissionMode,
+} from '../server/core/permission-mode.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
 
 function setupFakeClaude(scriptLines) {
@@ -81,6 +87,20 @@ test('codex live session uses a stable user-facing thread name', () => {
     buildCodexThreadName('/workspace/notion2CLI'),
     'notion2CLI - notion2CLI',
   );
+});
+
+test('permission mode helpers map startup modes to runtime settings', () => {
+  assert.equal(normalizePermissionMode('auto'), 'auto-review');
+  assert.deepEqual(buildCodexThreadPermissionParams('auto-review'), {
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'auto_review',
+    sandbox: 'workspace-write',
+  });
+  assert.deepEqual(buildCodexTurnPermissionParams('full-access'), {
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+  });
+  assert.deepEqual(buildClaudePermissionArgs('full-access'), ['--dangerously-skip-permissions']);
 });
 
 test('codex live session interrupts an active turn when cancelled', async () => {

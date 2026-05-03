@@ -16,6 +16,13 @@ import {
   writeJsonFile,
 } from '../cli/paths.mjs';
 import { DEFAULT_PORT, HOST } from '../server/core/constants.mjs';
+import {
+  buildClaudePermissionArgs,
+  getPermissionModeLabel,
+  hasClaudePermissionArgs,
+  inferClaudePermissionModeFromArgs,
+  normalizePermissionMode,
+} from '../server/core/permission-mode.mjs';
 import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
@@ -144,11 +151,13 @@ async function handleDaemon(argv) {
 
   switch (subcommand) {
     case 'start': {
+      const permissionMode = normalizePermissionMode(options.permissionMode || options['permission-mode'] || process.env.NOTION2CLI_PERMISSION_MODE);
       const result = await startDaemon({
         runtime: options.runtime,
         cwd: options.cwd,
         host: options.host || HOST,
         port: options.port || DEFAULT_PORT,
+        permissionMode,
         foreground: Boolean(options.foreground),
       });
 
@@ -160,6 +169,7 @@ async function handleDaemon(argv) {
       if (result.alreadyRunning) {
         process.stdout.write([
           `daemon is already running: ${result.metadata.runtime}`,
+          `Permission mode: ${getPermissionModeLabel(result.metadata.permissionMode)}`,
           `Address: http://${result.metadata.host}:${result.metadata.port}`,
           `Working directory: ${result.metadata.cwd}`,
         ].join('\n') + '\n');
@@ -169,21 +179,25 @@ async function handleDaemon(argv) {
       process.stdout.write([
         options.foreground ? 'notion2cli daemon started in foreground mode.' : 'notion2cli daemon started in the background.',
         `Runtime: ${result.metadata?.runtime || options.runtime}`,
+        `Permission mode: ${getPermissionModeLabel(result.metadata?.permissionMode || permissionMode)}`,
         `Address: http://${result.metadata?.host || options.host || HOST}:${result.metadata?.port || options.port || DEFAULT_PORT}`,
         result.metadata?.cwd ? `Working directory: ${result.metadata.cwd}` : null,
         options.foreground ? 'Press Ctrl+C to stop the current daemon.' : null,
       ].filter(Boolean).join('\n') + '\n');
       return;
     }
-    case 'run':
+    case 'run': {
+      const permissionMode = normalizePermissionMode(options.permissionMode || options['permission-mode'] || process.env.NOTION2CLI_PERMISSION_MODE);
       await runManagedDaemon({
         runtime: options.runtime,
         cwd: options.cwd,
         host: options.host || HOST,
         port: options.port || DEFAULT_PORT,
+        permissionMode,
         mode: process.env.NOTION2CLI_DAEMON_MODE || 'background',
       });
       return;
+    }
     case 'stop': {
       const result = await stopDaemon();
       if (options.json) {
@@ -210,7 +224,7 @@ async function handleDaemon(argv) {
     default:
       throw new Error([
         'Usage:',
-        '  notion2cli daemon start --runtime codex',
+        '  notion2cli daemon start --runtime codex [--permission-mode default|auto-review|full-access]',
         '  notion2cli daemon start --runtime standalone --foreground',
         '  notion2cli daemon stop',
         '  notion2cli daemon status',
@@ -395,8 +409,17 @@ async function handleClaudeLaunch(argv) {
   const cwd = resolveWorkspaceCwd(options.cwd);
   const host = options.host || HOST;
   const port = Number(options.port || DEFAULT_PORT);
-  const configs = await ensureClaudeChannelConfigs({ cwd, host, port });
   const passthrough = options['--'] || [];
+  const explicitPermissionMode = options.permissionMode || options['permission-mode'] || '';
+  if (explicitPermissionMode && hasClaudePermissionArgs(passthrough)) {
+    throw new Error('Use either `--permission-mode` or passthrough Claude permission flags, not both.');
+  }
+
+  const permissionMode = explicitPermissionMode
+    ? normalizePermissionMode(explicitPermissionMode)
+    : inferClaudePermissionModeFromArgs(passthrough);
+  const permissionArgs = explicitPermissionMode ? buildClaudePermissionArgs(permissionMode) : [];
+  const configs = await ensureClaudeChannelConfigs({ cwd, host, port, permissionMode });
   const artifactDir = getAppPaths().artifactsDir;
   const command = [
     'claude',
@@ -406,7 +429,8 @@ async function handleClaudeLaunch(argv) {
     'server:notion2cli_bridge',
     '--add-dir',
     artifactDir,
-    ...(!hasClaudeOption(passthrough, '--name', '-n') ? ['--name', buildClaudeChannelName(cwd)] : []),
+    ...permissionArgs,
+    ...(!hasClaudeOption([...permissionArgs, ...passthrough], '--name', '-n') ? ['--name', buildClaudeChannelName(cwd)] : []),
     ...passthrough,
   ];
 
@@ -417,6 +441,7 @@ async function handleClaudeLaunch(argv) {
       cwd,
       host,
       port,
+      permissionMode,
       ...configs,
     });
     return;
@@ -645,6 +670,9 @@ function formatDaemonStatus(status) {
       'notion2cli daemon is running.',
       `Address: http://${status.host}:${status.port}`,
       `Runtime: ${status.bridge?.runtime?.label || status.metadata?.runtime || 'unknown'}`,
+      status.bridge?.runtime?.permissionLabel || status.metadata?.permissionMode
+        ? `Permission mode: ${status.bridge?.runtime?.permissionLabel || getPermissionModeLabel(status.metadata.permissionMode)}`
+        : null,
       status.bridge?.runtime?.id === 'codex' && status.bridge?.session?.threadId
         ? `Attach: notion2cli codex attach`
         : null,
@@ -675,7 +703,7 @@ function printHelp() {
     'notion2cli',
     '',
     'Commands:',
-    '  notion2cli daemon start --runtime codex',
+    '  notion2cli daemon start --runtime codex [--permission-mode default|auto-review|full-access]',
     '  notion2cli daemon start --runtime standalone --foreground',
     '  notion2cli daemon stop',
     '  notion2cli daemon status',
@@ -683,7 +711,7 @@ function printHelp() {
     '  notion2cli codex attach --remote-only',
     '  notion2cli codex inspect',
     '  notion2cli codex open',
-    '  notion2cli claude launch',
+    '  notion2cli claude launch [--permission-mode default|auto-review|full-access]',
     '  notion2cli claude inspect',
     '  notion2cli claude config-path',
     '  notion2cli pair',
@@ -695,6 +723,7 @@ function printHelp() {
     'Notes:',
     '  - `codex` uses a local daemon and Codex App session.',
     '  - `claude` uses `notion2cli claude launch` to attach the active Claude Code channel session.',
+    '  - Permission modes affect startup only; restart the CLI to apply a different mode.',
   ].join('\n') + '\n');
 }
 
@@ -711,6 +740,7 @@ function formatCodexSession(status) {
     'Codex App session',
     `Name: ${session.threadName || 'notion2CLI'}`,
     `Thread ID: ${session.threadId}`,
+    status.runtime?.permissionLabel ? `Permission mode: ${status.runtime.permissionLabel}` : null,
     session.threadPath ? `History file: ${session.threadPath}` : null,
     `App visible: ${session.appVisible ? 'yes' : 'not confirmed'}`,
     `Turns: ${session.turnCount ?? 0}`,
@@ -737,6 +767,7 @@ function formatClaudeSession(status) {
     `Name: ${session.sessionName || session.threadName || 'notion2CLI'}`,
     `Session ID: ${session.sessionId || session.threadId}`,
     `Transport: ${session.transport || 'claude-channel'}`,
+    status.runtime?.permissionLabel ? `Permission mode: ${status.runtime.permissionLabel}` : null,
     `Current session visible: ${session.visibleInNativeClient || session.appVisible ? 'yes' : 'not confirmed'}`,
     `Turns: ${session.turnCount ?? 0}`,
     status.notionMcp?.status ? `Notion MCP: ${status.notionMcp.status}` : null,
@@ -747,7 +778,7 @@ function formatClaudeSession(status) {
   ].filter(Boolean).join('\n') + '\n';
 }
 
-async function ensureClaudeChannelConfigs({ cwd, host, port }) {
+async function ensureClaudeChannelConfigs({ cwd, host, port, permissionMode = 'default' }) {
   await ensureAppDirs();
   const paths = getAppPaths();
   const workerConfigPath = paths.claudeWorkerMcpConfigFile;
@@ -772,6 +803,7 @@ async function ensureClaudeChannelConfigs({ cwd, host, port }) {
           NOTION2CLI_HOST: host,
           NOTION2CLI_PORT: String(port),
           NOTION2CLI_WORKSPACE_CWD: cwd,
+          NOTION2CLI_PERMISSION_MODE: normalizePermissionMode(permissionMode),
           NOTION2CLI_CLAUDE_WORKER_MCP_CONFIG: workerConfigPath,
         },
       },

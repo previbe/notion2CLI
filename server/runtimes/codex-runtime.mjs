@@ -1,6 +1,7 @@
 import { buildCodexPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
+import { buildPermissionStatus, normalizePermissionMode } from '../core/permission-mode.mjs';
 import { CodexAppServerSession, buildCodexAppServerArgs, buildCodexInputItems } from './codex-app-server-session.mjs';
 import { CodexLiveSession } from './codex-live-session.mjs';
 import { runCommand } from './exec-utils.mjs';
@@ -15,6 +16,7 @@ export class CodexRuntime {
     this.log = log;
     this.context = null;
     this.cwd = options.cwd || process.cwd();
+    this.permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
     this.model = process.env.NOTION2CLI_CODEX_MODEL || '';
     this.profile = process.env.NOTION2CLI_CODEX_PROFILE || '';
     this.extraArgs = parseArgs(process.env.NOTION2CLI_CODEX_EXTRA_ARGS || '');
@@ -41,6 +43,7 @@ export class CodexRuntime {
         model: this.model,
         profile: this.profile,
         extraArgs: this.extraArgs,
+        permissionMode: this.permissionMode,
         log: this.log,
       });
       await this.liveSession.start();
@@ -262,8 +265,9 @@ export class CodexRuntime {
         ready,
         standalone: false,
         cwd: this.cwd,
+        ...buildPermissionStatus(this.id, this.permissionMode),
         pairingCommand: 'notion2cli pair',
-        launchCommand: 'notion2cli daemon start --runtime codex',
+        launchCommand: buildCodexLaunchCommand(this.permissionMode),
         statusMessage: this.statusMessage,
         attachCommand: session?.attachCommand || 'notion2cli codex attach',
       },
@@ -430,6 +434,7 @@ export class CodexRuntime {
         model: this.model,
         profile: this.profile,
         extraArgs: this.extraArgs,
+        permissionMode: this.permissionMode,
         log: this.log,
         onRunning: ({ threadId, turnId }) => {
           this.log('codex auxiliary session running', {
@@ -478,6 +483,15 @@ export class CodexRuntime {
 }
 
 export { buildCodexAppServerArgs };
+
+function buildCodexLaunchCommand(permissionMode) {
+  const mode = normalizePermissionMode(permissionMode);
+  if (mode === 'default') {
+    return 'notion2cli daemon start --runtime codex';
+  }
+
+  return `notion2cli daemon start --runtime codex --permission-mode ${mode}`;
+}
 
 function parseArgs(raw) {
   if (!raw.trim()) {

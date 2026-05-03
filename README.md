@@ -86,6 +86,13 @@ Start the bridge:
 notion2cli daemon start --runtime codex
 ```
 
+You can choose the startup permission mode from the Chrome popup before copying the command, or pass it explicitly:
+
+```bash
+notion2cli daemon start --runtime codex --permission-mode auto-review
+notion2cli daemon start --runtime codex --permission-mode full-access
+```
+
 Create a browser pairing code:
 
 ```bash
@@ -109,6 +116,13 @@ Claude Code uses a foreground channel session instead of the background daemon:
 
 ```bash
 notion2cli claude launch
+```
+
+Claude Code supports the same notion2cli permission modes at launch:
+
+```bash
+notion2cli claude launch --permission-mode auto-review
+notion2cli claude launch --permission-mode full-access
 ```
 
 Keep that terminal open. In another terminal, create a browser pairing code:
@@ -204,6 +218,8 @@ Important details:
 - Pairing state is held by the local bridge process and is reset when the bridge restarts.
 - Full-page reads and write-backs are performed by the selected runtime through Notion MCP.
 - Notion content is sent to your local Codex or Claude Code runtime. Those tools may use their own network services according to their own configuration and terms.
+- Startup permission modes are `default`, `auto-review`, and `full-access`. `default` is recommended. `full-access` disables sandbox and approval prompts for the selected CLI runtime; use it only in trusted workspaces or external sandboxes.
+- Permission mode changes require restarting the CLI or daemon. Notion OAuth authorization is separate and may still require browser approval.
 - Remote image downloads are capped and private-network image URLs are blocked by default.
 
 ## Development

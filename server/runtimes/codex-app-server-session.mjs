@@ -1,5 +1,10 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
+import {
+  buildCodexAuxiliaryThreadPermissionParams,
+  buildCodexTurnPermissionParams,
+  normalizePermissionMode,
+} from '../core/permission-mode.mjs';
 
 const CLIENT_INFO = {
   name: 'notion2cli',
@@ -15,6 +20,7 @@ export class CodexAppServerSession {
     model,
     profile,
     extraArgs,
+    permissionMode,
     log,
     onRunning,
     onApprovalRequested,
@@ -28,6 +34,7 @@ export class CodexAppServerSession {
     this.model = model || null;
     this.profile = profile || '';
     this.extraArgs = Array.isArray(extraArgs) ? extraArgs : [];
+    this.permissionMode = normalizePermissionMode(permissionMode);
     this.log = log;
     this.onRunning = onRunning;
     this.onApprovalRequested = onApprovalRequested;
@@ -101,8 +108,7 @@ export class CodexAppServerSession {
 
       const threadResponse = await this.sendRequest('thread/start', {
         cwd: this.cwd,
-        approvalPolicy: 'on-request',
-        sandbox: 'read-only',
+        ...buildCodexAuxiliaryThreadPermissionParams(this.permissionMode),
         ephemeral: true,
         experimentalRawEvents: false,
         persistExtendedHistory: false,
@@ -113,7 +119,7 @@ export class CodexAppServerSession {
       const turnResponse = await this.sendRequest('turn/start', {
         threadId: this.threadId,
         input: this.inputItems,
-        approvalPolicy: 'on-request',
+        ...buildCodexTurnPermissionParams(this.permissionMode),
       });
       this.turnId = turnResponse?.turn?.id || null;
 

@@ -376,6 +376,18 @@ code {
   color: #2b3725;
 }
 
+.compact-field {
+  margin-top: 0;
+}
+
+.permission-setup {
+  margin-top: 14px;
+}
+
+.permission-setup.hidden {
+  display: none;
+}
+
 input,
 select {
   width: 100%;

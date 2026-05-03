@@ -88,6 +88,13 @@ notion2cli mcp install notion --runtime codex
 notion2cli daemon start --runtime codex
 ```
 
+也可以先在 Chrome popup 的 Start CLI 模块选择启动权限，再复制生成的命令；或显式传参：
+
+```bash
+notion2cli daemon start --runtime codex --permission-mode auto-review
+notion2cli daemon start --runtime codex --permission-mode full-access
+```
+
 创建浏览器配对码：
 
 ```bash
@@ -111,6 +118,13 @@ Claude Code 使用前台 channel session，不走后台 daemon：
 
 ```bash
 notion2cli claude launch
+```
+
+Claude Code 启动时也支持相同的 notion2cli 权限模式：
+
+```bash
+notion2cli claude launch --permission-mode auto-review
+notion2cli claude launch --permission-mode full-access
 ```
 
 保持这个终端窗口打开。另开一个终端创建浏览器配对码：
@@ -206,6 +220,8 @@ notion2CLI 是 local-first 工具，但它仍然会在本地组件之间移动�
 - 配对状态保存在本地 bridge 进程中，bridge 重启后会重置。
 - 整页读取和写回由所选运行时通过 Notion MCP 执行。
 - Notion 内容会发送给本地 Codex 或 Claude Code 运行时。这些工具可能按各自配置和服务条款使用网络服务。
+- 启动权限模式包括 `default`、`auto-review` 和 `full-access`。推荐使用 `default`。`full-access` 会关闭所选 CLI runtime 的沙箱和审批提示，只应在可信工作区或外部沙箱中使用。
+- 修改权限模式后需要重启 CLI 或 daemon 才会生效。Notion OAuth 授权是独立流程，仍可能需要浏览器确认。
 - 远程图片下载有数量和大小限制，默认阻止私有网络图片 URL。
 
 ## 开发

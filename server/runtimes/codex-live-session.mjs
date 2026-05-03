@@ -3,6 +3,11 @@ import net from 'node:net';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getAppPaths, readJsonFile, writeJsonFile } from '../../cli/paths.mjs';
+import {
+  buildCodexThreadPermissionParams,
+  buildCodexTurnPermissionParams,
+  normalizePermissionMode,
+} from '../core/permission-mode.mjs';
 
 const CLIENT_INFO = {
   name: 'notion2cli',
@@ -18,11 +23,12 @@ const THREAD_READ_RETRIES = 4;
 const THREAD_READ_RETRY_DELAY_MS = 350;
 
 export class CodexLiveSession {
-  constructor({ cwd, model, profile, extraArgs, log }) {
+  constructor({ cwd, model, profile, extraArgs, permissionMode, log }) {
     this.cwd = cwd;
     this.model = model || null;
     this.profile = profile || '';
     this.extraArgs = Array.isArray(extraArgs) ? extraArgs : [];
+    this.permissionMode = normalizePermissionMode(permissionMode);
     this.log = log;
 
     this.child = null;
@@ -131,6 +137,7 @@ export class CodexLiveSession {
       attachCommand: this.threadId ? `notion2cli codex attach` : '',
       openCommand: this.threadId ? 'notion2cli codex open' : '',
       inspectCommand: this.threadId ? 'notion2cli codex inspect' : '',
+      permissionMode: this.permissionMode,
       status: serializeThreadStatus(this.threadStatus),
       appVisible: Boolean(this.appVisible),
       turnCount: this.turnCount,
@@ -576,7 +583,7 @@ export class CodexLiveSession {
       const response = await this.request('turn/start', {
         threadId: this.threadId,
         input: Array.isArray(task.inputItems) ? task.inputItems : [],
-        approvalPolicy: task.approvalPolicy || 'on-request',
+        ...buildCodexTurnPermissionParams(task.permissionMode || this.permissionMode),
         ...(this.model ? { model: this.model } : {}),
       });
       task.turnId = response?.turn?.id || null;
@@ -697,22 +704,30 @@ export class CodexLiveSession {
 
     if (persisted?.threadId) {
       this.applyPersistedState(persisted);
-      try {
-        threadResponse = await this.request('thread/resume', {
+      if (normalizePermissionMode(persisted.permissionMode) !== this.permissionMode) {
+        this.log('codex live session permission mode changed, starting a fresh thread', {
           threadId: persisted.threadId,
-          cwd: this.cwd,
-          approvalPolicy: 'on-request',
-          persistExtendedHistory: true,
-          ...(this.model ? { model: this.model } : {}),
+          previousPermissionMode: normalizePermissionMode(persisted.permissionMode),
+          permissionMode: this.permissionMode,
         });
-        this.log('codex live session resumed thread', {
-          threadId: persisted.threadId,
-        });
-      } catch (error) {
-        this.log('codex live session resume failed, starting a fresh thread', {
-          threadId: persisted.threadId,
-          error: error?.message || 'Unknown resume error',
-        });
+      } else {
+        try {
+          threadResponse = await this.request('thread/resume', {
+            threadId: persisted.threadId,
+            cwd: this.cwd,
+            ...buildCodexThreadPermissionParams(this.permissionMode),
+            persistExtendedHistory: true,
+            ...(this.model ? { model: this.model } : {}),
+          });
+          this.log('codex live session resumed thread', {
+            threadId: persisted.threadId,
+          });
+        } catch (error) {
+          this.log('codex live session resume failed, starting a fresh thread', {
+            threadId: persisted.threadId,
+            error: error?.message || 'Unknown resume error',
+          });
+        }
       }
     }
 
@@ -733,8 +748,7 @@ export class CodexLiveSession {
   async startFreshThread() {
     const threadResponse = await this.request('thread/start', {
       cwd: this.cwd,
-      approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
+      ...buildCodexThreadPermissionParams(this.permissionMode),
       ephemeral: false,
       experimentalRawEvents: false,
       persistExtendedHistory: true,
@@ -975,6 +989,7 @@ export class CodexLiveSession {
       lastVerifiedAt: this.lastVerifiedAt,
       lastVerificationError: this.lastVerificationError,
       appVisible: this.appVisible,
+      permissionMode: this.permissionMode,
     });
   }
 }
