@@ -213,7 +213,7 @@ function renderNotionPage(scene) {
 }
 
 function renderActivityPanel(scene) {
-  const taskButtons = ['Raw', 'PreVibe', 'Build', 'Bug Triage'];
+  const taskButtons = ['Raw', 'PreVibe', 'Build', 'Bug Triage', 'Ship Checklist'];
   return `<aside class="activity">
     <div class="activity-head">
       <span class="ready-dot"></span>

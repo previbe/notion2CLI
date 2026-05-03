@@ -2,7 +2,7 @@
   "name": "notion2cli",
   "version": "0.1.1",
   "type": "module",
-  "description": "A local-first bridge that runs Notion page content as the next input in a local Codex or Claude Code session.",
+  "description": "Run Claude Code or Codex directly from Notion through a local Chrome extension bridge.",
   "license": "MIT",
   "repository": {
     "type": "git",
