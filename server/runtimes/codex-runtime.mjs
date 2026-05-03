@@ -5,7 +5,7 @@ import { CodexAppServerSession, buildCodexAppServerArgs, buildCodexInputItems } 
 import { CodexLiveSession } from './codex-live-session.mjs';
 import { runCommand } from './exec-utils.mjs';
 
-const MCP_PROBE_TTL_MS = 15000;
+const MCP_PROBE_TTL_MS = 300000;
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
 
 export class CodexRuntime {
