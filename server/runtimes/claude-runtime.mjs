@@ -8,7 +8,7 @@ import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
 import { runCommand } from './exec-utils.mjs';
 import { buildClaudeCliArgs, buildStreamJsonUserMessage, ClaudeCliSession } from './claude-cli-session.mjs';
 
-const MCP_PROBE_TTL_MS = 15000;
+const MCP_PROBE_TTL_MS = 300000;
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
 
 export class ClaudeRuntime {
