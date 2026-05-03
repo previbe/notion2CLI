@@ -88,6 +88,26 @@ export function buildPermissionStatus(runtimeId, permissionMode) {
   };
 }
 
+export function buildCodexLaunchCommand(permissionMode) {
+  const mode = normalizePermissionMode(permissionMode);
+  if (mode === PERMISSION_MODE_DEFAULT) {
+    return 'notion2cli daemon start --runtime codex';
+  }
+
+  return `notion2cli daemon start --runtime codex --permission-mode ${mode}`;
+}
+
+export function buildClaudeLaunchCommand(permissionMode) {
+  const mode = normalizePermissionMode(permissionMode);
+  if (mode === PERMISSION_MODE_DEFAULT) {
+    return 'notion2cli claude launch';
+  }
+
+  return `notion2cli claude launch --permission-mode ${mode}`;
+}
+
+// Codex app-server uses legacy string sandbox modes on thread start/resume,
+// while turn overrides use the newer SandboxPolicy object shape.
 export function buildCodexThreadPermissionParams(permissionMode) {
   switch (normalizePermissionMode(permissionMode)) {
     case PERMISSION_MODE_AUTO_REVIEW:
@@ -132,6 +152,7 @@ export function buildCodexAuxiliaryThreadPermissionParams(permissionMode) {
   }
 }
 
+// Keep this object shape in sync with Codex app-server TurnStartParams.
 export function buildCodexTurnPermissionParams(permissionMode) {
   switch (normalizePermissionMode(permissionMode)) {
     case PERMISSION_MODE_AUTO_REVIEW:

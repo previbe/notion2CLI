@@ -1,7 +1,11 @@
 import { buildCodexPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
-import { buildPermissionStatus, normalizePermissionMode } from '../core/permission-mode.mjs';
+import {
+  buildCodexLaunchCommand,
+  buildPermissionStatus,
+  normalizePermissionMode,
+} from '../core/permission-mode.mjs';
 import { CodexAppServerSession, buildCodexAppServerArgs, buildCodexInputItems } from './codex-app-server-session.mjs';
 import { CodexLiveSession } from './codex-live-session.mjs';
 import { runCommand } from './exec-utils.mjs';
@@ -483,15 +487,6 @@ export class CodexRuntime {
 }
 
 export { buildCodexAppServerArgs };
-
-function buildCodexLaunchCommand(permissionMode) {
-  const mode = normalizePermissionMode(permissionMode);
-  if (mode === 'default') {
-    return 'notion2cli daemon start --runtime codex';
-  }
-
-  return `notion2cli daemon start --runtime codex --permission-mode ${mode}`;
-}
 
 function parseArgs(raw) {
   if (!raw.trim()) {

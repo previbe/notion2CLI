@@ -37,7 +37,16 @@ test('popup launch command builder maps claude permission modes', () => {
 });
 
 test('popup permission helpers normalize invalid local preferences', () => {
-  assert.equal(normalizePermissionMode('unexpected'), 'default');
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (message) => warnings.push(String(message));
+
+  try {
+    assert.equal(normalizePermissionMode('unexpected'), 'default');
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.match(warnings[0], /Unknown notion2cli permission mode "unexpected"/);
   assert.match(getPermissionModeHint('full-access'), /Disables sandbox/);
 });
-

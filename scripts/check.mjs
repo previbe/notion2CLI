@@ -49,9 +49,10 @@ for (const file of files) {
 async function checkEnglishOnlyText() {
   const files = [];
   await collectTextFiles(root, files);
+  const checkedFiles = await filterGitIgnoredFiles(files);
   const violations = [];
 
-  for (const file of files) {
+  for (const file of checkedFiles) {
     const relativePath = path.relative(root, file);
     if (CJK_ALLOWED_FILES.has(relativePath)) {
       continue;
@@ -72,6 +73,54 @@ async function checkEnglishOnlyText() {
       ...violations,
     ].join('\n'));
   }
+}
+
+async function filterGitIgnoredFiles(files) {
+  if (!files.length) {
+    return files;
+  }
+
+  const relativePaths = files.map((file) => path.relative(root, file));
+  const ignored = await readGitIgnoredPaths(relativePaths);
+  if (!ignored.size) {
+    return files;
+  }
+
+  return files.filter((file, index) => !ignored.has(relativePaths[index]));
+}
+
+function readGitIgnoredPaths(relativePaths) {
+  return new Promise((resolve) => {
+    const child = spawn('git', ['check-ignore', '--stdin'], {
+      cwd: root,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    let stdout = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString('utf8');
+    });
+
+    child.on('error', () => {
+      resolve(new Set());
+    });
+
+    child.on('close', (code) => {
+      if (code !== 0 && code !== 1) {
+        resolve(new Set());
+        return;
+      }
+
+      resolve(new Set(
+        stdout
+          .split('\n')
+          .map((line) => line.replace(/\r$/, ''))
+          .filter(Boolean),
+      ));
+    });
+
+    child.stdin.end(`${relativePaths.join('\n')}\n`);
+  });
 }
 
 async function collectTextFiles(dir, output) {

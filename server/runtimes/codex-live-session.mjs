@@ -15,7 +15,6 @@ const CLIENT_INFO = {
   version: '0.1.0',
 };
 
-const SESSION_FILE = `${getAppPaths().stateDir}/codex-session.json`;
 const WS_HOST = '127.0.0.1';
 const WS_CONNECT_RETRIES = 50;
 const WS_CONNECT_DELAY_MS = 100;
@@ -704,7 +703,7 @@ export class CodexLiveSession {
 
     if (persisted?.threadId) {
       this.applyPersistedState(persisted);
-      if (normalizePermissionMode(persisted.permissionMode) !== this.permissionMode) {
+      if (shouldStartFreshThreadForPermissionMode(persisted, this.permissionMode)) {
         this.log('codex live session permission mode changed, starting a fresh thread', {
           threadId: persisted.threadId,
           previousPermissionMode: normalizePermissionMode(persisted.permissionMode),
@@ -999,6 +998,14 @@ export function buildCodexThreadName(cwd) {
   return `notion2CLI - ${projectName}`;
 }
 
+export function shouldStartFreshThreadForPermissionMode(persisted, permissionMode) {
+  if (!persisted?.threadId) {
+    return false;
+  }
+
+  return normalizePermissionMode(persisted.permissionMode) !== normalizePermissionMode(permissionMode);
+}
+
 export function buildCodexAppServerWsArgs({ listenUrl, profile, extraArgs }) {
   const args = ['app-server', '--listen', listenUrl];
 
@@ -1053,7 +1060,7 @@ async function readWsData(data) {
 }
 
 async function readSessionState(cwd) {
-  const state = await readJsonFile(SESSION_FILE);
+  const state = await readJsonFile(getCodexSessionFile());
   if (!state || state.cwd !== cwd || !state.threadId) {
     return null;
   }
@@ -1066,9 +1073,10 @@ async function writeSessionState(state) {
     return;
   }
 
-  await writeJsonFile(SESSION_FILE, {
+  await writeJsonFile(getCodexSessionFile(), {
     cwd: state.cwd,
     threadId: state.threadId,
+    permissionMode: normalizePermissionMode(state.permissionMode),
     threadName: state.threadName || '',
     threadPath: state.threadPath || '',
     turnCount: Number.isFinite(Number(state.turnCount)) ? Number(state.turnCount) : 0,
@@ -1083,6 +1091,10 @@ async function writeSessionState(state) {
     appVisible: Boolean(state.appVisible),
     updatedAt: new Date().toISOString(),
   });
+}
+
+function getCodexSessionFile() {
+  return `${getAppPaths().stateDir}/codex-session.json`;
 }
 
 function extractLatestAssistantFromTurns(turns) {

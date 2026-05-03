@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ClaudeRuntime, parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
@@ -8,11 +8,20 @@ import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/code
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
-import { CodexLiveSession, buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
 import {
+  CodexLiveSession,
+  buildCodexAppServerWsArgs,
+  buildCodexThreadName,
+  shouldStartFreshThreadForPermissionMode,
+} from '../server/runtimes/codex-live-session.mjs';
+import {
+  buildClaudeLaunchCommand,
   buildClaudePermissionArgs,
+  buildCodexAuxiliaryThreadPermissionParams,
+  buildCodexLaunchCommand,
   buildCodexThreadPermissionParams,
   buildCodexTurnPermissionParams,
+  inferClaudePermissionModeFromArgs,
   normalizePermissionMode,
 } from '../server/core/permission-mode.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
@@ -91,16 +100,120 @@ test('codex live session uses a stable user-facing thread name', () => {
 
 test('permission mode helpers map startup modes to runtime settings', () => {
   assert.equal(normalizePermissionMode('auto'), 'auto-review');
+  assert.equal(buildCodexLaunchCommand('default'), 'notion2cli daemon start --runtime codex');
+  assert.equal(
+    buildCodexLaunchCommand('full-access'),
+    'notion2cli daemon start --runtime codex --permission-mode full-access',
+  );
+  assert.equal(
+    buildClaudeLaunchCommand('auto-review'),
+    'notion2cli claude launch --permission-mode auto-review',
+  );
   assert.deepEqual(buildCodexThreadPermissionParams('auto-review'), {
     approvalPolicy: 'on-request',
     approvalsReviewer: 'auto_review',
     sandbox: 'workspace-write',
+  });
+  assert.deepEqual(buildCodexAuxiliaryThreadPermissionParams('auto-review'), {
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'auto_review',
+    sandbox: 'read-only',
   });
   assert.deepEqual(buildCodexTurnPermissionParams('full-access'), {
     approvalPolicy: 'never',
     sandboxPolicy: { type: 'dangerFullAccess' },
   });
   assert.deepEqual(buildClaudePermissionArgs('full-access'), ['--dangerously-skip-permissions']);
+});
+
+test('claude passthrough permission flags infer the status mode', () => {
+  assert.equal(inferClaudePermissionModeFromArgs(['--permission-mode', 'auto']), 'auto-review');
+  assert.equal(inferClaudePermissionModeFromArgs(['--permission-mode=bypassPermissions']), 'full-access');
+  assert.equal(inferClaudePermissionModeFromArgs(['--dangerously-skip-permissions']), 'full-access');
+  assert.equal(inferClaudePermissionModeFromArgs([], 'auto'), 'auto-review');
+});
+
+test('codex live session detects persisted permission mode changes', () => {
+  assert.equal(
+    shouldStartFreshThreadForPermissionMode({ threadId: 'thread-1', permissionMode: 'default' }, 'full-access'),
+    true,
+  );
+  assert.equal(
+    shouldStartFreshThreadForPermissionMode({ threadId: 'thread-1', permissionMode: 'full-access' }, 'danger'),
+    false,
+  );
+  assert.equal(shouldStartFreshThreadForPermissionMode(null, 'full-access'), false);
+});
+
+test('codex live session starts fresh instead of resuming when permission mode changes', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'notion2cli-home-'));
+  const cwd = mkdtempSync(path.join(tmpdir(), 'notion2cli-cwd-'));
+  const originalHome = process.env.NOTION2CLI_HOME;
+  const calls = [];
+  const logs = [];
+  process.env.NOTION2CLI_HOME = home;
+  mkdirSync(path.join(home, 'state'), { recursive: true });
+  writeFileSync(path.join(home, 'state', 'codex-session.json'), JSON.stringify({
+    cwd,
+    threadId: 'thread-old',
+    permissionMode: 'default',
+  }));
+
+  const session = new CodexLiveSession({
+    cwd,
+    permissionMode: 'full-access',
+    log: (message, meta) => logs.push({ message, meta }),
+  });
+  session.request = async (method, params) => {
+    calls.push({ method, params });
+    throw new Error(`unexpected request: ${method}`);
+  };
+  session.startFreshThread = async () => {
+    calls.push({ method: 'startFreshThread' });
+    session.threadId = 'thread-new';
+  };
+
+  try {
+    await session.resumeOrStartThread();
+
+    assert.deepEqual(calls, [{ method: 'startFreshThread' }]);
+    assert.equal(session.threadId, 'thread-new');
+    assert.equal(logs[0]?.message, 'codex live session permission mode changed, starting a fresh thread');
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.NOTION2CLI_HOME;
+    } else {
+      process.env.NOTION2CLI_HOME = originalHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('codex live session persists permission mode in the local snapshot', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'notion2cli-home-'));
+  const originalHome = process.env.NOTION2CLI_HOME;
+  process.env.NOTION2CLI_HOME = home;
+
+  const session = new CodexLiveSession({
+    cwd: '/tmp/notion2cli',
+    permissionMode: 'full-access',
+    log: () => {},
+  });
+  session.threadId = 'thread-1';
+
+  try {
+    await session.persistSnapshot();
+    const raw = readFileSync(path.join(home, 'state', 'codex-session.json'), 'utf8');
+    assert.equal(JSON.parse(raw).permissionMode, 'full-access');
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.NOTION2CLI_HOME;
+    } else {
+      process.env.NOTION2CLI_HOME = originalHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test('codex live session interrupts an active turn when cancelled', async () => {

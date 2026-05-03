@@ -4,6 +4,7 @@ import { buildClaudePrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
 import {
+  buildClaudeLaunchCommand,
   buildClaudePermissionArgs,
   buildPermissionStatus,
   hasClaudePermissionArgs,
@@ -523,15 +524,6 @@ function buildRuntimeMeta(overrides = {}) {
     transport: 'cli-stream-json',
     ...overrides,
   };
-}
-
-function buildClaudeLaunchCommand(permissionMode) {
-  const mode = normalizePermissionMode(permissionMode);
-  if (mode === 'default') {
-    return 'notion2cli claude launch';
-  }
-
-  return `notion2cli claude launch --permission-mode ${mode}`;
 }
 
 function buildClaudeNotionAuthBootstrapPrompt() {

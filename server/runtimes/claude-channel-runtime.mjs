@@ -8,6 +8,7 @@ import {
 import { buildClaudeChannelPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
 import {
+  buildClaudeLaunchCommand,
   buildClaudePermissionArgs,
   buildPermissionStatus,
   normalizePermissionMode,
@@ -380,15 +381,6 @@ function buildWorkerExtraArgs(permissionMode) {
     args.push('--mcp-config', configPath, '--strict-mcp-config');
   }
   return args;
-}
-
-function buildClaudeLaunchCommand(permissionMode) {
-  const mode = normalizePermissionMode(permissionMode);
-  if (mode === 'default') {
-    return 'notion2cli claude launch';
-  }
-
-  return `notion2cli claude launch --permission-mode ${mode}`;
 }
 
 function resolveLatestUserMessage(job) {

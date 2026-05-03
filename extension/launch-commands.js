@@ -18,10 +18,12 @@ export function normalizePermissionMode(value) {
     return candidate;
   }
 
+  console.warn(`Unknown notion2cli permission mode "${candidate}". Falling back to default.`);
   return PERMISSION_MODE_DEFAULT;
 }
 
 export function buildRuntimeLaunchCommand(runtimeId, permissionMode) {
+  // MUST stay in sync with server/core/permission-mode.mjs launch command builders.
   const runtime = String(runtimeId || '').trim().toLowerCase();
   const mode = normalizePermissionMode(permissionMode);
 
@@ -47,4 +49,3 @@ export function getPermissionModeHint(permissionMode) {
       return 'Recommended. Uses the runtime default safety checks.';
   }
 }
-
