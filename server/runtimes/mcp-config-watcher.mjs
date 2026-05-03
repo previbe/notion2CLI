@@ -11,8 +11,10 @@ export class MCPConfigWatcher {
     this.debounceMs = debounceMs;
     this.cached = null;
     this.activeProbe = null;
+    this.probeDirty = false;
     this.debounceTimer = null;
     this.watchers = new Map();
+    this.missingPaths = new Set();
     this.reopenTimers = new Set();
     this.stopped = false;
   }
@@ -52,7 +54,7 @@ export class MCPConfigWatcher {
   }
 
   invalidate() {
-    this._scheduleProbe(0);
+    return this._probe({ force: true });
   }
 
   _attachWatcher(configPath) {
@@ -67,10 +69,12 @@ export class MCPConfigWatcher {
     }
 
     if (!existsSync(configPath)) {
+      this.missingPaths.add(configPath);
       this._scheduleReopen(configPath, REOPEN_AFTER_ERROR_MS);
       return;
     }
 
+    const wasMissing = this.missingPaths.has(configPath);
     let watcher;
     try {
       watcher = watch(configPath, (eventType) => {
@@ -81,17 +85,30 @@ export class MCPConfigWatcher {
       });
       watcher.unref?.();
     } catch (err) {
+      this.missingPaths.add(configPath);
       this.log('mcp watcher attach failed', { configPath, message: err?.message });
       this._scheduleReopen(configPath, REOPEN_AFTER_ERROR_MS);
       return;
     }
 
     watcher.on('error', (err) => {
+      this.missingPaths.add(configPath);
+      const current = this.watchers.get(configPath);
+      if (current === watcher) {
+        try {
+          watcher.close();
+        } catch {}
+        this.watchers.delete(configPath);
+      }
       this.log('mcp watcher error', { configPath, message: err?.message });
       this._scheduleReopen(configPath, REOPEN_AFTER_ERROR_MS);
     });
 
     this.watchers.set(configPath, watcher);
+    this.missingPaths.delete(configPath);
+    if (wasMissing) {
+      this._scheduleProbe(0);
+    }
   }
 
   _scheduleReopen(configPath, delay) {
@@ -110,24 +127,38 @@ export class MCPConfigWatcher {
     }
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
-      this._probe().catch(() => {});
+      this._probe({ force: true }).catch(() => {});
     }, delay);
   }
 
-  async _probe() {
-    if (this.activeProbe) return this.activeProbe;
+  async _probe({ force = false } = {}) {
+    if (this.stopped) return this.cached;
+    if (this.activeProbe) {
+      if (force) {
+        this.probeDirty = true;
+      }
+      await this.activeProbe;
+      return this.cached;
+    }
+
     this.activeProbe = (async () => {
       try {
-        this.cached = await this.runProbe();
-      } catch (err) {
-        this.cached = {
-          status: 'unknown',
-          detail: err?.message || 'Failed to probe MCP status.',
-        };
+        do {
+          this.probeDirty = false;
+          try {
+            this.cached = await this.runProbe();
+          } catch (err) {
+            this.cached = {
+              status: 'unknown',
+              detail: err?.message || 'Failed to probe MCP status.',
+            };
+          }
+        } while (this.probeDirty && !this.stopped);
       } finally {
         this.activeProbe = null;
       }
     })();
-    return this.activeProbe;
+    await this.activeProbe;
+    return this.cached;
   }
 }

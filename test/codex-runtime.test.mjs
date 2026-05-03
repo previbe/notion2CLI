@@ -1,12 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { ClaudeRuntime, parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/codex-prompt.mjs';
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
 import { CodexLiveSession, buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
+
+function setupFakeClaude(scriptLines) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'claude-runtime-'));
+  const binDir = path.join(dir, 'bin');
+  const claudePath = path.join(binDir, 'claude');
+  const originalPath = process.env.PATH;
+  const originalHome = process.env.HOME;
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(claudePath, [...scriptLines, ''].join('\n'));
+  chmodSync(claudePath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ''}`;
+  process.env.HOME = dir;
+
+  return {
+    dir,
+    cleanup() {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
 
 test('codex app-server args keep stdio transport and optional profile overrides', () => {
   const args = buildCodexAppServerArgs({
@@ -304,6 +337,58 @@ notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
       detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
     },
   );
+});
+
+test('ClaudeRuntime reports unknown when claude mcp list exits non-zero', async () => {
+  const fakeClaude = setupFakeClaude([
+    '#!/bin/sh',
+    'if [ "$1" = "--version" ]; then',
+    '  echo "Claude fake 1.0.0"',
+    '  exit 0',
+    'fi',
+    'if [ "$1" = "mcp" ] && [ "$2" = "list" ]; then',
+    '  echo "failed to read Claude MCP config" >&2',
+    '  exit 2',
+    'fi',
+    'exit 99',
+  ]);
+
+  const runtime = new ClaudeRuntime(() => {}, { cwd: fakeClaude.dir });
+  try {
+    await runtime.start({});
+    const status = await runtime.getNotionMcpStatus();
+
+    assert.equal(status.status, 'unknown');
+    assert.match(status.detail, /failed to read Claude MCP config/);
+  } finally {
+    await runtime.stop();
+    fakeClaude.cleanup();
+  }
+});
+
+test('ClaudeRuntime reports unknown without creating watcher when claude is unavailable', async () => {
+  const fakeClaude = setupFakeClaude([
+    '#!/bin/sh',
+    'if [ "$1" = "--version" ]; then',
+    '  echo "Claude fake is unavailable" >&2',
+    '  exit 2',
+    'fi',
+    'exit 99',
+  ]);
+
+  const runtime = new ClaudeRuntime(() => {}, { cwd: fakeClaude.dir });
+  try {
+    await runtime.start({});
+    const status = await runtime.getNotionMcpStatus();
+
+    assert.equal(runtime.ready, false);
+    assert.equal(runtime.mcpConfigWatcher, null);
+    assert.equal(status.status, 'unknown');
+    assert.match(status.detail, /Claude fake is unavailable/);
+  } finally {
+    await runtime.stop();
+    fakeClaude.cleanup();
+  }
 });
 
 test('claude write-back prompt uses the shared structured action rules', () => {

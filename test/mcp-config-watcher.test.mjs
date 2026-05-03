@@ -17,6 +17,17 @@ function makeProbe(values) {
   return probe;
 }
 
+async function waitForCondition(predicate, timeoutMs = 3000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await delay(25);
+  }
+  assert.equal(predicate(), true);
+}
+
 function setupTempConfig() {
   const dir = mkdtempSync(path.join(tmpdir(), 'mcp-watcher-'));
   const file = path.join(dir, '.claude.json');
@@ -80,12 +91,81 @@ test('MCPConfigWatcher.invalidate() forces an immediate re-probe', async () => {
   assert.equal(probe.callCount(), 1);
 
   watcher.invalidate();
-  await delay(50);
+  const status = await watcher.getStatus();
 
   assert.equal(probe.callCount(), 2);
-  assert.deepEqual(await watcher.getStatus(), { status: 'configured', detail: 'second' });
+  assert.deepEqual(status, { status: 'configured', detail: 'second' });
 
   watcher.stop();
+  cleanup();
+});
+
+test('MCPConfigWatcher re-runs after invalidate during an active probe', async () => {
+  const { file, cleanup } = setupTempConfig();
+  let calls = 0;
+  let releaseSecondProbe = null;
+  const probe = async () => {
+    calls += 1;
+    if (calls === 2) {
+      await new Promise((resolve) => {
+        releaseSecondProbe = resolve;
+      });
+    }
+    return {
+      status: calls === 1 ? 'unauthenticated' : 'configured',
+      detail: `probe-${calls}`,
+    };
+  };
+  const watcher = new MCPConfigWatcher({ configPaths: [file], runProbe: probe });
+
+  await watcher.start();
+  assert.equal(calls, 1);
+
+  watcher.invalidate();
+  assert.equal(calls, 2);
+  const freshStatus = watcher.invalidate();
+  releaseSecondProbe();
+
+  assert.deepEqual(await freshStatus, { status: 'configured', detail: 'probe-3' });
+  assert.equal(calls, 3);
+  assert.deepEqual(await watcher.getStatus(), { status: 'configured', detail: 'probe-3' });
+
+  watcher.stop();
+  cleanup();
+});
+
+test('MCPConfigWatcher.stop() prevents an active dirty probe from looping', async () => {
+  const { file, cleanup } = setupTempConfig();
+  let calls = 0;
+  let releaseSecondProbe = null;
+  const probe = async () => {
+    calls += 1;
+    if (calls === 2) {
+      await new Promise((resolve) => {
+        releaseSecondProbe = resolve;
+      });
+    }
+    return {
+      status: calls === 1 ? 'unauthenticated' : 'configured',
+      detail: `probe-${calls}`,
+    };
+  };
+  const watcher = new MCPConfigWatcher({ configPaths: [file], runProbe: probe });
+
+  await watcher.start();
+  assert.equal(calls, 1);
+
+  const firstRefresh = watcher.invalidate();
+  assert.equal(calls, 2);
+  const dirtyRefresh = watcher.invalidate();
+  watcher.stop();
+  releaseSecondProbe();
+
+  assert.deepEqual(await firstRefresh, { status: 'configured', detail: 'probe-2' });
+  assert.deepEqual(await dirtyRefresh, { status: 'configured', detail: 'probe-2' });
+  assert.equal(calls, 2);
+  assert.equal(watcher.activeProbe, null);
+
   cleanup();
 });
 
@@ -114,6 +194,27 @@ test('MCPConfigWatcher skips watcher attach when config file is absent', async (
   await watcher.start();
   assert.equal(probe.callCount(), 1);
   assert.deepEqual(await watcher.getStatus(), { status: 'missing', detail: 'first' });
+
+  watcher.stop();
+  cleanup();
+});
+
+test('MCPConfigWatcher re-probes after an absent watched file is created', async () => {
+  const { dir, cleanup } = setupTempConfig();
+  const missing = path.join(dir, 'mcp-needs-auth-cache.json');
+  const probe = makeProbe([
+    { status: 'unauthenticated', detail: 'first' },
+    { status: 'configured', detail: 'second' },
+  ]);
+  const watcher = new MCPConfigWatcher({ configPaths: [missing], runProbe: probe });
+
+  await watcher.start();
+  assert.equal(probe.callCount(), 1);
+
+  writeFileSync(missing, '{}');
+  await waitForCondition(() => probe.callCount() === 2);
+
+  assert.deepEqual(await watcher.getStatus(), { status: 'configured', detail: 'second' });
 
   watcher.stop();
   cleanup();

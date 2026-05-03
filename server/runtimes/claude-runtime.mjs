@@ -239,7 +239,7 @@ export class ClaudeRuntime {
       runtimeMeta: { runtime: 'claude' },
     });
 
-    this.mcpConfigWatcher?.invalidate();
+    await this.mcpConfigWatcher?.invalidate();
     const notes = [];
     let status = await this.getNotionMcpStatus();
 
@@ -272,7 +272,7 @@ export class ClaudeRuntime {
       }
     }
 
-    this.mcpConfigWatcher?.invalidate();
+    await this.mcpConfigWatcher?.invalidate();
     status = await this.getNotionMcpStatus();
     if (status.status === 'unauthenticated') {
       notes.push('Notion MCP is already configured. Browser authorization will be started from the Activity panel during the first full-page read or write-back.');
@@ -458,6 +458,13 @@ async function probeNotionMcpStatusViaCli({ cwd, log }) {
       cwd: cwd || os.homedir(),
       timeoutMs: 12000,
     });
+    if (result.code !== 0) {
+      const output = compactCommandOutput(result);
+      return {
+        status: 'unknown',
+        detail: output || `claude mcp list exited with code ${result.code ?? 'unknown'}${result.signal ? ` (${result.signal})` : ''}`,
+      };
+    }
     return parseClaudeMcpList(`${result.stdout}\n${result.stderr}`);
   } catch (error) {
     log?.('claude mcp list failed', { message: error?.message });
@@ -515,4 +522,3 @@ function buildClaudeNotionAuthBootstrapPrompt() {
     'Do not summarize the task, and do not claim failure before trying authentication.',
   ].join('\n');
 }
-
