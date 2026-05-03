@@ -1,14 +1,12 @@
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import readline from 'node:readline';
 import { buildClaudePrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
 import { runCommand } from './exec-utils.mjs';
-import { buildClaudeCliArgs, buildStreamJsonUserMessage, ClaudeCliSession } from './claude-cli-session.mjs';
+import { ClaudeCliSession } from './claude-cli-session.mjs';
+import { MCPConfigWatcher } from './mcp-config-watcher.mjs';
 
-const MCP_PROBE_TTL_MS = 300000;
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
 
 export class ClaudeRuntime {
@@ -25,8 +23,7 @@ export class ClaudeRuntime {
     this.ready = false;
     this.statusMessage = 'Waiting to check Claude Code.';
     this.runningJobs = new Map();
-    this.probeSessions = new Set();
-    this.cachedMcpStatus = null;
+    this.mcpConfigWatcher = null;
   }
 
   async start(context) {
@@ -41,6 +38,19 @@ export class ClaudeRuntime {
       this.ready = false;
       this.statusMessage = error?.message || 'Unable to start the claude command.';
     }
+
+    if (this.ready) {
+      this.mcpConfigWatcher = new MCPConfigWatcher({
+        configPaths: [
+          path.join(os.homedir(), '.claude.json'),
+          path.join(os.homedir(), '.claude', 'mcp-needs-auth-cache.json'),
+          path.join(os.homedir(), '.claude', 'mcp_settings.json'),
+        ],
+        runProbe: () => probeNotionMcpStatusViaCli({ cwd: this.cwd, log: this.log }),
+        log: this.log,
+      });
+      await this.mcpConfigWatcher.start();
+    }
   }
 
   async stop() {
@@ -49,10 +59,8 @@ export class ClaudeRuntime {
     }
     this.runningJobs.clear();
 
-    for (const session of this.probeSessions.values()) {
-      session.shutdown();
-    }
-    this.probeSessions.clear();
+    this.mcpConfigWatcher?.stop();
+    this.mcpConfigWatcher = null;
   }
 
   async startPairing() {
@@ -160,7 +168,7 @@ export class ClaudeRuntime {
       throw new Error('No active Claude Code session for this job');
     }
 
-    this.cachedMcpStatus = null;
+    this.mcpConfigWatcher?.invalidate();
     await session.respondToApproval(resolution);
     if (resolution.action !== 'accept') {
       return;
@@ -212,42 +220,13 @@ export class ClaudeRuntime {
   }
 
   async getNotionMcpStatus() {
-    if (this.cachedMcpStatus && Date.now() - this.cachedMcpStatus.checkedAt < MCP_PROBE_TTL_MS) {
-      return this.cachedMcpStatus.value;
+    if (!this.mcpConfigWatcher) {
+      return {
+        status: 'unknown',
+        detail: this.statusMessage || 'Claude Code is not ready.',
+      };
     }
-
-    let value;
-    try {
-      value = await probeClaudeSessionNotionMcpStatus({
-        cwd: this.cwd,
-        model: this.model,
-        extraArgs: this.extraArgs,
-        log: this.log,
-        registerProbeSession: (session) => {
-          this.probeSessions.add(session);
-        },
-        unregisterProbeSession: (session) => {
-          this.probeSessions.delete(session);
-        },
-      });
-    } catch (error) {
-      try {
-        const result = await runCommand('claude', ['mcp', 'list'], { cwd: os.homedir(), timeoutMs: 12000 });
-        value = parseClaudeMcpList(`${result.stdout}\n${result.stderr}`);
-      } catch {
-        value = {
-          status: 'unknown',
-          detail: error?.message || 'Unable to check Claude Code Notion MCP status.',
-        };
-      }
-    }
-
-    this.cachedMcpStatus = {
-      checkedAt: Date.now(),
-      value,
-    };
-
-    return value;
+    return this.mcpConfigWatcher.getStatus();
   }
 
   async installNotionMcp(job) {
@@ -260,7 +239,7 @@ export class ClaudeRuntime {
       runtimeMeta: { runtime: 'claude' },
     });
 
-    this.cachedMcpStatus = null;
+    this.mcpConfigWatcher?.invalidate();
     const notes = [];
     let status = await this.getNotionMcpStatus();
 
@@ -293,7 +272,7 @@ export class ClaudeRuntime {
       }
     }
 
-    this.cachedMcpStatus = null;
+    this.mcpConfigWatcher?.invalidate();
     status = await this.getNotionMcpStatus();
     if (status.status === 'unauthenticated') {
       notes.push('Notion MCP is already configured. Browser authorization will be started from the Activity panel during the first full-page read or write-back.');
@@ -473,36 +452,20 @@ export function parseClaudeMcpList(output) {
   };
 }
 
-export function parseClaudeSessionInitNotionStatus(message) {
-  const servers = Array.isArray(message?.mcp_servers) ? message.mcp_servers : [];
-  const notionServer = servers.find((server) => String(server?.name || '').trim().toLowerCase() === 'notion');
-
-  if (!notionServer) {
+async function probeNotionMcpStatusViaCli({ cwd, log }) {
+  try {
+    const result = await runCommand('claude', ['mcp', 'list'], {
+      cwd: cwd || os.homedir(),
+      timeoutMs: 12000,
+    });
+    return parseClaudeMcpList(`${result.stdout}\n${result.stderr}`);
+  } catch (error) {
+    log?.('claude mcp list failed', { message: error?.message });
     return {
-      status: 'missing',
-      detail: 'Claude Code Notion MCP configuration was not detected.',
+      status: 'unknown',
+      detail: error?.message || 'Unable to check Claude Code Notion MCP status.',
     };
   }
-
-  const status = String(notionServer.status || '').trim().toLowerCase();
-  if (status === 'connected') {
-    return {
-      status: 'configured',
-      detail: 'Claude Code is configured and can use Notion MCP.',
-    };
-  }
-
-  if (status === 'needs-auth') {
-    return {
-      status: 'unauthenticated',
-      detail: 'Claude Code runtime still needs one Notion browser authorization.',
-    };
-  }
-
-  return {
-    status: 'unknown',
-    detail: `Claude Code Notion MCP Status: ${notionServer.status || 'unknown'}`,
-  };
 }
 
 function parseArgs(raw) {
@@ -553,90 +516,3 @@ function buildClaudeNotionAuthBootstrapPrompt() {
   ].join('\n');
 }
 
-function probeClaudeSessionNotionMcpStatus({
-  cwd,
-  model,
-  extraArgs,
-  log,
-  registerProbeSession,
-  unregisterProbeSession,
-}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn('claude', buildClaudeCliArgs({
-      model,
-      extraArgs,
-      addDirs: [cwd],
-    }), {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const reader = readline.createInterface({ input: child.stdout });
-    const session = {
-      shutdown() {
-        reader.close();
-        if (!child.killed) {
-          child.kill('SIGTERM');
-        }
-      },
-    };
-    registerProbeSession?.(session);
-
-    let stderr = '';
-    let settled = false;
-    let timeoutId = null;
-
-    const finish = (fn, value) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      unregisterProbeSession?.(session);
-      session.shutdown();
-      fn(value);
-    };
-
-    reader.on('line', (line) => {
-      if (!line.trim()) {
-        return;
-      }
-
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        log?.('claude probe emitted invalid JSON', { line });
-        return;
-      }
-
-      if (message?.type === 'system' && message?.subtype === 'init') {
-        finish(resolve, parseClaudeSessionInitNotionStatus(message));
-      }
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString('utf8');
-    });
-
-    child.on('error', (error) => {
-      finish(reject, new Error(error?.message || 'Failed to start Claude Code probe'));
-    });
-
-    child.on('close', (code, signal) => {
-      if (settled) {
-        return;
-      }
-
-      const reason = stderr.trim() || `Claude Code probe exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`;
-      finish(reject, new Error(reason));
-    });
-
-    timeoutId = setTimeout(() => {
-      finish(reject, new Error('Timed out while waiting for Claude Code MCP status'));
-    }, 6000);
-
-    child.stdin.write(`${JSON.stringify(buildStreamJsonUserMessage('Reply exactly ok.'))}\n`);
-  });
-}

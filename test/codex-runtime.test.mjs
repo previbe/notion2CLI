@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClaudeMcpList, parseClaudeSessionInitNotionStatus } from '../server/runtimes/claude-runtime.mjs';
+import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/codex-prompt.mjs';
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
@@ -302,32 +302,6 @@ notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
     {
       status: 'unauthenticated',
       detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
-    },
-  );
-});
-
-test('parseClaudeSessionInitNotionStatus uses the runtime session view of Claude MCP state', () => {
-  assert.deepEqual(
-    parseClaudeSessionInitNotionStatus({
-      mcp_servers: [
-        { name: 'notion', status: 'connected' },
-      ],
-    }),
-    {
-      status: 'configured',
-      detail: 'Claude Code is configured and can use Notion MCP.',
-    },
-  );
-
-  assert.deepEqual(
-    parseClaudeSessionInitNotionStatus({
-      mcp_servers: [
-        { name: 'notion', status: 'needs-auth' },
-      ],
-    }),
-    {
-      status: 'unauthenticated',
-      detail: 'Claude Code runtime still needs one Notion browser authorization.',
     },
   );
 });
