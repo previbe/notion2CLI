@@ -1,6 +1,6 @@
 {
   "name": "notion2cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "Run Claude Code or Codex directly from Notion through a local Chrome extension bridge.",
   "license": "MIT",
