@@ -14,15 +14,27 @@ import { StandaloneRuntime } from './runtimes/standalone-runtime.mjs';
 export async function startBridgeServer(options = {}) {
   const runtimeId = options.runtimeId || process.env.NOTION2CLI_RUNTIME || 'standalone';
   const host = options.host || HOST;
-  const port = Number(options.port || DEFAULT_PORT);
+  const port = Number(options.port ?? DEFAULT_PORT);
   const cwd = options.cwd || process.env.NOTION2CLI_WORKSPACE_CWD || process.cwd();
   const permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
   const log = options.log || createLogger();
-  const runtime = createRuntime(runtimeId, log, { cwd, permissionMode });
+  const runtime = options.runtime || createRuntime(runtimeId, log, { cwd, permissionMode });
   const app = new BridgeApp({ runtime, log });
   const httpServer = createBridgeHttpServer(app, log, { host, port });
-
   let closed = false;
+  const startup = app.start()
+    .then(async () => {
+      if (closed) {
+        await app.stop();
+      }
+    })
+    .catch((error) => {
+      log('bridge runtime startup failed', {
+        runtime: runtime.id || runtimeId,
+        error: error?.message || 'Unknown runtime startup error',
+      });
+    });
+
   const shutdown = async (reason = 'shutdown') => {
     if (closed) {
       return;
@@ -45,13 +57,13 @@ export async function startBridgeServer(options = {}) {
   process.once('SIGINT', handleSignal);
   process.once('SIGTERM', handleSignal);
 
-  await app.start();
   const address = await httpServer.listen();
 
   return {
     app,
     httpServer,
     address,
+    startup,
     shutdown,
     runtimeId,
     cwd,

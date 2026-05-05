@@ -260,6 +260,12 @@ export class CodexRuntime {
   async getStatus() {
     const session = this.liveSession?.getSnapshot() || null;
     const ready = Boolean(this.ready && session?.ready);
+    const notionMcp = ready
+      ? await this.getNotionMcpStatus()
+      : {
+          status: 'unknown',
+          detail: this.statusMessage || 'Codex CLI is still starting.',
+        };
 
     return {
       runtime: {
@@ -276,7 +282,7 @@ export class CodexRuntime {
         attachCommand: session?.attachCommand || 'notion2cli codex attach',
       },
       session,
-      notionMcp: await this.getNotionMcpStatus(),
+      notionMcp,
     };
   }
 

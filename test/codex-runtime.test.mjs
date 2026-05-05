@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ClaudeRuntime, parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/codex-prompt.mjs';
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
-import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
+import { CodexRuntime, buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
 import {
   CodexLiveSession,
@@ -213,6 +213,48 @@ test('codex live session persists permission mode in the local snapshot', async 
       process.env.NOTION2CLI_HOME = originalHome;
     }
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('CodexRuntime status avoids slow MCP probes while startup is not ready', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'codex-runtime-'));
+  const binDir = path.join(dir, 'bin');
+  const codexPath = path.join(binDir, 'codex');
+  const probeFile = path.join(dir, 'mcp-probe-called');
+  const originalPath = process.env.PATH;
+  const originalProbeFile = process.env.CODEX_PROBE_FILE;
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(codexPath, [
+    '#!/bin/sh',
+    'if [ "$1" = "mcp" ]; then',
+    '  echo called > "$CODEX_PROBE_FILE"',
+    'fi',
+    'exit 0',
+    '',
+  ].join('\n'));
+  chmodSync(codexPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ''}`;
+  process.env.CODEX_PROBE_FILE = probeFile;
+
+  const runtime = new CodexRuntime(() => {}, { cwd: dir });
+  try {
+    const status = await runtime.getStatus();
+
+    assert.equal(status.runtime.ready, false);
+    assert.equal(status.notionMcp.status, 'unknown');
+    assert.equal(existsSync(probeFile), false);
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    if (originalProbeFile === undefined) {
+      delete process.env.CODEX_PROBE_FILE;
+    } else {
+      process.env.CODEX_PROBE_FILE = originalProbeFile;
+    }
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
