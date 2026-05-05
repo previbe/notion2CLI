@@ -7,6 +7,12 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { buildClaudeChannelPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP } from '../core/constants.mjs';
+import {
+  buildClaudeLaunchCommand,
+  buildClaudePermissionArgs,
+  buildPermissionStatus,
+  normalizePermissionMode,
+} from '../core/permission-mode.mjs';
 import { ClaudeRuntime } from './claude-runtime.mjs';
 
 const DEFAULT_CHANNEL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -18,6 +24,7 @@ export class ClaudeChannelRuntime {
     this.log = log;
     this.context = null;
     this.cwd = options.cwd || process.cwd();
+    this.permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
     this.connected = false;
     this.statusMessage = 'Waiting for a Claude Code channel session to attach.';
     this.channelName = buildClaudeChannelName(this.cwd);
@@ -31,11 +38,12 @@ export class ClaudeChannelRuntime {
     this.latestSharableAssistantAt = null;
     this.workerRuntime = new ClaudeRuntime(log, {
       cwd: this.cwd,
-      extraArgs: buildWorkerExtraArgs(),
+      permissionMode: this.permissionMode,
+      extraArgs: buildWorkerExtraArgs(this.permissionMode),
     });
 
     this.mcp = new Server(
-      { name: 'notion2cli-bridge', version: '0.1.0' },
+      { name: 'notion2cli-bridge', version: '0.1.2' },
       {
         capabilities: {
           experimental: { 'claude/channel': {} },
@@ -242,8 +250,9 @@ export class ClaudeChannelRuntime {
         ready,
         standalone: false,
         cwd: this.cwd,
+        ...buildPermissionStatus(this.id, this.permissionMode),
         pairingCommand: 'notion2cli pair',
-        launchCommand: 'notion2cli claude launch',
+        launchCommand: buildClaudeLaunchCommand(this.permissionMode),
         attachCommand: 'notion2cli claude inspect',
         statusMessage: this.statusMessage,
       },
@@ -365,8 +374,8 @@ function buildRuntimeMeta(overrides = {}) {
   };
 }
 
-function buildWorkerExtraArgs() {
-  const args = [];
+function buildWorkerExtraArgs(permissionMode) {
+  const args = [...buildClaudePermissionArgs(permissionMode)];
   const configPath = String(process.env.NOTION2CLI_CLAUDE_WORKER_MCP_CONFIG || '').trim();
   if (configPath) {
     args.push('--mcp-config', configPath, '--strict-mcp-config');

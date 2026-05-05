@@ -377,7 +377,7 @@ test('bridge app exposes prompt profile CRUD and stores job profile snapshots', 
     });
 
     const initialProfiles = await getJson(`${baseUrl}/api/prompt-profiles`, confirmResponse.token);
-    assert.deepEqual(initialProfiles.profiles.map((profile) => profile.id), ['raw', 'build']);
+    assert.deepEqual(initialProfiles.profiles.map((profile) => profile.id), ['raw', 'previbe', 'build']);
 
     const createResponse = await postJson(`${baseUrl}/api/prompt-profiles`, {
       name: 'Translate',

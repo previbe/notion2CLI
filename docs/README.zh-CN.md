@@ -1,6 +1,6 @@
 # notion2CLI
 
-[English README](../README.md) | [架构说明](ARCHITECTURE.md) | [安全策略](../SECURITY.md) | [隐私政策](../PRIVACY.md) | [贡献指南](../CONTRIBUTING.md)
+[Chrome Web Store](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) | [English README](../README.md) | [架构说明](ARCHITECTURE.md) | [安全策略](../SECURITY.md) | [隐私政策](../PRIVACY.md) | [贡献指南](../CONTRIBUTING.md)
 
 > 英文 `README.md` 是项目主 README。本文是中文阅读辅助，产品界面、CLI 输出、贡献流程和默认文档仍以英文为准。
 
@@ -37,7 +37,7 @@ notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge�
 | --- | --- |
 | Node.js | `>=22.15.0` |
 | 包管理器 | `npm` 和 `package-lock.json` |
-| 浏览器 | Google Chrome，手动加载 Manifest V3 extension |
+| 浏览器 | Google Chrome，并安装 [Chrome Web Store 扩展](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) |
 | 操作系统 | macOS 是主要测试目标；Linux 和 Windows 暂未正式支持 |
 | Codex | 本地安装 Codex CLI；`notion2cli codex open` 仅支持 macOS |
 | Claude | 本地安装 Claude Code；Claude Desktop 不是输入目标 |
@@ -51,7 +51,13 @@ notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge�
 npm install -g notion2cli
 ```
 
-Chrome Web Store 上架前，先从源码加载扩展：
+从 Chrome Web Store 安装扩展：
+
+```text
+https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio
+```
+
+如果是本地开发，仍然可以从源码加载扩展：
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
@@ -59,7 +65,7 @@ cd notion2CLI
 npm install
 ```
 
-加载 Chrome 扩展：
+加载开发版 Chrome 扩展：
 
 1. 打开 `chrome://extensions`。
 2. 启用 Developer mode。
@@ -82,13 +88,20 @@ notion2cli mcp install notion --runtime codex
 notion2cli daemon start --runtime codex
 ```
 
+也可以先在 Chrome popup 的 Start CLI 模块选择启动权限，再复制生成的命令；或显式传参：
+
+```bash
+notion2cli daemon start --runtime codex --permission-mode auto-review
+notion2cli daemon start --runtime codex --permission-mode full-access
+```
+
 创建浏览器配对码：
 
 ```bash
 notion2cli pair
 ```
 
-然后打开 Chrome 工具栏里的 `notion2CLI` popup，粘贴 6 位配对码并连接。进入任意 Notion 页面后，可以在 Activity 面板里运行 `Raw`、`Build` 或自定义 prompt profile。
+然后打开 Chrome 工具栏里的 `notion2CLI` popup，粘贴 6 位配对码并连接。进入任意 Notion 页面后，可以在 Activity 面板里运行 `Raw`、`PreVibe`、`Build` 或自定义 prompt profile。
 
 常用 Codex 命令：
 
@@ -105,6 +118,13 @@ Claude Code 使用前台 channel session，不走后台 daemon：
 
 ```bash
 notion2cli claude launch
+```
+
+Claude Code 启动时也支持相同的 notion2cli 权限模式：
+
+```bash
+notion2cli claude launch --permission-mode auto-review
+notion2cli claude launch --permission-mode full-access
 ```
 
 保持这个终端窗口打开。另开一个终端创建浏览器配对码：
@@ -148,9 +168,10 @@ bridge 会创建 job，并把选中文本作为下一条用户输入交给当前
 
 ### Prompt profiles
 
-Activity 面板提供 `Raw`、`Build` 和自定义 prompt profiles。
+Activity 面板提供 `Raw`、`PreVibe`、`Build` 和自定义 prompt profiles。
 
 - `Raw` 会把 Notion 素材原样作为任务输入。
+- `PreVibe` 会把 Notion 素材提炼成可进入开发的 brief。
 - `Build` 会把 Notion 素材当作软件开发任务 brief。
 - 自定义 profiles 存在本地 `~/.notion2cli/prompts.json`。
 
@@ -199,6 +220,8 @@ notion2CLI 是 local-first 工具，但它仍然会在本地组件之间移动�
 - 配对状态保存在本地 bridge 进程中，bridge 重启后会重置。
 - 整页读取和写回由所选运行时通过 Notion MCP 执行。
 - Notion 内容会发送给本地 Codex 或 Claude Code 运行时。这些工具可能按各自配置和服务条款使用网络服务。
+- 启动权限模式包括 `default`、`auto-review` 和 `full-access`。推荐使用 `default`。`full-access` 会关闭所选 CLI runtime 的沙箱和审批提示，只应在可信工作区或外部沙箱中使用。
+- 修改权限模式后需要重启 CLI 或 daemon 才会生效。Notion OAuth 授权是独立流程，仍可能需要浏览器确认。
 - 远程图片下载有数量和大小限制，默认阻止私有网络图片 URL。
 
 ## 开发
@@ -228,16 +251,12 @@ npm run package:extension
 6. 确认最终结果出现在 Activity 面板。
 7. 如果启用了手动写回，追加结果到 Notion 页面，并确认目标页面按预期变化。
 
-## 发布材料
+## Release Notes 和打包材料
 
-公开发布材料位于：
+公开 release 和商店材料位于：
 
-- `docs/release/RELEASE_GUIDE.zh-CN.md`
-- `docs/release/RELEASE_CHECKLIST.md`
-- `docs/release/GITHUB_RELEASE_NOTES.md`
-- `docs/release/NPM_RELEASE.md`
+- `docs/RELEASE_NOTES.md`
 - `chrome-store/`
-- `marketing/`
 
 生成 Chrome Web Store zip：
 
@@ -256,7 +275,7 @@ npm run package:extension
 - Chrome permissions 保持窄范围。默认 bridge origin 是 `http://127.0.0.1:43821`。
 - 交付代码改动前运行 `npm run check` 和 `npm test`。
 - 涉及打包或发布时运行 `npm pack --dry-run` 并检查 tarball 文件列表。
-- 发布材料在 `docs/release/`、`chrome-store/` 和 `marketing/`。
+- 公开 release note 在 `docs/RELEASE_NOTES.md`，Chrome Web Store 公开材料在 `chrome-store/`。
 
 常用文件地图：
 

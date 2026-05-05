@@ -1,6 +1,14 @@
+import {
+  PERMISSION_MODE_DEFAULT,
+  buildRuntimeLaunchCommand,
+  getPermissionModeHint,
+  normalizePermissionMode,
+} from './launch-commands.js';
+
 const NOTION_MCP_DOC_URL = 'https://developers.notion.com/guides/mcp/get-started-with-mcp';
 const WRITE_MODE_STORAGE_KEY = 'notion2cli.writeMode';
 const MANUAL_WRITEBACK_VISIBLE_STORAGE_KEY = 'notion2cli.manualWritebackVisible';
+const PERMISSION_MODE_STORAGE_KEY = 'notion2cli.permissionMode';
 const WRITE_MODE_APPEND_SECTION = 'append_markdown_section';
 const WRITE_MODE_UPDATE_CONTENT = 'update_content';
 const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
@@ -8,6 +16,7 @@ const WRITE_MODE_REPLACE_CONTENT = 'replace_content';
 const popupState = {
   status: null,
   selectedRuntime: 'codex',
+  permissionMode: PERMISSION_MODE_DEFAULT,
   writeMode: WRITE_MODE_APPEND_SECTION,
   manualWritebackVisible: false,
   lastErrorMessage: '',
@@ -38,6 +47,9 @@ const pairCommandBlock = document.querySelector('[data-pair-command-block]');
 const pairCommandLabel = document.querySelector('[data-pair-command-label]');
 const pairCommand = document.querySelector('[data-pair-command]');
 const copyPairCommandButton = document.querySelector('[data-copy-pair-command]');
+const permissionSetup = document.querySelector('[data-permission-setup]');
+const permissionModeSelect = document.querySelector('[data-permission-mode-select]');
+const permissionModeHint = document.querySelector('[data-permission-mode-hint]');
 const stopCommand = document.querySelector('[data-stop-command]');
 const copyStopCommandButton = document.querySelector('[data-copy-stop-command]');
 const codeInput = document.querySelector('[data-code-input]');
@@ -51,6 +63,8 @@ const installStatus = document.querySelector('[data-install-status]');
 const manualWritebackToggle = document.querySelector('[data-manual-writeback-toggle]');
 const writeModeSelect = document.querySelector('[data-write-mode-select]');
 const writeModeHint = document.querySelector('[data-write-mode-hint]');
+const notificationsToggle = document.querySelector('[data-notifications-toggle]');
+const notificationsStatus = document.querySelector('[data-notifications-status]');
 
 connectButton.addEventListener('click', connectBridge);
 codeInput.addEventListener('input', handleCodeInput);
@@ -59,13 +73,17 @@ copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyC
 copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
 copyStopCommandButton.addEventListener('click', () => copyCommand(stopCommand, copyStopCommandButton));
 installButton.addEventListener('click', sendInstallRequest);
+permissionModeSelect.addEventListener('change', handlePermissionModeChange);
 manualWritebackToggle.addEventListener('change', handleManualWritebackVisibleChange);
 writeModeSelect.addEventListener('change', handleWriteModeChange);
 runtimeButtons.forEach((button) => {
   button.addEventListener('click', () => selectRuntime(button.dataset.runtimeButton));
 });
+notificationsToggle.addEventListener('change', handleNotificationsToggle);
 
+loadStartupPreference();
 loadWriteSettingsPreference();
+syncNotificationsToggle();
 refreshStatus();
 setInterval(() => {
   refreshStatus().catch(() => {});
@@ -97,6 +115,7 @@ function renderStatus(status) {
   renderHistoryHint(status);
   updateVisualState(status, access, connected);
   updateRuntimeSwitch(nextStep.showRuntimeSwitch);
+  updatePermissionSetup(nextStep.showPermissionSetup);
   updatePairSection(connected);
   stepCard.classList.toggle('hidden', Boolean(nextStep.hideStepCard));
 
@@ -121,6 +140,7 @@ function renderDisconnectedState(message) {
   popupRoot.dataset.state = 'offline';
   stepCard.classList.remove('hidden');
   updateRuntimeSwitch(true);
+  updatePermissionSetup(true);
   updatePairSection(false);
   stepTitle.textContent = 'Start CLI';
   stepBody.textContent = 'Run these two commands in order: start the target runtime, then generate a 6-digit pairing code.';
@@ -178,11 +198,14 @@ function buildStatusValue(status) {
 
 function buildStatusHint(status) {
   const runtime = status.runtime || {};
+  const permissionText = runtime.permissionLabel && !runtime.standalone
+    ? ` Current permissions: ${runtime.permissionLabel}.`
+    : '';
 
   if (status.paired && runtime.ready) {
     return runtime.standalone
       ? 'Debug mode is active. Page actions return simulated results and do not call real Notion.'
-      : `The browser is connected to the current ${runtime.label || 'Agent'} session. Return to the Notion page and click Run current page to start.`;
+      : `The browser is connected to the current ${runtime.label || 'Agent'} session. Return to the Notion page and click Run current page to start.${permissionText}`;
   }
 
   if (status.awaitingPairCode) {
@@ -193,7 +216,7 @@ function buildStatusHint(status) {
     return `Start CLI: ${getSelectedRuntimeLaunchCommand()}`;
   }
 
-  return 'Run the pairing command to generate a 6-digit code, then finish browser connection below.';
+  return `Run the pairing command to generate a 6-digit code, then finish browser connection below.${permissionText}`;
 }
 
 function renderHistoryHint(status) {
@@ -225,6 +248,7 @@ function getNextStep(status) {
       secondaryCommandLabel: 'Generate pairing code',
       secondaryCommand: 'notion2cli pair',
       showRuntimeSwitch: true,
+      showPermissionSetup: true,
     };
   }
 
@@ -552,12 +576,47 @@ function updateRuntimeSwitch(visible) {
   });
 }
 
+function updatePermissionSetup(visible) {
+  permissionSetup.classList.toggle('hidden', !visible);
+  permissionModeSelect.value = popupState.permissionMode;
+  permissionModeHint.textContent = getPermissionModeHint(popupState.permissionMode);
+}
+
 function getSelectedRuntimeLaunchCommand() {
-  if (popupState.selectedRuntime === 'claude') {
-    return 'notion2cli claude launch';
+  return buildRuntimeLaunchCommand(popupState.selectedRuntime, popupState.permissionMode);
+}
+
+async function loadStartupPreference() {
+  try {
+    const data = await chrome.storage.local.get([PERMISSION_MODE_STORAGE_KEY]);
+    popupState.permissionMode = normalizePermissionMode(data[PERMISSION_MODE_STORAGE_KEY]);
+  } catch {
+    popupState.permissionMode = PERMISSION_MODE_DEFAULT;
   }
 
-  return 'notion2cli daemon start --runtime codex';
+  updatePermissionSetup(true);
+  if (popupState.status) {
+    renderStatus(popupState.status);
+    return;
+  }
+
+  renderDisconnectedState(popupState.lastErrorMessage || 'Make sure the notion2CLI bridge is running.');
+}
+
+async function handlePermissionModeChange() {
+  popupState.permissionMode = normalizePermissionMode(permissionModeSelect.value);
+  updatePermissionSetup(true);
+  if (popupState.status) {
+    renderStatus(popupState.status);
+  } else {
+    renderDisconnectedState(popupState.lastErrorMessage || 'Make sure the notion2CLI bridge is running.');
+  }
+
+  try {
+    await chrome.storage.local.set({
+      [PERMISSION_MODE_STORAGE_KEY]: popupState.permissionMode,
+    });
+  } catch {}
 }
 
 async function loadWriteSettingsPreference() {
@@ -638,6 +697,39 @@ function normalizeWriteMode(mode) {
     default:
       return WRITE_MODE_APPEND_SECTION;
   }
+}
+
+async function syncNotificationsToggle() {
+  try {
+    const granted = await chrome.permissions.contains({ permissions: ['notifications'] });
+    notificationsToggle.checked = granted;
+    notificationsStatus.textContent = granted
+      ? 'Browser notifications are enabled.'
+      : 'Browser notifications are disabled. Only the toolbar badge is shown.';
+  } catch (error) {
+    notificationsStatus.textContent = error.message || 'Cannot read notifications permission.';
+  }
+}
+
+async function handleNotificationsToggle() {
+  if (notificationsToggle.checked) {
+    try {
+      const granted = await chrome.permissions.request({ permissions: ['notifications'] });
+      if (!granted) {
+        notificationsToggle.checked = false;
+      }
+    } catch (error) {
+      notificationsToggle.checked = false;
+      notificationsStatus.textContent = error.message || 'Failed to request notifications permission.';
+      return;
+    }
+  } else {
+    try {
+      await chrome.permissions.remove({ permissions: ['notifications'] });
+    } catch {}
+  }
+
+  await syncNotificationsToggle();
 }
 
 function formatJobStatus(status) {

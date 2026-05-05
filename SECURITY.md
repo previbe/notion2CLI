@@ -44,6 +44,14 @@ Notion access:
 - Full-page reads and write-backs go through the selected runtime's Notion MCP configuration.
 - If Codex CLI or Claude Code sends data to external services, that behavior is governed by those tools and their configuration.
 
+CLI permissions:
+
+- The default startup permission mode is recommended.
+- `auto-review` reduces manual prompts, but it does not make Notion page content trusted.
+- `full-access` disables sandbox and approval prompts for the selected CLI runtime. Use it only in trusted workspaces or external sandboxes.
+- Permission mode changes require restarting the CLI or daemon.
+- Notion OAuth authorization is separate from CLI permissions and may still require browser approval.
+
 Artifacts:
 
 - Supported page images may be downloaded into `~/.notion2cli/state/artifacts/`.

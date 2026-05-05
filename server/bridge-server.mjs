@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BridgeApp } from './core/bridge-app.mjs';
 import { DEFAULT_PORT, HOST } from './core/constants.mjs';
+import { normalizePermissionMode } from './core/permission-mode.mjs';
 import { createBridgeHttpServer } from './core/http-server.mjs';
 import { ClaudeChannelRuntime } from './runtimes/claude-channel-runtime.mjs';
 import { ClaudeRuntime } from './runtimes/claude-runtime.mjs';
@@ -13,14 +14,27 @@ import { StandaloneRuntime } from './runtimes/standalone-runtime.mjs';
 export async function startBridgeServer(options = {}) {
   const runtimeId = options.runtimeId || process.env.NOTION2CLI_RUNTIME || 'standalone';
   const host = options.host || HOST;
-  const port = Number(options.port || DEFAULT_PORT);
+  const port = Number(options.port ?? DEFAULT_PORT);
   const cwd = options.cwd || process.env.NOTION2CLI_WORKSPACE_CWD || process.cwd();
+  const permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
   const log = options.log || createLogger();
-  const runtime = createRuntime(runtimeId, log, { cwd });
+  const runtime = options.runtime || createRuntime(runtimeId, log, { cwd, permissionMode });
   const app = new BridgeApp({ runtime, log });
   const httpServer = createBridgeHttpServer(app, log, { host, port });
-
   let closed = false;
+  const startup = app.start()
+    .then(async () => {
+      if (closed) {
+        await app.stop();
+      }
+    })
+    .catch((error) => {
+      log('bridge runtime startup failed', {
+        runtime: runtime.id || runtimeId,
+        error: error?.message || 'Unknown runtime startup error',
+      });
+    });
+
   const shutdown = async (reason = 'shutdown') => {
     if (closed) {
       return;
@@ -43,16 +57,17 @@ export async function startBridgeServer(options = {}) {
   process.once('SIGINT', handleSignal);
   process.once('SIGTERM', handleSignal);
 
-  await app.start();
   const address = await httpServer.listen();
 
   return {
     app,
     httpServer,
     address,
+    startup,
     shutdown,
     runtimeId,
     cwd,
+    permissionMode,
   };
 }
 
@@ -78,6 +93,7 @@ function parseOptions(argv, env) {
     host: env.NOTION2CLI_HOST || HOST,
     port: Number(env.NOTION2CLI_PORT || DEFAULT_PORT),
     cwd: env.NOTION2CLI_WORKSPACE_CWD || process.cwd(),
+    permissionMode: normalizePermissionMode(env.NOTION2CLI_PERMISSION_MODE),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -104,6 +120,12 @@ function parseOptions(argv, env) {
 
     if (arg === '--cwd' && next) {
       options.cwd = path.resolve(next);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--permission-mode' && next) {
+      options.permissionMode = normalizePermissionMode(next);
       index += 1;
     }
   }

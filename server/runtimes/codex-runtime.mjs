@@ -1,11 +1,16 @@
 import { buildCodexPrompt } from '../core/codex-prompt.mjs';
 import { ACTION_INSTALL_NOTION_MCP, ACTION_WRITE_REPLY } from '../core/constants.mjs';
 import { buildRuntimePageBundleFetchPrompt } from '../core/mcp-page-bundle.mjs';
+import {
+  buildCodexLaunchCommand,
+  buildPermissionStatus,
+  normalizePermissionMode,
+} from '../core/permission-mode.mjs';
 import { CodexAppServerSession, buildCodexAppServerArgs, buildCodexInputItems } from './codex-app-server-session.mjs';
 import { CodexLiveSession } from './codex-live-session.mjs';
 import { runCommand } from './exec-utils.mjs';
 
-const MCP_PROBE_TTL_MS = 15000;
+const MCP_PROBE_TTL_MS = 300000;
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
 
 export class CodexRuntime {
@@ -15,6 +20,7 @@ export class CodexRuntime {
     this.log = log;
     this.context = null;
     this.cwd = options.cwd || process.cwd();
+    this.permissionMode = normalizePermissionMode(options.permissionMode || process.env.NOTION2CLI_PERMISSION_MODE);
     this.model = process.env.NOTION2CLI_CODEX_MODEL || '';
     this.profile = process.env.NOTION2CLI_CODEX_PROFILE || '';
     this.extraArgs = parseArgs(process.env.NOTION2CLI_CODEX_EXTRA_ARGS || '');
@@ -41,6 +47,7 @@ export class CodexRuntime {
         model: this.model,
         profile: this.profile,
         extraArgs: this.extraArgs,
+        permissionMode: this.permissionMode,
         log: this.log,
       });
       await this.liveSession.start();
@@ -253,6 +260,12 @@ export class CodexRuntime {
   async getStatus() {
     const session = this.liveSession?.getSnapshot() || null;
     const ready = Boolean(this.ready && session?.ready);
+    const notionMcp = ready
+      ? await this.getNotionMcpStatus()
+      : {
+          status: 'unknown',
+          detail: this.statusMessage || 'Codex CLI is still starting.',
+        };
 
     return {
       runtime: {
@@ -262,13 +275,14 @@ export class CodexRuntime {
         ready,
         standalone: false,
         cwd: this.cwd,
+        ...buildPermissionStatus(this.id, this.permissionMode),
         pairingCommand: 'notion2cli pair',
-        launchCommand: 'notion2cli daemon start --runtime codex',
+        launchCommand: buildCodexLaunchCommand(this.permissionMode),
         statusMessage: this.statusMessage,
         attachCommand: session?.attachCommand || 'notion2cli codex attach',
       },
       session,
-      notionMcp: await this.getNotionMcpStatus(),
+      notionMcp,
     };
   }
 
@@ -430,6 +444,7 @@ export class CodexRuntime {
         model: this.model,
         profile: this.profile,
         extraArgs: this.extraArgs,
+        permissionMode: this.permissionMode,
         log: this.log,
         onRunning: ({ threadId, turnId }) => {
           this.log('codex auxiliary session running', {

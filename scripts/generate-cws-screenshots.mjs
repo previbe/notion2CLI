@@ -213,7 +213,7 @@ function renderNotionPage(scene) {
 }
 
 function renderActivityPanel(scene) {
-  const taskButtons = ['Raw', 'Build', 'Bug Triage', 'Ship Checklist'];
+  const taskButtons = ['Raw', 'PreVibe', 'Build', 'Bug Triage', 'Ship Checklist'];
   return `<aside class="activity">
     <div class="activity-head">
       <span class="ready-dot"></span>
@@ -307,6 +307,7 @@ function renderPromptModal() {
       <div class="prompt-editor">
         <div class="prompt-list">
           <button>Raw</button>
+          <button>PreVibe</button>
           <button>Build</button>
           <button class="active">Ship Checklist</button>
           <button>Bug Triage</button>

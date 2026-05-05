@@ -1,4 +1,4 @@
-# notion2CLI v0.1.0
+# notion2CLI v0.1.2
 
 notion2CLI turns a Notion page into the rich-text input surface for a local Codex or Claude Code session.
 
@@ -14,7 +14,7 @@ Select text in Notion, or run the whole page, and notion2CLI sends that content 
 - Local image artifact preparation for Notion page images.
 - Stable visible Codex App session support.
 - Claude Code channel support through `notion2cli claude launch`.
-- Prompt profiles, including `Raw` and `Build`.
+- Prompt profiles, including `Raw`, `PreVibe`, and `Build`.
 - Optional manual write-back modes: append, replace selection, replace page body.
 
 ## Install
@@ -23,7 +23,11 @@ Select text in Notion, or run the whole page, and notion2CLI sends that content 
 npm install -g notion2cli
 ```
 
-Then load the Chrome extension from the release asset or from the `extension/` directory.
+Then install the Chrome extension from the Chrome Web Store:
+
+```text
+https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio
+```
 
 ## Requirements
 
@@ -51,7 +55,7 @@ notion2cli claude launch
 notion2cli pair
 ```
 
-Paste the pairing code into the Chrome extension popup, then open a Notion page and run `Raw`, `Build`, or a custom prompt profile.
+Paste the pairing code into the Chrome extension popup, then open a Notion page and run `Raw`, `PreVibe`, `Build`, or a custom prompt profile.
 
 ## Security Notes
 

@@ -3,11 +3,25 @@ import { getAppPaths, readJsonFile, writeJsonFile } from '../../cli/paths.mjs';
 import { createHttpError, nowIso } from './constants.mjs';
 
 export const PROMPT_PROFILE_RAW = 'raw';
+export const PROMPT_PROFILE_PREVIBE = 'previbe';
 export const PROMPT_PROFILE_BUILD = 'build';
 
 const STORE_VERSION = 1;
 const MAX_NAME_LENGTH = 48;
 const MAX_INSTRUCTION_LENGTH = 50000;
+
+const PREVIBE_INSTRUCTION = `Move the input document toward a development-ready brief without losing useful information.
+
+## Rules
+
+- Preserve information value. Compress or remove source notes only after their useful content has been absorbed.
+- Treat meeting notes, quick starts, loose ideas, questions, and other seed material as raw input to distill.
+- Mark every inference with ⚠️ and an impact label: 🟢 low (easy to change), 🟡 medium (directional), 🔴 high (needs user confirmation).
+- Put one blank line between separate confirmation items.
+- Do not invent requirements or constraints. When details are missing, mark a ⚠️ assumption and keep progressing on parts that do not depend on it.
+- Optimize for decision-ready information, not formatting. Be concise and avoid unnecessary process detail.
+- Match the document's primary language unless the user asks for another language.
+- Return only a Brief. Do not include a long process log.`;
 
 const BUILD_INSTRUCTION = `Turn the requirements in the input document into concrete changes in the current codebase, then finish with a Brief.
 Match the output language to the document's primary language.
@@ -57,6 +71,17 @@ const BUILTIN_PROFILES = [
     order: 10,
   },
   {
+    id: PROMPT_PROFILE_PREVIBE,
+    name: 'PreVibe',
+    instruction: PREVIBE_INSTRUCTION,
+    source: 'builtin',
+    builtin: true,
+    editable: true,
+    deletable: true,
+    resettable: true,
+    order: 20,
+  },
+  {
     id: PROMPT_PROFILE_BUILD,
     name: 'Build',
     instruction: BUILD_INSTRUCTION,
@@ -65,7 +90,7 @@ const BUILTIN_PROFILES = [
     editable: true,
     deletable: true,
     resettable: true,
-    order: 20,
+    order: 25,
   },
 ];
 
@@ -264,7 +289,7 @@ export class PromptProfileStore {
         editable: builtin.editable,
         deletable: builtin.deletable,
         resettable: builtin.resettable,
-        order: Number.isFinite(Number(override?.order)) ? Number(override.order) : builtin.order,
+        order: builtin.order,
       }));
     }
 

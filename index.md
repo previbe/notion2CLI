@@ -11,7 +11,8 @@ notion2CLI is a local-first Chrome extension and command-line bridge. It sends s
 - [Source Code](https://github.com/previbe/notion2CLI)
 - [Support](https://github.com/previbe/notion2CLI/issues)
 - [npm Package](https://www.npmjs.com/package/notion2cli)
+- [Chrome Web Store](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio)
 
 ## Chrome Extension
 
-The Chrome extension connects to a local bridge at `http://127.0.0.1:43821`. notion2CLI does not operate a hosted backend for user Notion content.
+Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio). The Chrome extension connects to a local bridge at `http://127.0.0.1:43821`. notion2CLI does not operate a hosted backend for user Notion content.

@@ -6,6 +6,12 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.1.2 - 2026-05-05
+
+### Changed
+
+- Bumped the npm package, Chrome extension, Claude plugin, and runtime bridge metadata versions to `0.1.2`.
+
 ## 0.1.1 - 2026-04-28
 
 ### Fixed
@@ -36,7 +42,7 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 - Runtime-backed Notion MCP page bundle preparation.
 - Local image artifact handling for Notion page images.
 - Browser pairing flow with a local bearer token.
-- Prompt profiles, including built-in `Raw` and `Build` flows.
+- Prompt profiles, including built-in `Raw`, `PreVibe`, and `Build` flows.
 - Optional Notion write-back through the selected runtime.
 - MIT License and public contribution policy.
 

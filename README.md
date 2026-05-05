@@ -1,6 +1,6 @@
 # notion2CLI
 
-[Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Privacy](PRIVACY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](docs/README.zh-CN.md)
+[Chrome Web Store](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) | [Architecture](docs/ARCHITECTURE.md) | [Security](SECURITY.md) | [Privacy](PRIVACY.md) | [Contributing](CONTRIBUTING.md) | [Chinese README](docs/README.zh-CN.md)
 
 Run Claude Code or Codex directly from Notion.
 
@@ -35,7 +35,7 @@ notion2CLI is local-first. The Chrome extension talks to a localhost bridge, and
 | --- | --- |
 | Node.js | `>=22.15.0` |
 | Package manager | `npm` with `package-lock.json` |
-| Browser | Google Chrome with a manually loaded Manifest V3 extension |
+| Browser | Google Chrome with the [Chrome Web Store extension](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) |
 | Operating systems | macOS is the primary tested target. Linux and Windows are not formally supported yet. |
 | Codex | Codex CLI installed locally. `notion2cli codex open` is macOS-only. |
 | Claude | Claude Code installed locally. Claude Desktop is not an input target. |
@@ -49,7 +49,13 @@ Install the CLI:
 npm install -g notion2cli
 ```
 
-Until the Chrome Web Store listing is public, load the extension from source:
+Install the Chrome extension from the Chrome Web Store:
+
+```text
+https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio
+```
+
+For local development, you can still load the extension from source:
 
 ```bash
 git clone https://github.com/previbe/notion2CLI.git
@@ -57,7 +63,7 @@ cd notion2CLI
 npm install
 ```
 
-Load the Chrome extension:
+Then load the development extension:
 
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
@@ -80,13 +86,20 @@ Start the bridge:
 notion2cli daemon start --runtime codex
 ```
 
+You can choose the startup permission mode from the Chrome popup before copying the command, or pass it explicitly:
+
+```bash
+notion2cli daemon start --runtime codex --permission-mode auto-review
+notion2cli daemon start --runtime codex --permission-mode full-access
+```
+
 Create a browser pairing code:
 
 ```bash
 notion2cli pair
 ```
 
-Then open the `notion2CLI` Chrome popup, paste the 6-digit code, and connect. On any Notion page, use the Activity panel to run `Raw`, `Build`, or a custom prompt profile.
+Then open the `notion2CLI` Chrome popup, paste the 6-digit code, and connect. On any Notion page, use the Activity panel to run `Raw`, `PreVibe`, `Build`, or a custom prompt profile.
 
 Useful Codex commands:
 
@@ -103,6 +116,13 @@ Claude Code uses a foreground channel session instead of the background daemon:
 
 ```bash
 notion2cli claude launch
+```
+
+Claude Code supports the same notion2cli permission modes at launch:
+
+```bash
+notion2cli claude launch --permission-mode auto-review
+notion2cli claude launch --permission-mode full-access
 ```
 
 Keep that terminal open. In another terminal, create a browser pairing code:
@@ -146,9 +166,10 @@ If page-bundle preparation fails, the job fails. The bridge does not fall back t
 
 ### Prompt profiles
 
-The Activity panel exposes `Raw`, `Build`, and custom prompt profiles.
+The Activity panel exposes `Raw`, `PreVibe`, `Build`, and custom prompt profiles.
 
 - `Raw` forwards the Notion material as the task.
+- `PreVibe` distills Notion material into a development-ready brief.
 - `Build` treats the Notion material as a software task brief for the current runtime.
 - Custom profiles are stored locally in `~/.notion2cli/prompts.json`.
 
@@ -197,6 +218,8 @@ Important details:
 - Pairing state is held by the local bridge process and is reset when the bridge restarts.
 - Full-page reads and write-backs are performed by the selected runtime through Notion MCP.
 - Notion content is sent to your local Codex or Claude Code runtime. Those tools may use their own network services according to their own configuration and terms.
+- Startup permission modes are `default`, `auto-review`, and `full-access`. `default` is recommended. `full-access` disables sandbox and approval prompts for the selected CLI runtime; use it only in trusted workspaces or external sandboxes.
+- Permission mode changes require restarting the CLI or daemon. Notion OAuth authorization is separate and may still require browser approval.
 - Remote image downloads are capped and private-network image URLs are blocked by default.
 
 ## Development
@@ -226,16 +249,12 @@ Manual end-to-end smoke test:
 6. Confirm the final result appears in the Activity panel.
 7. If manual write-back is enabled, append the result to the Notion page and verify the target page changed as expected.
 
-## Release Materials
+## Release Notes And Packaging
 
-Public launch materials live in:
+Public release and store materials live in:
 
-- `docs/release/RELEASE_CHECKLIST.md`
-- `docs/release/RELEASE_GUIDE.zh-CN.md`
-- `docs/release/GITHUB_RELEASE_NOTES.md`
-- `docs/release/NPM_RELEASE.md`
+- `docs/RELEASE_NOTES.md`
 - `chrome-store/`
-- `marketing/`
 
 Build the Chrome Web Store zip with:
 

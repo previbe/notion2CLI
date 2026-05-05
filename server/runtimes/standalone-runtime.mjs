@@ -5,6 +5,7 @@ import {
   WRITE_MODE_REPLACE_CONTENT,
   WRITE_MODE_UPDATE_CONTENT,
 } from '../core/constants.mjs';
+import { buildPermissionStatus } from '../core/permission-mode.mjs';
 
 export class StandaloneRuntime {
   constructor(log) {
@@ -75,6 +76,8 @@ export class StandaloneRuntime {
         launchMode: 'simulator',
         ready: true,
         standalone: true,
+        cwd: process.cwd(),
+        ...buildPermissionStatus(this.id, 'default'),
         pairingCommand: 'notion2cli pair',
         launchCommand: 'notion2cli daemon start --runtime standalone',
         statusMessage: 'Standalone local debug mode is ready.',

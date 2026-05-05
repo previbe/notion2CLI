@@ -1,12 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClaudeMcpList, parseClaudeSessionInitNotionStatus } from '../server/runtimes/claude-runtime.mjs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { ClaudeRuntime, parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/codex-prompt.mjs';
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
-import { buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
+import { CodexRuntime, buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
-import { CodexLiveSession, buildCodexAppServerWsArgs, buildCodexThreadName } from '../server/runtimes/codex-live-session.mjs';
+import {
+  CodexLiveSession,
+  buildCodexAppServerWsArgs,
+  buildCodexThreadName,
+  shouldStartFreshThreadForPermissionMode,
+} from '../server/runtimes/codex-live-session.mjs';
+import {
+  buildClaudeLaunchCommand,
+  buildClaudePermissionArgs,
+  buildCodexAuxiliaryThreadPermissionParams,
+  buildCodexLaunchCommand,
+  buildCodexThreadPermissionParams,
+  buildCodexTurnPermissionParams,
+  inferClaudePermissionModeFromArgs,
+  normalizePermissionMode,
+} from '../server/core/permission-mode.mjs';
 import { parseJobRequest } from '../server/core/schemas.mjs';
+
+function setupFakeClaude(scriptLines) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'claude-runtime-'));
+  const binDir = path.join(dir, 'bin');
+  const claudePath = path.join(binDir, 'claude');
+  const originalPath = process.env.PATH;
+  const originalHome = process.env.HOME;
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(claudePath, [...scriptLines, ''].join('\n'));
+  chmodSync(claudePath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ''}`;
+  process.env.HOME = dir;
+
+  return {
+    dir,
+    cleanup() {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
 
 test('codex app-server args keep stdio transport and optional profile overrides', () => {
   const args = buildCodexAppServerArgs({
@@ -48,6 +96,166 @@ test('codex live session uses a stable user-facing thread name', () => {
     buildCodexThreadName('/workspace/notion2CLI'),
     'notion2CLI - notion2CLI',
   );
+});
+
+test('permission mode helpers map startup modes to runtime settings', () => {
+  assert.equal(normalizePermissionMode('auto'), 'auto-review');
+  assert.equal(buildCodexLaunchCommand('default'), 'notion2cli daemon start --runtime codex');
+  assert.equal(
+    buildCodexLaunchCommand('full-access'),
+    'notion2cli daemon start --runtime codex --permission-mode full-access',
+  );
+  assert.equal(
+    buildClaudeLaunchCommand('auto-review'),
+    'notion2cli claude launch --permission-mode auto-review',
+  );
+  assert.deepEqual(buildCodexThreadPermissionParams('auto-review'), {
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'auto_review',
+    sandbox: 'workspace-write',
+  });
+  assert.deepEqual(buildCodexAuxiliaryThreadPermissionParams('auto-review'), {
+    approvalPolicy: 'on-request',
+    approvalsReviewer: 'auto_review',
+    sandbox: 'read-only',
+  });
+  assert.deepEqual(buildCodexTurnPermissionParams('full-access'), {
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+  });
+  assert.deepEqual(buildClaudePermissionArgs('full-access'), ['--dangerously-skip-permissions']);
+});
+
+test('claude passthrough permission flags infer the status mode', () => {
+  assert.equal(inferClaudePermissionModeFromArgs(['--permission-mode', 'auto']), 'auto-review');
+  assert.equal(inferClaudePermissionModeFromArgs(['--permission-mode=bypassPermissions']), 'full-access');
+  assert.equal(inferClaudePermissionModeFromArgs(['--dangerously-skip-permissions']), 'full-access');
+  assert.equal(inferClaudePermissionModeFromArgs([], 'auto'), 'auto-review');
+});
+
+test('codex live session detects persisted permission mode changes', () => {
+  assert.equal(
+    shouldStartFreshThreadForPermissionMode({ threadId: 'thread-1', permissionMode: 'default' }, 'full-access'),
+    true,
+  );
+  assert.equal(
+    shouldStartFreshThreadForPermissionMode({ threadId: 'thread-1', permissionMode: 'full-access' }, 'danger'),
+    false,
+  );
+  assert.equal(shouldStartFreshThreadForPermissionMode(null, 'full-access'), false);
+});
+
+test('codex live session starts fresh instead of resuming when permission mode changes', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'notion2cli-home-'));
+  const cwd = mkdtempSync(path.join(tmpdir(), 'notion2cli-cwd-'));
+  const originalHome = process.env.NOTION2CLI_HOME;
+  const calls = [];
+  const logs = [];
+  process.env.NOTION2CLI_HOME = home;
+  mkdirSync(path.join(home, 'state'), { recursive: true });
+  writeFileSync(path.join(home, 'state', 'codex-session.json'), JSON.stringify({
+    cwd,
+    threadId: 'thread-old',
+    permissionMode: 'default',
+  }));
+
+  const session = new CodexLiveSession({
+    cwd,
+    permissionMode: 'full-access',
+    log: (message, meta) => logs.push({ message, meta }),
+  });
+  session.request = async (method, params) => {
+    calls.push({ method, params });
+    throw new Error(`unexpected request: ${method}`);
+  };
+  session.startFreshThread = async () => {
+    calls.push({ method: 'startFreshThread' });
+    session.threadId = 'thread-new';
+  };
+
+  try {
+    await session.resumeOrStartThread();
+
+    assert.deepEqual(calls, [{ method: 'startFreshThread' }]);
+    assert.equal(session.threadId, 'thread-new');
+    assert.equal(logs[0]?.message, 'codex live session permission mode changed, starting a fresh thread');
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.NOTION2CLI_HOME;
+    } else {
+      process.env.NOTION2CLI_HOME = originalHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('codex live session persists permission mode in the local snapshot', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'notion2cli-home-'));
+  const originalHome = process.env.NOTION2CLI_HOME;
+  process.env.NOTION2CLI_HOME = home;
+
+  const session = new CodexLiveSession({
+    cwd: '/tmp/notion2cli',
+    permissionMode: 'full-access',
+    log: () => {},
+  });
+  session.threadId = 'thread-1';
+
+  try {
+    await session.persistSnapshot();
+    const raw = readFileSync(path.join(home, 'state', 'codex-session.json'), 'utf8');
+    assert.equal(JSON.parse(raw).permissionMode, 'full-access');
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.NOTION2CLI_HOME;
+    } else {
+      process.env.NOTION2CLI_HOME = originalHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('CodexRuntime status avoids slow MCP probes while startup is not ready', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'codex-runtime-'));
+  const binDir = path.join(dir, 'bin');
+  const codexPath = path.join(binDir, 'codex');
+  const probeFile = path.join(dir, 'mcp-probe-called');
+  const originalPath = process.env.PATH;
+  const originalProbeFile = process.env.CODEX_PROBE_FILE;
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(codexPath, [
+    '#!/bin/sh',
+    'if [ "$1" = "mcp" ]; then',
+    '  echo called > "$CODEX_PROBE_FILE"',
+    'fi',
+    'exit 0',
+    '',
+  ].join('\n'));
+  chmodSync(codexPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ''}`;
+  process.env.CODEX_PROBE_FILE = probeFile;
+
+  const runtime = new CodexRuntime(() => {}, { cwd: dir });
+  try {
+    const status = await runtime.getStatus();
+
+    assert.equal(status.runtime.ready, false);
+    assert.equal(status.notionMcp.status, 'unknown');
+    assert.equal(existsSync(probeFile), false);
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    if (originalProbeFile === undefined) {
+      delete process.env.CODEX_PROBE_FILE;
+    } else {
+      process.env.CODEX_PROBE_FILE = originalProbeFile;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('codex live session interrupts an active turn when cancelled', async () => {
@@ -306,30 +514,56 @@ notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
   );
 });
 
-test('parseClaudeSessionInitNotionStatus uses the runtime session view of Claude MCP state', () => {
-  assert.deepEqual(
-    parseClaudeSessionInitNotionStatus({
-      mcp_servers: [
-        { name: 'notion', status: 'connected' },
-      ],
-    }),
-    {
-      status: 'configured',
-      detail: 'Claude Code is configured and can use Notion MCP.',
-    },
-  );
+test('ClaudeRuntime reports unknown when claude mcp list exits non-zero', async () => {
+  const fakeClaude = setupFakeClaude([
+    '#!/bin/sh',
+    'if [ "$1" = "--version" ]; then',
+    '  echo "Claude fake 1.0.0"',
+    '  exit 0',
+    'fi',
+    'if [ "$1" = "mcp" ] && [ "$2" = "list" ]; then',
+    '  echo "failed to read Claude MCP config" >&2',
+    '  exit 2',
+    'fi',
+    'exit 99',
+  ]);
 
-  assert.deepEqual(
-    parseClaudeSessionInitNotionStatus({
-      mcp_servers: [
-        { name: 'notion', status: 'needs-auth' },
-      ],
-    }),
-    {
-      status: 'unauthenticated',
-      detail: 'Claude Code runtime still needs one Notion browser authorization.',
-    },
-  );
+  const runtime = new ClaudeRuntime(() => {}, { cwd: fakeClaude.dir });
+  try {
+    await runtime.start({});
+    const status = await runtime.getNotionMcpStatus();
+
+    assert.equal(status.status, 'unknown');
+    assert.match(status.detail, /failed to read Claude MCP config/);
+  } finally {
+    await runtime.stop();
+    fakeClaude.cleanup();
+  }
+});
+
+test('ClaudeRuntime reports unknown without creating watcher when claude is unavailable', async () => {
+  const fakeClaude = setupFakeClaude([
+    '#!/bin/sh',
+    'if [ "$1" = "--version" ]; then',
+    '  echo "Claude fake is unavailable" >&2',
+    '  exit 2',
+    'fi',
+    'exit 99',
+  ]);
+
+  const runtime = new ClaudeRuntime(() => {}, { cwd: fakeClaude.dir });
+  try {
+    await runtime.start({});
+    const status = await runtime.getNotionMcpStatus();
+
+    assert.equal(runtime.ready, false);
+    assert.equal(runtime.mcpConfigWatcher, null);
+    assert.equal(status.status, 'unknown');
+    assert.match(status.detail, /Claude fake is unavailable/);
+  } finally {
+    await runtime.stop();
+    fakeClaude.cleanup();
+  }
 });
 
 test('claude write-back prompt uses the shared structured action rules', () => {
@@ -463,4 +697,49 @@ test('Build prompt profile is injected as task intent', () => {
   assert.doesNotMatch(prompt, /replyTextToWrite/);
   assert.doesNotMatch(prompt, /writeMode=/);
   assert.doesNotMatch(prompt, /install_notion_mcp/);
+});
+
+test('PreVibe prompt profile is injected as task intent', () => {
+  const prompt = buildClaudeChannelPrompt({
+    id: 'job-previbe',
+    action: 'forward_full_page_via_mcp',
+    pageUrl: 'https://www.notion.so/previbe-page',
+    pageTitle: 'PreVibe Page',
+    selectionText: '',
+    replyTextToWrite: '',
+    writeMode: 'append_markdown_section',
+    writeSectionTitle: 'notion2CLI',
+    sourceReplyJobId: '',
+    installPrompt: '',
+    officialDocUrl: '',
+    promptProfileId: 'previbe',
+    promptProfile: {
+      id: 'previbe',
+      name: 'PreVibe',
+      instruction: 'Move the input document toward a development-ready brief without losing useful information.',
+    },
+    source: 'test',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    inputBundle: {
+      images: [],
+      warnings: [],
+      artifactSource: 'none',
+      pageBundle: {
+        provider: 'test',
+        runtimeId: 'test',
+        truncated: false,
+        warnings: [],
+        stats: {},
+        markdown: '# PreVibe Page\n\nMeeting notes and open questions.',
+      },
+    },
+  }, {
+    notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
+  });
+
+  assert.match(prompt, /Profile: previbe \(PreVibe\)\. Instruction:/);
+  assert.match(prompt, /Move the input document toward a development-ready brief/);
+  assert.match(prompt, /promptProfile\.id is not "raw": use the prompt profile instruction as the task intent/);
+  assert.match(prompt, /"promptProfile":\{"id":"previbe","name":"PreVibe"\}/);
+  assert.match(prompt, /<<<N2C_PAGE_BUNDLE_MARKDOWN/);
 });

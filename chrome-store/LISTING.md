@@ -22,7 +22,7 @@ What it does:
 - Show the latest assistant result in the Notion-side Activity panel.
 - Reuse a stable visible Codex App session.
 - Deliver Claude jobs into the active `notion2cli claude launch` terminal session.
-- Support local prompt profiles, including Raw and Build.
+- Support local prompt profiles, including Raw, PreVibe, and Build.
 - Optionally append or write results back to Notion through Notion MCP.
 
 Local-first by design:
