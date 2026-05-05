@@ -6,6 +6,12 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.1.2 - 2026-05-05
+
+### Changed
+
+- Bumped the npm package, Chrome extension, Claude plugin, and runtime bridge metadata versions to `0.1.2`.
+
 ## 0.1.1 - 2026-04-28
 
 ### Fixed

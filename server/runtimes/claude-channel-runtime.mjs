@@ -43,7 +43,7 @@ export class ClaudeChannelRuntime {
     });
 
     this.mcp = new Server(
-      { name: 'notion2cli-bridge', version: '0.1.0' },
+      { name: 'notion2cli-bridge', version: '0.1.2' },
       {
         capabilities: {
           experimental: { 'claude/channel': {} },

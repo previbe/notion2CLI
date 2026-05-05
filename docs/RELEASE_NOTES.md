@@ -1,4 +1,4 @@
-# notion2CLI v0.1.1
+# notion2CLI v0.1.2
 
 notion2CLI turns a Notion page into the rich-text input surface for a local Codex or Claude Code session.
 
