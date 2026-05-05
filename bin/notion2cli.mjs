@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgv } from '../cli/argv.mjs';
 import { inspectDaemon, runManagedDaemon, startDaemon, stopDaemon } from '../cli/daemon.mjs';
 import { createPairCode, fetchBridgeStatus } from '../cli/http-client.mjs';
@@ -31,6 +32,8 @@ import { runCommand } from '../server/runtimes/exec-utils.mjs';
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
+const PAIR_READY_TIMEOUT_MS = Number(process.env.NOTION2CLI_PAIR_READY_TIMEOUT_MS || 30000);
+const PAIR_READY_POLL_MS = Number(process.env.NOTION2CLI_PAIR_READY_POLL_MS || 500);
 
 try {
   await main(process.argv.slice(2));
@@ -83,11 +86,11 @@ async function main(argv) {
 async function handlePair(argv) {
   const options = parseArgv(argv);
   const target = await resolveBridgeTarget(options);
-  const status = await fetchBridgeStatus(target);
+  const status = await waitForRuntimeReady(target);
 
   if (!status.runtime?.ready) {
     throw new Error([
-      `Current runtime is not ready: ${status.runtime?.statusMessage || 'unknown status'}`,
+      `Current runtime is not ready after waiting ${Math.round(PAIR_READY_TIMEOUT_MS / 1000)}s: ${status.runtime?.statusMessage || 'unknown status'}`,
       status.runtime?.launchCommand ? `Start first: ${status.runtime.launchCommand}` : null,
     ].filter(Boolean).join('\n'));
   }
@@ -111,6 +114,18 @@ async function handlePair(argv) {
       : null,
     'Next: open notion2CLI from the browser toolbar, enter this pairing code, and click connect.',
   ].filter(Boolean).join('\n') + '\n');
+}
+
+async function waitForRuntimeReady(target) {
+  const deadline = Date.now() + PAIR_READY_TIMEOUT_MS;
+  let status = await fetchBridgeStatus(target);
+
+  while (!status.runtime?.ready && Date.now() < deadline) {
+    await sleep(PAIR_READY_POLL_MS);
+    status = await fetchBridgeStatus(target);
+  }
+
+  return status;
 }
 
 async function handleStatus(argv) {
