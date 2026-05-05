@@ -20,11 +20,11 @@ const PREVIBE_INSTRUCTION = `Move the input document toward a development-ready 
 - Put one blank line between separate confirmation items.
 - Do not invent requirements or constraints. When details are missing, mark a ⚠️ assumption and keep progressing on parts that do not depend on it.
 - Optimize for decision-ready information, not formatting. Be concise and avoid unnecessary process detail.
-- Match the document's primary language unless the user asks for another language.
+- Reply in English by default unless the user requests another language.
 - Return only a Brief. Do not include a long process log.`;
 
 const BUILD_INSTRUCTION = `Turn the requirements in the input document into concrete changes in the current codebase, then finish with a Brief.
-Match the output language to the document's primary language.
+Reply in English by default unless the user requests another language.
 
 ## Task Judgment
 

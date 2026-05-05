@@ -7,10 +7,9 @@ import {
 } from './constants.mjs';
 import { PROMPT_PROFILE_RAW } from './prompt-profiles.mjs';
 
-export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {}) {
+export function buildDedicatedRuntimePrompt(job, _runtimeInfo = {}, options = {}) {
   const pageBundle = job.inputBundle?.pageBundle || null;
   const promptProfile = normalizePromptProfile(job.promptProfile);
-  const runtimeLabel = options.runtimeLabel || 'the local runtime';
   const localImageArtifacts = Array.isArray(job.inputBundle?.images) ? job.inputBundle.images : [];
   const payload = buildCompactPayload(job, {
     pageBundle,
@@ -49,17 +48,14 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
     ];
 
   return [
-    `You are handling a notion2cli browser action for ${runtimeLabel}.`,
     ...buildCommonActionRules({
       action: job.action,
       promptProfile,
       hasImages: localImageArtifacts.length > 0,
-      pageBundle,
       writeMode: job.writeMode,
     }),
     ...replyLines,
-    'Do not edit local repository files and do not run shell commands unless the current browser request or selected prompt profile requires local code or terminal work.',
-    runtimeInfo?.notionMcpHint ? `Runtime hint: ${runtimeInfo.notionMcpHint}` : null,
+    'You may decide autonomously whether to use Notion MCP, local files, or terminal tools based on the request. For side-effecting actions such as writing, deleting, overwriting, or running commands, confirm they are necessary to complete the current request and mention them in the final Brief.',
     '',
     ...promptProfileLines,
     '',
@@ -71,25 +67,19 @@ export function buildDedicatedRuntimePrompt(job, runtimeInfo = {}, options = {})
     ...(warningLines.length ? [''] : []),
     ...pageBundleLines,
     ...(pageBundleLines.length ? [''] : []),
-    'Return only final Brief text.',
   ].filter(Boolean).join('\n');
 }
 
 export function buildCodexPrompt(job, runtimeInfo) {
-  return buildDedicatedRuntimePrompt(job, runtimeInfo, {
-    runtimeLabel: 'the local Codex CLI runtime',
-  });
+  return buildDedicatedRuntimePrompt(job, runtimeInfo);
 }
 
 export function buildClaudePrompt(job, runtimeInfo) {
-  return buildDedicatedRuntimePrompt(job, runtimeInfo, {
-    runtimeLabel: 'the local Claude Code runtime',
-  });
+  return buildDedicatedRuntimePrompt(job, runtimeInfo);
 }
 
 export function buildClaudeChannelPrompt(job, runtimeInfo) {
   return buildDedicatedRuntimePrompt(job, runtimeInfo, {
-    runtimeLabel: 'the active Claude Code channel session',
     replyToolName: 'reply',
   });
 }
@@ -107,9 +97,7 @@ function buildPromptProfileLines(promptProfile) {
   const instruction = String(profile.instruction || '').trim();
 
   if (!instruction) {
-    return [
-      `Profile: ${profile.id || PROMPT_PROFILE_RAW} (${profile.name || 'Raw'}).`,
-    ];
+    return [];
   }
 
   return [

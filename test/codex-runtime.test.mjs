@@ -596,12 +596,18 @@ test('claude write-back prompt uses the shared structured action rules', () => {
     notionMcpHint: 'Use the configured Notion MCP tools when the action requires full-page reading or write-back.',
   });
 
-  assert.match(prompt, /You are handling a notion2cli browser action for the local Claude Code runtime\./);
+  assert.match(prompt, /You receive a task through the notion2CLI tool\./);
+  assert.match(prompt, /Before acting, inspect Payload JSON\.action/);
+  assert.match(prompt, /Reply in English by default unless the user requests another language/);
+  assert.match(prompt, /The final user-facing reply is the browser Brief/);
   assert.match(prompt, /Resolve the target page from pageUrl using Notion MCP before writing/);
   assert.match(prompt, /writeMode=append_markdown_section: append replyTextToWrite/);
   assert.match(prompt, /"writeSectionTitle":"notion2CLI"/);
-  assert.match(prompt, /Profile: raw \(Raw\)\./);
-  assert.match(prompt, /Return only final Brief text\./);
+  assert.match(prompt, /You may decide autonomously whether to use Notion MCP, local files, or terminal tools/);
+  assert.doesNotMatch(prompt, /Profile: raw \(Raw\)\./);
+  assert.doesNotMatch(prompt, /Return only final Brief text\./);
+  assert.doesNotMatch(prompt, /Runtime hint:/);
+  assert.doesNotMatch(prompt, /You are handling a notion2cli browser action/);
   assert.doesNotMatch(prompt, /action=forward_selection_text/);
   assert.doesNotMatch(prompt, /action=forward_full_page_via_mcp/);
   assert.doesNotMatch(prompt, /install_notion_mcp/);
@@ -638,12 +644,12 @@ test('claude channel prompt asks the session to reply through the browser tool',
     notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
   });
 
-  assert.match(prompt, /the active Claude Code channel session/);
   assert.match(prompt, /Reply tool: call "reply" exactly once/);
   assert.match(prompt, /call "reply" exactly once with chat_id "job-456"/);
   assert.match(prompt, /"jobId":"job-456"/);
-  assert.match(prompt, /action=forward_selection_text: selectionText is authoritative/);
-  assert.match(prompt, /Return only final Brief text\./);
+  assert.match(prompt, /For action=forward_selection_text, selectionText is authoritative\./);
+  assert.doesNotMatch(prompt, /Return only final Brief text\./);
+  assert.doesNotMatch(prompt, /Profile: raw \(Raw\)\./);
   assert.doesNotMatch(prompt, /replyTextToWrite/);
   assert.doesNotMatch(prompt, /writeMode=/);
   assert.doesNotMatch(prompt, /install_notion_mcp/);
@@ -692,11 +698,63 @@ test('Build prompt profile is injected as task intent', () => {
   assert.match(prompt, /<<<N2C_PROMPT_PROFILE_INSTRUCTION/);
   assert.match(prompt, /Turn the requirements in the input document into concrete changes/);
   assert.match(prompt, /promptProfile\.id is not "raw": use the prompt profile instruction as the task intent/);
+  assert.match(prompt, /action=forward_full_page_via_mcp: use the attached pageBundle as the source of truth for the full document\./);
   assert.match(prompt, /"promptProfile":\{"id":"build","name":"Build"\}/);
   assert.match(prompt, /<<<N2C_PAGE_BUNDLE_MARKDOWN/);
+  assert.doesNotMatch(prompt, /If the pageBundle is partial, unavailable, or truncated/);
+  assert.doesNotMatch(prompt, /Do not re-fetch the full page merely to restate the same content/);
   assert.doesNotMatch(prompt, /replyTextToWrite/);
   assert.doesNotMatch(prompt, /writeMode=/);
   assert.doesNotMatch(prompt, /install_notion_mcp/);
+});
+
+test('full-page prompt includes image artifact guidance when images are present', () => {
+  const prompt = buildClaudePrompt({
+    id: 'job-image-page',
+    action: 'forward_full_page_via_mcp',
+    pageUrl: 'https://www.notion.so/image-page',
+    pageTitle: 'Image Page',
+    selectionText: '',
+    replyTextToWrite: '',
+    writeMode: 'append_markdown_section',
+    writeSectionTitle: 'notion2CLI',
+    sourceReplyJobId: '',
+    installPrompt: '',
+    officialDocUrl: '',
+    promptProfileId: 'raw',
+    promptProfile: {
+      id: 'raw',
+      name: 'Raw',
+      instruction: '',
+    },
+    source: 'test',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    inputBundle: {
+      images: [
+        {
+          cachePath: '/tmp/notion2cli/image-1.png',
+        },
+      ],
+      warnings: [],
+      artifactSource: 'page_bundle',
+      pageBundle: {
+        provider: 'test',
+        runtimeId: 'test',
+        truncated: false,
+        warnings: [],
+        stats: {},
+        markdown: '# Image Page\n\n![diagram](image-1.png)',
+      },
+    },
+  }, {
+    notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
+  });
+
+  assert.match(prompt, /Attached local image artifacts came from this Notion page\. Inspect them directly whenever visual content might matter\./);
+  assert.match(prompt, /Local image artifacts from this Notion page:/);
+  assert.match(prompt, /\/tmp\/notion2cli\/image-1\.png/);
+  assert.doesNotMatch(prompt, /If the pageBundle is partial, unavailable, or truncated/);
+  assert.doesNotMatch(prompt, /Do not re-fetch the full page merely to restate the same content/);
 });
 
 test('PreVibe prompt profile is injected as task intent', () => {

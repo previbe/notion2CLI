@@ -362,7 +362,7 @@ function buildClaudeChannelInstructions() {
     'After determining the final user-facing reply, call the reply tool exactly once with the same chat_id and with text equal to the reply that should be shown in the browser panel.',
     'If the task fails, call reply with status "failed" and a concise error explanation.',
     'Do not call reply before you have completed the user-facing answer.',
-    'Answer in Chinese by default unless the event clearly asks for another language.',
+    'Reply in English by default unless the event asks for another language.',
   ].join(' ');
 }
 
