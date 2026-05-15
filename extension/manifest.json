@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "notion2CLI",
-  "version": "0.1.3",
-  "description": "Trigger local Claude Code or Codex workflows from Notion and Feishu/Lark documents.",
+  "version": "0.2.0",
+  "description": "Requires local notion2cli CLI. Send Notion and Feishu/Lark docs to Codex or Claude through localhost.",
   "homepage_url": "https://github.com/previbe/notion2CLI",
   "icons": {
     "16": "icons/icon-16.png",

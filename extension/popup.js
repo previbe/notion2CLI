@@ -225,7 +225,7 @@ function buildStatusHint(status) {
     return `Start CLI: ${getSelectedRuntimeLaunchCommand()}`;
   }
 
-  return `Run the pairing command to generate a 6-digit code, then finish browser connection below.${permissionText}`;
+  return `Run the pairing command to generate a 6-digit code, then finish the localhost bridge connection below.${permissionText}`;
 }
 
 function renderHistoryHint(status) {
@@ -474,12 +474,12 @@ async function connectBridge() {
   } catch (error) {
     statusDot.classList.remove('ready');
     statusValue.textContent = 'Connection failed';
-    statusHint.textContent = error.message || 'Generate a new pairing code and try again.';
+    statusHint.textContent = error.message || 'Start the local CLI bridge, generate a fresh pairing code, and try again.';
   } finally {
     popupState.pairBusy = false;
     connectButton.disabled = false;
     codeInput.disabled = false;
-    connectButton.textContent = 'Connect browser';
+    connectButton.textContent = 'Connect with pairing code';
   }
 }
 

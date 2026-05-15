@@ -12,7 +12,7 @@ import {
 const CLIENT_INFO = {
   name: 'notion2cli',
   title: 'notion2cli live bridge',
-  version: '0.1.2',
+  version: '0.2.0',
 };
 
 const WS_HOST = '127.0.0.1';

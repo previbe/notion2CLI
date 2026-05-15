@@ -6,6 +6,29 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+## 0.2.0 - 2026-05-16
+
+### Added
+
+- Added Feishu/Lark document provider support for `/docx/` and `/wiki/` pages.
+- Added Feishu/Lark full-page reads through the bundled official `lark-cli`.
+- Added Feishu/Lark write-back through explicit official Wiki and Docx OpenAPI calls.
+- Added Feishu/Lark image artifact resolution for supported document media.
+- Added Chrome extension support for Feishu/Lark document pages and popup authorization.
+- Added provider-aware Activity panel copy, capabilities, and write-back labels.
+
+### Changed
+
+- Refactored document handling into a provider architecture for Notion and Feishu/Lark.
+- Updated Chrome Web Store metadata for the local CLI bridge and pairing flow.
+- Updated npm and Chrome extension versions to `0.2.0`.
+
+### Fixed
+
+- Prevented slow Claude MCP status probes from blocking bridge status responses.
+- Added bridge request timeouts so the extension cannot stay indefinitely stuck in a pending write-back state.
+- Preserved selected text when clicking active task and manual write-back controls.
+
 ## 0.1.2 - 2026-05-05
 
 ### Changed

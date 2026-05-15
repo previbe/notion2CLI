@@ -1,8 +1,8 @@
 {
   "name": "notion2cli",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Run Claude Code or Codex directly from Notion through a local Chrome extension bridge.",
+  "description": "Run Codex or Claude from Notion and Feishu/Lark docs through a local Chrome extension bridge.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,6 +14,8 @@
   "homepage": "https://github.com/previbe/notion2CLI#readme",
   "keywords": [
     "notion",
+    "feishu",
+    "lark",
     "cli",
     "codex",
     "claude",

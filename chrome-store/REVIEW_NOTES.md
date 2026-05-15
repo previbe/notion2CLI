@@ -2,6 +2,45 @@
 
 These notes are for Chrome Web Store reviewers.
 
+## Re-review Focus: Pairing Button
+
+The pairing button is labeled `Connect with pairing code`. It is expected to
+work only after the local notion2CLI bridge is running and a fresh 6-digit
+pairing code has been generated. This is intentional: notion2CLI is local-first
+and does not run a cloud backend.
+
+Fastest reproducible path:
+
+1. Install Node.js 22.15+.
+2. Install the CLI:
+
+   ```bash
+   npm install -g notion2cli
+   ```
+
+3. Start the no-account local simulator:
+
+   ```bash
+   notion2cli daemon start --runtime standalone --foreground
+   ```
+
+4. In another terminal, generate a pairing code:
+
+   ```bash
+   notion2cli pair
+   ```
+
+5. Open the Chrome extension popup, paste the 6-digit code, and click
+   `Connect with pairing code`.
+6. Expected result: the popup changes to `Connected to debug mode` and says
+   the browser is connected to the current Standalone Simulator session.
+
+If the bridge is not running, the button cannot complete the connection and the
+popup should show a setup/error state. This is not a remote-service failure; it
+means the required local companion process has not been started yet. The first
+line of the store description and manifest description both state this local
+CLI requirement.
+
 ## What notion2CLI Does
 
 notion2CLI lets a user send selected text or a full page from Notion or Feishu/Lark documents to a local Codex CLI or Claude Code session.

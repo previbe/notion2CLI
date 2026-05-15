@@ -9,7 +9,7 @@ import {
 const CLIENT_INFO = {
   name: 'notion2cli',
   title: 'notion2cli bridge',
-  version: '0.1.2',
+  version: '0.2.0',
 };
 
 export class CodexAppServerSession {
