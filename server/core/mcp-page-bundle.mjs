@@ -78,14 +78,20 @@ export function createMcpPageBundle({
   markdown,
   warnings = [],
   provider = 'runtime-backed-notion-mcp',
+  providerId = '',
+  sourceProvider = '',
   runtimeId = '',
   truncated = false,
+  blocks = null,
+  assets = null,
+  revision = '',
+  providerMeta = null,
 }) {
   const normalizedMarkdown = String(markdown || '');
   const normalizedWarnings = normalizeWarnings(warnings);
-  const assets = extractMarkdownAssets(normalizedMarkdown);
+  const normalizedAssets = normalizeAssets(assets || extractMarkdownAssets(normalizedMarkdown));
   const bodyBlock = createBodyBlock(normalizedMarkdown);
-  const attachmentBlocks = flattenAssets(assets).map((asset, index) => ({
+  const attachmentBlocks = flattenAssets(normalizedAssets).map((asset, index) => ({
     blockId: `${asset.type}:${index + 1}`,
     type: asset.type,
     role: 'attachment',
@@ -99,20 +105,26 @@ export function createMcpPageBundle({
       title: asset.title,
     },
   }));
-  const blocks = [bodyBlock, ...attachmentBlocks];
-  const stats = summarizeBlocks(blocks, normalizedMarkdown.length);
+  const normalizedBlocks = Array.isArray(blocks) && blocks.length
+    ? blocks
+    : [bodyBlock, ...attachmentBlocks];
+  const stats = summarizeBlocks(normalizedBlocks, normalizedMarkdown.length);
 
   return {
     provider,
+    providerId: String(providerId || sourceProvider || '').trim(),
+    sourceProvider: String(sourceProvider || providerId || '').trim(),
     runtimeId: String(runtimeId || '').trim(),
     pageUrl: String(pageUrl || '').trim(),
-    pageTitle: String(pageTitle || '').trim() || 'Untitled Notion Page',
+    pageTitle: String(pageTitle || '').trim() || 'Untitled Page',
     markdown: normalizedMarkdown,
     truncated,
     warnings: normalizedWarnings,
-    blocks,
-    assets,
+    blocks: normalizedBlocks,
+    assets: normalizedAssets,
     stats,
+    revision: String(revision || '').trim(),
+    providerMeta: providerMeta && typeof providerMeta === 'object' ? providerMeta : null,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -124,6 +136,8 @@ export function summarizePageBundle(bundle) {
 
   return {
     provider: bundle.provider || '',
+    providerId: bundle.providerId || bundle.sourceProvider || '',
+    sourceProvider: bundle.sourceProvider || bundle.providerId || '',
     runtimeId: bundle.runtimeId || '',
     pageUrl: bundle.pageUrl || '',
     pageTitle: bundle.pageTitle || '',
@@ -137,9 +151,12 @@ export function extractImageCandidatesFromPageBundle(bundle) {
   const images = Array.isArray(bundle?.assets?.images) ? bundle.assets.images : [];
   return images.map((image) => ({
     sourceUrl: image.sourceUrl,
+    cachePath: image.cachePath,
     alt: image.caption || image.fileName || '',
-    width: null,
-    height: null,
+    width: image.width || null,
+    height: image.height || null,
+    mimeType: image.mimeType || '',
+    headers: image.headers && typeof image.headers === 'object' ? image.headers : undefined,
   }));
 }
 
@@ -241,6 +258,49 @@ function flattenAssets(assets) {
     ...(assets.video || []),
     ...(assets.unknown || []),
   ];
+}
+
+function normalizeAssets(assets) {
+  const value = assets && typeof assets === 'object' ? assets : {};
+  return {
+    images: normalizeAssetList(value.images),
+    files: normalizeAssetList(value.files),
+    pdfs: normalizeAssetList(value.pdfs),
+    audio: normalizeAssetList(value.audio),
+    video: normalizeAssetList(value.video),
+    unknown: normalizeAssetList(value.unknown),
+  };
+}
+
+function normalizeAssetList(value) {
+  return Array.isArray(value)
+    ? value
+      .filter((asset) => asset && typeof asset === 'object')
+      .map((asset) => ({
+        ...asset,
+        type: String(asset.type || 'file').trim() || 'file',
+        source: String(asset.source || '').trim(),
+        sourceUrl: String(asset.sourceUrl || asset.url || '').trim(),
+        caption: String(asset.caption || asset.alt || '').trim(),
+        title: String(asset.title || '').trim(),
+        fileName: String(asset.fileName || '').trim(),
+        mimeType: String(asset.mimeType || '').trim(),
+        headers: asset.headers && typeof asset.headers === 'object' ? normalizeHeaders(asset.headers) : undefined,
+      }))
+      .filter((asset) => asset.sourceUrl)
+    : [];
+}
+
+function normalizeHeaders(headers) {
+  const output = {};
+  for (const [key, value] of Object.entries(headers || {})) {
+    const normalizedKey = String(key || '').trim();
+    const normalizedValue = String(value || '').trim();
+    if (normalizedKey && normalizedValue) {
+      output[normalizedKey] = normalizedValue;
+    }
+  }
+  return Object.keys(output).length ? output : undefined;
 }
 
 function extractMarkdownAssets(markdown) {

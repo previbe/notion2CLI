@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ClaudeRuntime, parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelPrompt, buildClaudePrompt } from '../server/core/codex-prompt.mjs';
-import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
+import { ClaudeChannelRuntime, buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { CodexRuntime, buildCodexAppServerArgs, parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
 import { buildCodexInputItems } from '../server/runtimes/codex-app-server-session.mjs';
 import {
@@ -512,16 +512,30 @@ notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
       detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
     },
   );
+
+  assert.deepEqual(
+    parseClaudeMcpList(`
+notion:
+  Scope: User config (available in all your projects)
+  Status: ! Needs authentication
+  Type: http
+  URL: https://mcp.notion.com/mcp
+    `),
+    {
+      status: 'unauthenticated',
+      detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
+    },
+  );
 });
 
-test('ClaudeRuntime reports unknown when claude mcp list exits non-zero', async () => {
+test('ClaudeRuntime reports unknown when claude mcp get notion exits non-zero', async () => {
   const fakeClaude = setupFakeClaude([
     '#!/bin/sh',
     'if [ "$1" = "--version" ]; then',
     '  echo "Claude fake 1.0.0"',
     '  exit 0',
     'fi',
-    'if [ "$1" = "mcp" ] && [ "$2" = "list" ]; then',
+    'if [ "$1" = "mcp" ] && [ "$2" = "get" ] && [ "$3" = "notion" ]; then',
     '  echo "failed to read Claude MCP config" >&2',
     '  exit 2',
     'fi',
@@ -600,10 +614,10 @@ test('claude write-back prompt uses the shared structured action rules', () => {
   assert.match(prompt, /Before acting, inspect Payload JSON\.action/);
   assert.match(prompt, /Reply in English by default unless the user requests another language/);
   assert.match(prompt, /The final user-facing reply is the browser Brief/);
-  assert.match(prompt, /Resolve the target page from pageUrl using Notion MCP before writing/);
+  assert.match(prompt, /Resolve the target page from pageUrl using the configured document provider before writing/);
   assert.match(prompt, /writeMode=append_markdown_section: append replyTextToWrite/);
   assert.match(prompt, /"writeSectionTitle":"notion2CLI"/);
-  assert.match(prompt, /You may decide autonomously whether to use Notion MCP, local files, or terminal tools/);
+  assert.match(prompt, /You may decide autonomously whether to use the configured document provider, local files, or terminal tools/);
   assert.doesNotMatch(prompt, /Profile: raw \(Raw\)\./);
   assert.doesNotMatch(prompt, /Return only final Brief text\./);
   assert.doesNotMatch(prompt, /Runtime hint:/);
@@ -654,6 +668,44 @@ test('claude channel prompt asks the session to reply through the browser tool',
   assert.doesNotMatch(prompt, /writeMode=/);
   assert.doesNotMatch(prompt, /install_notion_mcp/);
   assert.doesNotMatch(prompt, /PageBundle markdown/);
+});
+
+test('claude channel reply only updates session snapshot after job completion succeeds', () => {
+  const runtime = new ClaudeChannelRuntime(() => {}, { cwd: '/tmp/notion2cli-test' });
+  runtime.context = {
+    completeJob() {
+      throw new Error('missing job');
+    },
+    failJob() {},
+  };
+  runtime.runningJobs.set('job-1', { timer: null });
+
+  assert.throws(() => runtime.finishJob('job-1', 'completed', 'done'), /missing job/);
+  assert.equal(runtime.runningJobs.has('job-1'), true);
+  assert.equal(runtime.getSnapshot().latestSharableAssistantMessage, '');
+  assert.equal(runtime.getSnapshot().latestAssistantJobId, '');
+});
+
+test('claude channel reply completes the matching job and exposes latest reply metadata', () => {
+  const completed = [];
+  const runtime = new ClaudeChannelRuntime(() => {}, { cwd: '/tmp/notion2cli-test' });
+  runtime.context = {
+    completeJob(jobId, text, meta) {
+      completed.push({ jobId, text, meta });
+    },
+    failJob() {},
+  };
+  runtime.turnCount = 2;
+  runtime.runningJobs.set('job-1', { timer: null });
+
+  runtime.finishJob('job-1', 'completed', 'done');
+
+  assert.equal(runtime.runningJobs.has('job-1'), false);
+  assert.deepEqual(completed.map((entry) => entry.jobId), ['job-1']);
+  assert.equal(completed[0].text, 'done');
+  assert.equal(completed[0].meta.type, 'claude_channel_reply_completed');
+  assert.equal(runtime.getSnapshot().latestSharableAssistantMessage, 'done');
+  assert.equal(runtime.getSnapshot().latestAssistantJobId, 'job-1');
 });
 
 test('Build prompt profile is injected as task intent', () => {
@@ -750,8 +802,8 @@ test('full-page prompt includes image artifact guidance when images are present'
     notionMcpHint: 'Use the configured Notion MCP tools when the action requires write-back.',
   });
 
-  assert.match(prompt, /Attached local image artifacts came from this Notion page\. Inspect them directly whenever visual content might matter\./);
-  assert.match(prompt, /Local image artifacts from this Notion page:/);
+  assert.match(prompt, /Attached local image artifacts came from this source document\. Inspect them directly whenever visual content might matter\./);
+  assert.match(prompt, /Local image artifacts from this source document:/);
   assert.match(prompt, /\/tmp\/notion2cli\/image-1\.png/);
   assert.doesNotMatch(prompt, /If the pageBundle is partial, unavailable, or truncated/);
   assert.doesNotMatch(prompt, /Do not re-fetch the full page merely to restate the same content/);

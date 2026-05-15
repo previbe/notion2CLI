@@ -79,18 +79,20 @@
       </section>
 
       <section class="access-card">
-        <div class="section-title">Notion MCP</div>
-        <p class="section-copy" data-access-detail>After connecting, check and enable Notion MCP for the current runtime here.</p>
+        <div class="section-title">Document access</div>
+        <p class="section-copy" data-access-detail>After connecting, check Notion MCP and Feishu/Lark document access here.</p>
         <a class="text-link" href="https://developers.notion.com/guides/mcp/get-started-with-mcp" target="_blank" rel="noreferrer">View official setup docs</a>
         <button class="secondary" data-install-button type="button">Enable Notion MCP</button>
         <p class="access-status" data-install-status>Waiting to check.</p>
+        <button class="secondary" data-lark-connect-button type="button">Connect Feishu/Lark</button>
+        <p class="access-status" data-lark-status>Waiting to check.</p>
       </section>
 
       <section class="config-card">
         <div class="section-title">Write-back settings</div>
         <label class="toggle-field">
           <span>
-            <strong>Show manual Write to Notion button</strong>
+            <strong>Show manual write-back button</strong>
           </span>
           <input data-manual-writeback-toggle type="checkbox" />
         </label>
@@ -102,7 +104,7 @@
             <option value="replace_content">Replace page body</option>
           </select>
         </label>
-        <p class="config-note" data-write-mode-hint>This only affects manual Write to Notion actions. It does not affect running Notion content as a new request.</p>
+        <p class="config-note" data-write-mode-hint>This only affects manual write-back actions. It does not affect running document content as a new request.</p>
       </section>
 
       <section class="config-card">

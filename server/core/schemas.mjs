@@ -17,7 +17,9 @@ const requestShape = z.object({
   action: z.string().optional(),
   pageUrl: z.string().optional(),
   pageTitle: z.string().optional(),
+  providerId: z.string().optional(),
   selectionText: z.string().optional(),
+  selectionContext: z.unknown().optional(),
   replyTextToWrite: z.string().optional(),
   writeMode: z.string().optional(),
   writeSectionTitle: z.string().optional(),
@@ -72,8 +74,10 @@ export function parseJobRequest(body) {
   const payload = {
     action: normalizeAction(raw.action),
     pageUrl: trimOrDefault(raw.pageUrl),
-    pageTitle: trimOrDefault(raw.pageTitle, 'Untitled Notion Page') || 'Untitled Notion Page',
+    pageTitle: trimOrDefault(raw.pageTitle, 'Untitled Page') || 'Untitled Page',
+    providerId: trimOrDefault(raw.providerId),
     selectionText: trimOrDefault(raw.selectionText),
+    selectionContext: normalizeSelectionContext(raw.selectionContext),
     replyTextToWrite: trimOrDefault(raw.replyTextToWrite),
     writeMode: normalizeWriteMode(raw.writeMode),
     writeSectionTitle: trimOrDefault(raw.writeSectionTitle, DEFAULT_WRITE_SECTION_TITLE) || DEFAULT_WRITE_SECTION_TITLE,
@@ -105,6 +109,18 @@ export function parseJobRequest(body) {
   }
 
   return payload;
+}
+
+function normalizeSelectionContext(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return {
+    beforeText: trimOrDefault(value.beforeText).slice(-500),
+    afterText: trimOrDefault(value.afterText).slice(0, 500),
+    selectionHash: trimOrDefault(value.selectionHash).slice(0, 128),
+  };
 }
 
 export function parsePromptProfileMutation(body) {

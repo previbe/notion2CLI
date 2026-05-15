@@ -1,6 +1,6 @@
 # Security Policy
 
-notion2CLI is local-first, but it handles private Notion content and forwards that content to local AI runtimes. Treat it as a tool that can move sensitive material between local processes.
+notion2CLI is local-first, but it handles private document content and forwards that content to local AI runtimes. Treat it as a tool that can move sensitive material between local processes.
 
 ## Supported Versions
 
@@ -10,7 +10,7 @@ notion2CLI is local-first, but it handles private Notion content and forwards th
 
 ## Reporting a Vulnerability
 
-Please do not publish exploit details, private Notion content, bearer tokens, logs, or reproduction data in a public issue.
+Please do not publish exploit details, private document content, bearer tokens, logs, or reproduction data in a public issue.
 
 Preferred reporting path:
 
@@ -34,7 +34,7 @@ Authentication and pairing:
 
 Browser access:
 
-- The Chrome extension is limited to Notion pages and the default local bridge origin.
+- The Chrome extension is limited to supported Notion and Feishu/Lark document pages plus the default local bridge origin.
 - The bridge accepts Chrome extension origins and local CLI requests without an `Origin` header.
 - Non-extension browser origins are rejected unless explicitly configured through `NOTION2CLI_ALLOWED_ORIGINS`.
 
@@ -44,13 +44,20 @@ Notion access:
 - Full-page reads and write-backs go through the selected runtime's Notion MCP configuration.
 - If Codex CLI or Claude Code sends data to external services, that behavior is governed by those tools and their configuration.
 
+Feishu/Lark access:
+
+- The bridge uses the official local `lark-cli` for Feishu/Lark setup, OAuth device authorization, document reads, media downloads, and write-back.
+- notion2CLI does not read Feishu/Lark app secrets or access tokens from environment variables, prompts, browser storage, logs, or repository files.
+- `lark-cli` owns its credential storage using the operating system credential store or its own local secure storage.
+- Feishu/Lark image artifacts may be prepared by `lark-cli` before they are passed to the runtime.
+
 CLI permissions:
 
 - The default startup permission mode is recommended.
 - `auto-review` reduces manual prompts, but it does not make Notion page content trusted.
 - `full-access` disables sandbox and approval prompts for the selected CLI runtime. Use it only in trusted workspaces or external sandboxes.
 - Permission mode changes require restarting the CLI or daemon.
-- Notion OAuth authorization is separate from CLI permissions and may still require browser approval.
+- Notion OAuth authorization and Feishu/Lark document authorization are separate from CLI permissions and may still require provider-side approval.
 
 Artifacts:
 
@@ -66,6 +73,7 @@ Avoid running full-page jobs on pages that contain credentials, private customer
 Before sharing logs or bug reports, remove:
 
 - Notion page URLs and page IDs
+- Feishu/Lark page URLs, wiki tokens, and document IDs
 - page content
 - bearer tokens
 - local file paths that reveal private workspace names

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { ArtifactStore } from '../server/core/artifact-store.mjs';
 import { parseClaudeJsonOutput } from '../server/runtimes/claude-cli-session.mjs';
 
@@ -83,6 +83,72 @@ test('artifact store sniffs octet-stream SVGs and writes .svg artifacts', async 
     assert.equal(result.warnings.length, 0);
   } finally {
     server.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('artifact store sends per-image headers to the source origin only', async () => {
+  const seenHeaders = [];
+  const server = http.createServer((req, res) => {
+    seenHeaders.push(req.headers.authorization || '');
+    if (req.url === '/image.png') {
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.end(PNG_BUFFER);
+      return;
+    }
+
+    res.writeHead(404);
+    res.end('missing');
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const imageUrl = `http://127.0.0.1:${address.port}/image.png`;
+  const rootDir = path.join(os.tmpdir(), `n2c-artifacts-headers-${Date.now()}`);
+  const store = new ArtifactStore({ rootDir, log: () => {}, allowPrivateNetworkUrls: true });
+
+  try {
+    const result = await store.prepareArtifacts('job-headers', {
+      images: [
+        {
+          sourceUrl: imageUrl,
+          headers: {
+            Authorization: 'Bearer test-token',
+          },
+        },
+      ],
+    });
+    assert.equal(result.images.length, 1);
+    assert.deepEqual(seenHeaders, ['Bearer test-token']);
+  } finally {
+    server.close();
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('artifact store accepts provider-prepared local image artifacts', async () => {
+  const rootDir = path.join(os.tmpdir(), `n2c-artifacts-local-${Date.now()}`);
+  const localDir = path.join(rootDir, 'job-local');
+  const localPath = path.join(localDir, 'image.png');
+  const store = new ArtifactStore({ rootDir, log: () => {} });
+
+  try {
+    await mkdir(localDir, { recursive: true });
+    await writeFile(localPath, PNG_BUFFER);
+    const result = await store.prepareArtifacts('job-local', {
+      images: [
+        {
+          sourceUrl: 'lark-media:img-token',
+          cachePath: localPath,
+          alt: 'diagram',
+        },
+      ],
+    });
+    assert.equal(result.images.length, 1);
+    assert.equal(result.images[0].cachePath, localPath);
+    assert.equal(result.images[0].mimeType, 'image/png');
+    assert.equal(result.images[0].sourceUrl, 'lark-media:img-token');
+  } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
 });

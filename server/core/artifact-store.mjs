@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -77,6 +77,7 @@ export class ArtifactStore {
       try {
         const artifact = await downloadImageArtifact(cacheDir, index, candidate, {
           allowPrivateNetworkUrls: this.allowPrivateNetworkUrls,
+          headers: candidate.headers,
         });
         images.push(artifact);
       } catch (error) {
@@ -110,20 +111,46 @@ function normalizeImageCandidates(rawImages) {
 
   for (const item of list) {
     const sourceUrl = String(item?.sourceUrl || item?.url || '').trim();
-    if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl) || seen.has(sourceUrl)) {
+    const cachePath = String(item?.cachePath || '').trim();
+    const key = cachePath || sourceUrl;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    if (!cachePath && !/^https?:\/\//i.test(sourceUrl)) {
       continue;
     }
 
-    seen.add(sourceUrl);
+    seen.add(key);
     images.push({
       sourceUrl,
+      cachePath,
       alt: String(item?.alt || '').trim(),
       width: normalizeDimension(item?.width),
       height: normalizeDimension(item?.height),
+      mimeType: String(item?.mimeType || '').trim(),
+      headers: normalizeHeaders(item?.headers),
     });
   }
 
   return images;
+}
+
+function normalizeHeaders(value) {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const headers = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = String(key || '').trim();
+    const normalizedValue = String(entry || '').trim();
+    if (!normalizedKey || !normalizedValue) {
+      continue;
+    }
+    headers[normalizedKey] = normalizedValue;
+  }
+
+  return Object.keys(headers).length ? headers : undefined;
 }
 
 function normalizeDimension(value) {
@@ -136,6 +163,10 @@ function normalizeDimension(value) {
 }
 
 async function downloadImageArtifact(cacheDir, index, image, options = {}) {
+  if (image.cachePath) {
+    return loadLocalImageArtifact(index, image);
+  }
+
   validateImageSourceUrl(image.sourceUrl, options);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -145,6 +176,7 @@ async function downloadImageArtifact(cacheDir, index, image, options = {}) {
     response = await fetchImageWithValidatedRedirects(image.sourceUrl, {
       signal: controller.signal,
       allowPrivateNetworkUrls: options.allowPrivateNetworkUrls,
+      headers: options.headers,
     });
   } finally {
     clearTimeout(timer);
@@ -189,13 +221,50 @@ async function downloadImageArtifact(cacheDir, index, image, options = {}) {
   };
 }
 
+async function loadLocalImageArtifact(index, image) {
+  if (!path.isAbsolute(image.cachePath)) {
+    throw new Error('local image artifact path must be absolute');
+  }
+
+  const buffer = await readFile(image.cachePath);
+  if (buffer.length > MAX_IMAGE_BYTES) {
+    throw new Error(`image too large (${buffer.length} bytes)`);
+  }
+
+  const mimeType = resolveImageMimeType({
+    headerMimeType: String(image.mimeType || '').toLowerCase(),
+    buffer,
+    sourceUrl: image.cachePath,
+  });
+  if (!mimeType.startsWith('image/')) {
+    throw new Error(`unsupported content-type ${mimeType || 'unknown'}`);
+  }
+
+  const sha256 = createHash('sha256').update(buffer).digest('hex');
+  return {
+    artifactId: randomUUID(),
+    kind: 'image',
+    sourceUrl: image.sourceUrl || image.cachePath,
+    cachePath: image.cachePath,
+    mimeType,
+    sizeBytes: buffer.length,
+    sha256,
+    width: image.width,
+    height: image.height,
+    alt: image.alt,
+  };
+}
+
 async function fetchImageWithValidatedRedirects(sourceUrl, options = {}) {
   let currentUrl = validateImageSourceUrl(sourceUrl, options);
+  const originalOrigin = new URL(currentUrl).origin;
 
   for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    const currentOrigin = new URL(currentUrl).origin;
     const response = await fetch(currentUrl, {
       redirect: 'manual',
       signal: options.signal,
+      headers: currentOrigin === originalOrigin ? options.headers : undefined,
     });
 
     if (![301, 302, 303, 307, 308].includes(response.status)) {

@@ -32,6 +32,7 @@ import { runCommand } from '../server/runtimes/exec-utils.mjs';
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
+const CLAUDE_BRIDGE_MCP_SERVER_NAME = 'notion2cli_bridge';
 const PAIR_READY_TIMEOUT_MS = Number(process.env.NOTION2CLI_PAIR_READY_TIMEOUT_MS || 30000);
 const PAIR_READY_POLL_MS = Number(process.env.NOTION2CLI_PAIR_READY_POLL_MS || 500);
 
@@ -441,7 +442,7 @@ async function handleClaudeLaunch(argv) {
     '--mcp-config',
     configs.channelConfigPath,
     '--dangerously-load-development-channels',
-    'server:notion2cli_bridge',
+    `server:${CLAUDE_BRIDGE_MCP_SERVER_NAME}`,
     '--add-dir',
     artifactDir,
     ...permissionArgs,
@@ -465,6 +466,17 @@ async function handleClaudeLaunch(argv) {
   if (options.print) {
     process.stdout.write(`${command.map(quoteShellArg).join(' ')}\n`);
     return;
+  }
+
+  const registration = await ensureClaudeBridgeMcpRegistration({
+    cwd,
+    host,
+    port,
+    permissionMode,
+    workerConfigPath: configs.workerConfigPath,
+  });
+  if (registration.changed) {
+    process.stdout.write(`Configured Claude local MCP server: ${CLAUDE_BRIDGE_MCP_SERVER_NAME}\n`);
   }
 
   const result = await runInteractiveCommand(command[0], command.slice(1), { cwd });
@@ -810,18 +822,13 @@ async function ensureClaudeChannelConfigs({ cwd, host, port, permissionMode = 'd
 
   await writeJsonFile(channelConfigPath, {
     mcpServers: {
-      notion2cli_bridge: {
-        command: process.execPath,
-        args: [getClaudeChannelServerPath()],
+      [CLAUDE_BRIDGE_MCP_SERVER_NAME]: buildClaudeBridgeMcpConfig({
         cwd,
-        env: {
-          NOTION2CLI_HOST: host,
-          NOTION2CLI_PORT: String(port),
-          NOTION2CLI_WORKSPACE_CWD: cwd,
-          NOTION2CLI_PERMISSION_MODE: normalizePermissionMode(permissionMode),
-          NOTION2CLI_CLAUDE_WORKER_MCP_CONFIG: workerConfigPath,
-        },
-      },
+        host,
+        port,
+        permissionMode,
+        workerConfigPath,
+      }),
       notion: {
         type: 'http',
         url: NOTION_MCP_URL,
@@ -832,6 +839,64 @@ async function ensureClaudeChannelConfigs({ cwd, host, port, permissionMode = 'd
   return {
     channelConfigPath,
     workerConfigPath,
+  };
+}
+
+async function ensureClaudeBridgeMcpRegistration({ cwd, host, port, permissionMode = 'default', workerConfigPath }) {
+  const removeResult = await runCommand('claude', [
+    'mcp',
+    'remove',
+    CLAUDE_BRIDGE_MCP_SERVER_NAME,
+  ], {
+    cwd,
+    timeoutMs: 30000,
+  });
+  const removeOutput = compactCommandOutput(removeResult);
+  if (removeResult.code !== 0 && !/not found|no .*mcp server/i.test(removeOutput)) {
+    throw new Error(removeOutput || `Failed to remove stale Claude MCP server ${CLAUDE_BRIDGE_MCP_SERVER_NAME}.`);
+  }
+
+  const addResult = await runCommand('claude', [
+    'mcp',
+    'add-json',
+    '--scope',
+    'local',
+    CLAUDE_BRIDGE_MCP_SERVER_NAME,
+    JSON.stringify(buildClaudeBridgeMcpConfig({
+      cwd,
+      host,
+      port,
+      permissionMode,
+      workerConfigPath,
+    })),
+  ], {
+    cwd,
+    timeoutMs: 30000,
+  });
+  const addOutput = compactCommandOutput(addResult);
+  if (addResult.code !== 0) {
+    throw new Error(addOutput || `Failed to add Claude MCP server ${CLAUDE_BRIDGE_MCP_SERVER_NAME}.`);
+  }
+
+  return {
+    changed: true,
+    removeOutput,
+    addOutput,
+  };
+}
+
+function buildClaudeBridgeMcpConfig({ cwd, host, port, permissionMode = 'default', workerConfigPath }) {
+  return {
+    command: process.execPath,
+    args: [getClaudeChannelServerPath()],
+    cwd,
+    env: {
+      NOTION2CLI_HOST: host,
+      NOTION2CLI_PORT: String(port),
+      NOTION2CLI_WORKSPACE_CWD: cwd,
+      NOTION2CLI_PERMISSION_MODE: normalizePermissionMode(permissionMode),
+      NOTION2CLI_CLAUDE_WORKER_MCP_CONFIG: workerConfigPath,
+    },
   };
 }
 

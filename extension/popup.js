@@ -25,6 +25,8 @@ const popupState = {
   installJobId: null,
   installMessage: '',
   installPollTimer: null,
+  larkConnectBusy: false,
+  larkMessage: '',
 };
 
 const popupRoot = document.querySelector('[data-popup-root]');
@@ -60,6 +62,8 @@ const pairSetup = document.querySelector('[data-pair-setup]');
 const accessDetail = document.querySelector('[data-access-detail]');
 const installButton = document.querySelector('[data-install-button]');
 const installStatus = document.querySelector('[data-install-status]');
+const larkConnectButton = document.querySelector('[data-lark-connect-button]');
+const larkStatus = document.querySelector('[data-lark-status]');
 const manualWritebackToggle = document.querySelector('[data-manual-writeback-toggle]');
 const writeModeSelect = document.querySelector('[data-write-mode-select]');
 const writeModeHint = document.querySelector('[data-write-mode-hint]');
@@ -73,6 +77,7 @@ copyCommandButton.addEventListener('click', () => copyCommand(stepCommand, copyC
 copyPairCommandButton.addEventListener('click', () => copyCommand(pairCommand, copyPairCommandButton));
 copyStopCommandButton.addEventListener('click', () => copyCommand(stopCommand, copyStopCommandButton));
 installButton.addEventListener('click', sendInstallRequest);
+larkConnectButton.addEventListener('click', connectLarkProvider);
 permissionModeSelect.addEventListener('change', handlePermissionModeChange);
 manualWritebackToggle.addEventListener('change', handleManualWritebackVisibleChange);
 writeModeSelect.addEventListener('change', handleWriteModeChange);
@@ -123,10 +128,11 @@ function renderStatus(status) {
   stepBody.textContent = nextStep.body;
   renderCommands(nextStep);
 
-  accessDetail.textContent = access.detail;
+  accessDetail.textContent = appendDocumentProviderDetail(access.detail, status);
   installButton.disabled = access.disabled || popupState.installBusy;
   installButton.textContent = popupState.installBusy ? 'Processing...' : access.button;
-  installStatus.textContent = popupState.installMessage || access.status;
+  installStatus.textContent = popupState.installMessage || appendDocumentProviderStatus(access.status, status);
+  renderLarkAccess(status);
 }
 
 function renderDisconnectedState(message) {
@@ -152,8 +158,11 @@ function renderDisconnectedState(message) {
   });
   installButton.disabled = true;
   installButton.textContent = 'Waiting for startup';
-  accessDetail.textContent = 'Start the CLI, then check Notion MCP here.';
+  accessDetail.textContent = 'Start the CLI, then check Notion MCP and Feishu/Lark access here.';
   installStatus.textContent = 'Cannot check yet.';
+  larkConnectButton.disabled = true;
+  larkConnectButton.textContent = 'Waiting for startup';
+  larkStatus.textContent = 'Cannot check yet.';
 }
 
 function updateVisualState(status, access, connected) {
@@ -374,6 +383,71 @@ function getAccessState(status) {
   }
 }
 
+function appendDocumentProviderDetail(detail, status) {
+  const lark = getDocumentProviderStatus(status, 'lark');
+  if (!lark?.detail) {
+    return detail;
+  }
+
+  return `${detail} Feishu/Lark: ${lark.detail}`;
+}
+
+function appendDocumentProviderStatus(statusText, status) {
+  const lark = getDocumentProviderStatus(status, 'lark');
+  if (!lark?.status) {
+    return statusText;
+  }
+
+  return `${statusText} Feishu/Lark provider: ${lark.status}.`;
+}
+
+function renderLarkAccess(status) {
+  const runtime = status.runtime || {};
+  const lark = getDocumentProviderStatus(status, 'lark');
+  const waiting = lark?.status === 'authorization_pending';
+  const connected = lark?.status === 'configured';
+  const disabled = !runtime.ready || !status.paired || popupState.larkConnectBusy || connected;
+
+  larkConnectButton.disabled = disabled;
+  if (popupState.larkConnectBusy) {
+    larkConnectButton.textContent = 'Starting...';
+  } else if (connected) {
+    larkConnectButton.textContent = 'Feishu/Lark connected';
+  } else if (waiting) {
+    larkConnectButton.textContent = 'Continue Feishu/Lark';
+  } else {
+    larkConnectButton.textContent = 'Connect Feishu/Lark';
+  }
+
+  if (popupState.larkMessage) {
+    larkStatus.textContent = popupState.larkMessage;
+    return;
+  }
+
+  if (!runtime.ready) {
+    larkStatus.textContent = 'Start the local bridge first.';
+    return;
+  }
+  if (!status.paired) {
+    larkStatus.textContent = 'Pair this browser before connecting Feishu/Lark.';
+    return;
+  }
+  if (waiting && lark.activeFlow?.verificationUrl) {
+    larkStatus.textContent = `Authorization is waiting in your browser: ${lark.activeFlow.verificationUrl}`;
+    return;
+  }
+  larkStatus.textContent = lark?.detail || 'Feishu/Lark access has not been checked yet.';
+}
+
+function getDocumentProviderStatus(status, providerId) {
+  const providers = status?.documentProviders?.providers;
+  if (!Array.isArray(providers)) {
+    return null;
+  }
+
+  return providers.find((provider) => provider.providerId === providerId) || null;
+}
+
 async function connectBridge() {
   if (popupState.pairBusy) {
     return;
@@ -395,6 +469,7 @@ async function connectBridge() {
     await sendMessage({ type: 'pairBridge', code });
     codeInput.value = '';
     popupState.installMessage = '';
+    popupState.larkMessage = '';
     await refreshStatus();
   } catch (error) {
     statusDot.classList.remove('ready');
@@ -405,6 +480,38 @@ async function connectBridge() {
     connectButton.disabled = false;
     codeInput.disabled = false;
     connectButton.textContent = 'Connect browser';
+  }
+}
+
+async function connectLarkProvider() {
+  if (popupState.larkConnectBusy) {
+    return;
+  }
+
+  popupState.larkConnectBusy = true;
+  popupState.larkMessage = 'Starting Feishu/Lark local authorization...';
+  if (popupState.status) {
+    renderStatus(popupState.status);
+  }
+
+  try {
+    const result = await sendMessage({ type: 'connectLarkProvider' });
+    if (result.verificationUrl) {
+      popupState.larkMessage = `Open this URL to continue: ${result.verificationUrl}`;
+      try {
+        window.open(result.verificationUrl, '_blank', 'noreferrer');
+      } catch {}
+    } else {
+      popupState.larkMessage = result.detail || 'Feishu/Lark is connected.';
+    }
+    await refreshStatus();
+  } catch (error) {
+    popupState.larkMessage = error.message || 'Failed to start Feishu/Lark authorization.';
+  } finally {
+    popupState.larkConnectBusy = false;
+    if (popupState.status) {
+      renderStatus(popupState.status);
+    }
   }
 }
 
@@ -424,6 +531,8 @@ async function clearBridge() {
   popupState.installBusy = false;
   popupState.installJobId = null;
   popupState.installMessage = '';
+  popupState.larkConnectBusy = false;
+  popupState.larkMessage = '';
   await sendMessage({ type: 'clearPairing' });
   await refreshStatus();
 }

@@ -4,9 +4,9 @@
 
 The MVP does one thing:
 
-**Use a Notion page as the rich-text input surface for a local AI CLI session.**
+**Use a document page as the rich-text input surface for a local AI CLI session.**
 
-When the user clicks the browser action from a Notion page, notion2CLI sends either the current text selection or the full page as the next user input to the selected local runtime. The result returns to the browser Activity panel. If the task calls for it, the runtime can write back to Notion through Notion MCP.
+When the user clicks the browser action from a supported Notion or Feishu/Lark page, notion2CLI sends either the current text selection or the full page as the next user input to the selected local runtime. The result returns to the browser Activity panel. If the task calls for it, the bridge writes back through the resolved document provider.
 
 ## Non-Goals
 
@@ -15,7 +15,6 @@ The current MVP intentionally does not include:
 - context-only delivery into a session without starting a turn
 - `/api/session/deliver` style APIs
 - direct Notion API access from the bridge
-- deterministic Notion writes performed by the bridge itself
 - complete generic file attachment support
 - Claude Desktop input injection
 - Chrome Native Messaging
@@ -23,7 +22,7 @@ The current MVP intentionally does not include:
 
 ## First Principles
 
-A Notion page can contain:
+A document page can contain:
 
 - text
 - images
@@ -34,37 +33,41 @@ The MVP reliably consumes:
 - text
 - local image artifacts
 
-The bridge therefore exists to convert Notion page material into runtime-consumable input. It should not simulate copy/paste from the browser, and it should not require the user to return to a terminal and press Enter manually.
+The bridge therefore exists to convert document page material into runtime-consumable input. It should not simulate copy/paste from the browser, and it should not require the user to return to a terminal and press Enter manually.
 
 ## System Overview
 
 ```mermaid
 flowchart LR
-  A["Notion page"] --> B["Chrome extension"]
+  A["Notion or Feishu/Lark page"] --> B["Chrome extension"]
   B --> C["Bridge HTTP API /api/jobs"]
   C --> D["JobStore"]
-  C --> E["RuntimeBackedNotionPageBundleProvider"]
-  E --> F["runtime Notion MCP"]
-  F --> G["McpPageBundle"]
-  G --> H["ArtifactResolver / ArtifactStore"]
-  H --> I["InputBundle"]
-  I --> J{"RuntimeAdapter"}
-  J --> K["CodexRuntime"]
-  K --> L["CodexLiveSession"]
-  L --> M["Codex app-server turn/start"]
-  M --> N["Codex App visible session"]
-  J --> O["ClaudeChannelRuntime"]
-  O --> P["notifications/claude/channel"]
-  P --> Q["active Claude Code terminal session"]
-  O --> R["ClaudeRuntime worker"]
-  R --> F
-  Q --> S["reply tool"]
-  S --> C
-  N --> C
-  C --> T["browser Activity panel"]
-  Q --> U["Notion MCP write-back"]
-  N --> U
-  U --> A
+  C --> E["DocumentProviderRouter"]
+  E --> F["NotionDocumentProvider"]
+  E --> G["LarkDocumentProvider"]
+  F --> H["runtime Notion MCP"]
+  G --> I["official lark-cli"]
+  I --> Y["Feishu/Lark OAuth and Docs APIs"]
+  H --> J["PageBundle"]
+  Y --> J
+  J --> K["ArtifactResolver / ArtifactStore"]
+  K --> L["InputBundle"]
+  L --> M{"RuntimeAdapter"}
+  M --> N["CodexRuntime"]
+  N --> O["CodexLiveSession"]
+  O --> P["Codex app-server turn/start"]
+  P --> Q["Codex App visible session"]
+  M --> R["ClaudeChannelRuntime"]
+  R --> S["notifications/claude/channel"]
+  S --> T["active Claude Code terminal session"]
+  R --> U["ClaudeRuntime worker"]
+  U --> H
+  T --> V["reply tool"]
+  V --> C
+  Q --> C
+  C --> W["browser Activity panel"]
+  E --> X["provider write-back"]
+  X --> A
 ```
 
 ## Main Flows
@@ -83,25 +86,27 @@ Codex jobs enter a stable Codex App thread. Claude jobs enter the active Claude 
 ### 2. Run the current page
 
 1. The content script sends the page title and page URL.
-2. The bridge asks `RuntimeBackedNotionPageBundleProvider` to fetch the page through the runtime's Notion MCP tools.
-3. The bridge normalizes the result into a `McpPageBundle`.
-4. `ArtifactResolver` discovers image attachment links from the bundle.
-5. `ArtifactStore` downloads and caches local image artifacts.
-6. `InputBundle` combines page markdown, image artifacts, warnings, and request metadata.
-7. The selected runtime starts the turn immediately.
-8. The extension displays the latest reply.
+2. The bridge asks `DocumentProviderRouter` to resolve the page provider.
+3. Notion pages are fetched through runtime Notion MCP; Feishu/Lark pages are fetched through the official `lark-cli`.
+4. The bridge normalizes the result into a page bundle.
+5. `ArtifactResolver` discovers image attachment links from the bundle.
+6. `ArtifactStore` downloads and caches local image artifacts.
+7. `InputBundle` combines page markdown, image artifacts, warnings, and request metadata.
+8. The selected runtime starts the turn immediately.
+9. The extension displays the latest reply.
 
 Claude full-page prefetching uses a hidden `ClaudeRuntime` worker so the prefetch step does not pollute the Claude Code channel session the user is watching. The actual user task is still delivered to the active Claude channel session.
 
 If page-bundle preparation fails, the full-page run fails. The bridge does not fall back to browser DOM scraping.
 
-### 3. Write back to Notion
+### 3. Write back
 
 1. The Activity panel has a latest reply.
-2. The user clicks `Write to Notion`, or the selected prompt profile instructs the runtime to update the page.
+2. The user clicks provider write-back, or the selected prompt profile instructs the runtime to update the page.
 3. The extension creates a `write_reply_to_notion` job.
-4. The selected runtime writes through Notion MCP using append, replace-selection, or replace-body behavior.
-5. Codex approval happens through Activity. Claude authorization may happen through Activity for full-page reads and inside the Claude terminal for write-back.
+4. Feishu/Lark writes are handled by the bridge through explicit `lark-cli api` calls to Wiki v2 and Docx v1 OpenAPI endpoints.
+5. Notion writes fall back to the selected runtime and Notion MCP.
+6. Codex approval happens through Activity. Claude authorization may happen through Activity for full-page reads and inside the Claude terminal for Notion write-back.
 
 Append mode is the recommended default because it is non-destructive.
 
@@ -137,9 +142,11 @@ Responsible for:
 - browser pairing
 - HTTP API
 - job lifecycle
+- document provider routing
 - page-bundle prefetching
 - image artifact download and caching
 - runtime input assembly
+- deterministic Feishu/Lark write-back through `lark-cli`
 
 Related files:
 
@@ -152,6 +159,9 @@ Related files:
 - [server/core/artifact-resolver.mjs](../server/core/artifact-resolver.mjs)
 - [server/core/artifact-store.mjs](../server/core/artifact-store.mjs)
 - [server/core/input-bundle.mjs](../server/core/input-bundle.mjs)
+- [server/providers/provider-router.mjs](../server/providers/provider-router.mjs)
+- [server/providers/lark-provider.mjs](../server/providers/lark-provider.mjs)
+- [server/providers/notion-provider.mjs](../server/providers/notion-provider.mjs)
 
 ### Codex runtime
 
@@ -188,11 +198,44 @@ Related files:
 - [server/runtimes/claude-runtime.mjs](../server/runtimes/claude-runtime.mjs)
 - [server/runtimes/claude-cli-session.mjs](../server/runtimes/claude-cli-session.mjs)
 
+### Document providers
+
+Responsible for:
+
+- detecting whether a page URL belongs to a provider
+- producing full-page bundles
+- exposing provider setup status
+- performing deterministic write-back when the provider supports it
+
+Notion provider behavior:
+
+- full-page reads use the selected runtime's Notion MCP setup
+- write-back remains runtime-backed through Notion MCP
+
+Feishu/Lark provider behavior:
+
+- setup and user authorization are delegated to the official local `lark-cli`
+- wiki URLs are resolved with `GET /open-apis/wiki/v2/spaces/get_node`
+- docx content is read with Docx v1 raw-content and block APIs
+- media tokens are downloaded through `lark-cli docs +media-download`
+- append and replace-body writes use Docx v1 block children create/delete APIs
+- replace-selection patches one uniquely matched text block and fails if the selected text is missing, ambiguous, or spans multiple rich-text runs
+
+Related files:
+
+- [server/providers/provider-router.mjs](../server/providers/provider-router.mjs)
+- [server/providers/lark-provider.mjs](../server/providers/lark-provider.mjs)
+- [server/providers/lark/lark-auth-service.mjs](../server/providers/lark/lark-auth-service.mjs)
+- [server/providers/lark/lark-cli-adapter.mjs](../server/providers/lark/lark-cli-adapter.mjs)
+- [server/providers/lark/lark-document-parser.mjs](../server/providers/lark/lark-document-parser.mjs)
+- [server/providers/lark/lark-media-resolver.mjs](../server/providers/lark/lark-media-resolver.mjs)
+- [server/providers/notion-provider.mjs](../server/providers/notion-provider.mjs)
+
 ## Core Objects
 
-### McpPageBundle
+### PageBundle
 
-The normalized representation of a full Notion page:
+The normalized representation of a full document page:
 
 - `pageUrl`
 - `pageTitle`
@@ -201,6 +244,8 @@ The normalized representation of a full Notion page:
 - `assets`
 - `stats`
 - `provider`
+- `providerId`
+- `sourceProvider`
 - `runtimeId`
 
 ### Artifact
@@ -239,7 +284,7 @@ Main MVP API:
 - `POST /api/jobs/:id/approval`
 - `POST /api/session/open`
 
-`GET /api/status` returns runtime and session information. Codex responses include `threadId`, `threadName`, `turnCount`, and `appVisible`. Claude responses include channel session name, transport, turn count, and recent input/reply snippets. `POST /api/session/open` is Codex-only and opens Codex App on supported platforms.
+`GET /api/status` returns runtime, session, and document provider information. Codex responses include `threadId`, `threadName`, `turnCount`, and `appVisible`. Claude responses include channel session name, transport, turn count, and recent input/reply snippets. `POST /api/session/open` is Codex-only and opens Codex App on supported platforms.
 
 Removed from the MVP:
 
@@ -266,10 +311,12 @@ When debugging, check:
 
 - Codex uses a Codex App session.
 - Claude uses Claude Code Channels and does not support Claude Desktop input injection.
-- Full-page reads still depend on the runtime's Notion MCP tools.
-- Images come only from attachment links parsed from `McpPageBundle`.
-- Write-back is still performed by the runtime through Notion MCP.
+- Notion full-page reads still depend on the runtime's Notion MCP tools.
+- Feishu/Lark support is limited to docx pages and wiki nodes whose underlying object is a docx document.
+- Images come from media references discovered in Docx block payloads.
+- Notion write-back is still performed by the runtime through Notion MCP.
+- Feishu/Lark write-back is performed by the bridge through `lark-cli` and intentionally fails on ambiguous replace-selection operations.
 - Generic file attachments are not fully supported yet.
 - The extension and bridge communicate through localhost HTTP.
 
-These boundaries keep the MVP focused on the core question: can Notion become the input surface for a local CLI agent?
+These boundaries keep the MVP focused on the core question: can a document workspace become the input surface for a local CLI agent?

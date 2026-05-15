@@ -4,7 +4,7 @@ Use this file to fill the Chrome Web Store Developer Dashboard Privacy tab.
 
 ## Single Purpose
 
-Send user-triggered Notion page content to a local Codex CLI or Claude Code session through a localhost bridge, then show the result in the browser Activity panel.
+Send user-triggered Notion or Feishu/Lark document content to a local Codex CLI or Claude Code session through a localhost bridge, then show the result in the browser Activity panel.
 
 ## Data Collection
 
@@ -12,7 +12,7 @@ Select the categories that match Chrome Web Store's current privacy form labels.
 
 notion2CLI handles:
 
-- Website content: Notion selected text and full-page markdown when the user explicitly runs a task.
+- Website content: Notion or Feishu/Lark selected text and full-page markdown when the user explicitly runs a task.
 - User activity: user-triggered extension actions such as pairing, run selected text, run current page, cancel, and write-back mode selection.
 - Authentication information: a local random bearer token used only for browser-to-local-bridge pairing.
 
@@ -22,7 +22,7 @@ notion2CLI does not collect:
 - Financial and payment information.
 - Health information.
 - Location.
-- Web browsing history outside Notion pages.
+- Web browsing history outside supported document pages.
 - Keystroke logging.
 
 ## Data Use
@@ -31,7 +31,7 @@ Data is used only to provide the extension's single purpose:
 
 - prepare the local runtime request,
 - display job state and assistant replies,
-- optionally request Notion write-back through the selected runtime,
+- optionally request write-back through the resolved document provider,
 - remember local extension settings.
 
 ## Data Transfer
@@ -44,7 +44,7 @@ http://127.0.0.1:43821
 
 This is the local notion2CLI bridge running on the user's machine.
 
-The local bridge sends task material to the user's selected local runtime, currently Codex CLI or Claude Code. Those tools may use their own external services according to the user's configuration and terms.
+The local bridge sends task material to the user's selected local runtime, currently Codex CLI or Claude Code. For Feishu/Lark document access, the bridge also calls the official local `lark-cli`, which handles its own authorization and credential storage. Those tools may use their own external services according to the user's configuration and terms.
 
 notion2CLI itself does not operate a backend service for this data.
 
@@ -64,7 +64,7 @@ notion2CLI does not use or transfer data for purposes unrelated to the single pu
 
 Answer: No for notion2CLI-owned services.
 
-The notion2CLI project does not receive the user's Notion content for human review. Data may still be handled by the user's configured runtime provider under that provider's terms.
+The notion2CLI project does not receive the user's document content for human review. Data may still be handled by the user's configured runtime provider under that provider's terms.
 
 ## Privacy Policy URL
 
@@ -87,6 +87,10 @@ Stores local settings and the bridge pairing token.
 ### `https://www.notion.so/*`, `https://notion.so/*`
 
 Displays the Activity panel on Notion pages and reads the current page URL, title, and current selection only on Notion.
+
+### `https://*.feishu.cn/*`, `https://*.larksuite.com/*`, `https://*.larkoffice.com/*`
+
+Displays the Activity panel on supported Feishu/Lark document pages and reads the current page URL, title, and current selection only on those pages.
 
 ### `http://127.0.0.1:43821/*`
 

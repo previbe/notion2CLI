@@ -134,6 +134,44 @@ test('MCPConfigWatcher re-runs after invalidate during an active probe', async (
   cleanup();
 });
 
+test('MCPConfigWatcher can return cached status without waiting for an active probe', async () => {
+  const { file, cleanup } = setupTempConfig();
+  let calls = 0;
+  let releaseSecondProbe = null;
+  const probe = async () => {
+    calls += 1;
+    if (calls === 2) {
+      await new Promise((resolve) => {
+        releaseSecondProbe = resolve;
+      });
+    }
+    return {
+      status: calls === 1 ? 'unauthenticated' : 'configured',
+      detail: `probe-${calls}`,
+    };
+  };
+  const watcher = new MCPConfigWatcher({ configPaths: [file], runProbe: probe });
+
+  await watcher.start();
+  assert.equal(calls, 1);
+
+  const refresh = watcher.invalidate();
+  await waitForCondition(() => calls === 2);
+
+  assert.deepEqual(await watcher.getStatus({ waitForActive: false }), {
+    status: 'unauthenticated',
+    detail: 'probe-1',
+    refreshing: true,
+  });
+
+  releaseSecondProbe();
+  assert.deepEqual(await refresh, { status: 'configured', detail: 'probe-2' });
+  assert.deepEqual(await watcher.getStatus({ waitForActive: false }), { status: 'configured', detail: 'probe-2' });
+
+  watcher.stop();
+  cleanup();
+});
+
 test('MCPConfigWatcher.stop() prevents an active dirty probe from looping', async () => {
   const { file, cleanup } = setupTempConfig();
   let calls = 0;

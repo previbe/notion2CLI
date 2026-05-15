@@ -68,6 +68,11 @@ export function createBridgeHttpServer(app, log, options = {}) {
         return sendJson(res, 200, await app.openCodexApp(readBearer(req)), req);
       }
 
+      if (req.method === 'POST' && url.pathname.startsWith('/api/document-providers/') && url.pathname.endsWith('/connect')) {
+        const providerId = readDocumentProviderId(url.pathname);
+        return sendJson(res, 200, await app.connectDocumentProvider(readBearer(req), providerId, await readJson(req)), req);
+      }
+
       if (req.method === 'POST' && url.pathname.startsWith('/api/jobs/') && url.pathname.endsWith('/approval')) {
         const jobId = url.pathname.replace('/api/jobs/', '').replace('/approval', '').trim();
         return sendJson(res, 200, await app.resolveJobApproval(readBearer(req), jobId, await readJson(req)), req);
@@ -138,6 +143,15 @@ function sendEmpty(res, statusCode, req = null) {
 
 function readPromptProfileId(pathname) {
   return decodeURIComponent(pathname.replace('/api/prompt-profiles/', '').trim());
+}
+
+function readDocumentProviderId(pathname) {
+  return decodeURIComponent(
+    pathname
+      .replace('/api/document-providers/', '')
+      .replace('/connect', '')
+      .trim(),
+  ).toLowerCase();
 }
 
 function readJson(req) {

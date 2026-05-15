@@ -36,6 +36,7 @@ export class ClaudeChannelRuntime {
     this.latestAssistantAt = null;
     this.latestSharableAssistantMessage = '';
     this.latestSharableAssistantAt = null;
+    this.latestAssistantJobId = '';
     this.workerRuntime = new ClaudeRuntime(log, {
       cwd: this.cwd,
       permissionMode: this.permissionMode,
@@ -239,7 +240,7 @@ export class ClaudeChannelRuntime {
   }
 
   async getStatus() {
-    const workerStatus = await this.workerRuntime.getStatus();
+    const workerStatus = await this.workerRuntime.getStatus({ waitForMcpRefresh: false });
     const ready = Boolean(this.connected);
 
     return {
@@ -279,6 +280,7 @@ export class ClaudeChannelRuntime {
       latestAssistantAt: this.latestAssistantAt,
       latestSharableAssistantMessage: this.latestSharableAssistantMessage || '',
       latestSharableAssistantAt: this.latestSharableAssistantAt,
+      latestAssistantJobId: this.latestAssistantJobId || '',
       lastVerifiedAt: this.connected ? new Date().toISOString() : null,
       lastVerificationError: '',
       openCommand: 'notion2cli claude inspect',
@@ -317,14 +319,7 @@ export class ClaudeChannelRuntime {
   }
 
   finishJob(jobId, status, text) {
-    this.clearJobTimer(jobId);
-    this.runningJobs.delete(jobId);
-
     const now = new Date().toISOString();
-    this.latestAssistantMessage = text;
-    this.latestAssistantAt = now;
-    this.latestSharableAssistantMessage = text;
-    this.latestSharableAssistantAt = now;
 
     if (status === 'failed') {
       this.context.failJob(jobId, text || 'Claude channel job failed', {
@@ -333,17 +328,24 @@ export class ClaudeChannelRuntime {
           sessionId: this.channelName,
         }),
       });
-      return;
+    } else {
+      this.context.completeJob(jobId, text, {
+        type: 'claude_channel_reply_completed',
+        runtimeMeta: buildRuntimeMeta({
+          sessionId: this.channelName,
+          appVisible: true,
+          turnCount: this.turnCount,
+        }),
+      });
     }
 
-    this.context.completeJob(jobId, text, {
-      type: 'claude_channel_reply_completed',
-      runtimeMeta: buildRuntimeMeta({
-        sessionId: this.channelName,
-        appVisible: true,
-        turnCount: this.turnCount,
-      }),
-    });
+    this.clearJobTimer(jobId);
+    this.runningJobs.delete(jobId);
+    this.latestAssistantMessage = text;
+    this.latestAssistantAt = now;
+    this.latestSharableAssistantMessage = text;
+    this.latestSharableAssistantAt = now;
+    this.latestAssistantJobId = jobId;
     this.log('claude channel reply stored', { jobId, status });
   }
 }
