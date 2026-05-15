@@ -83,10 +83,16 @@ export function runCommand(command, args, options = {}) {
 }
 
 export function spawnCommand(command, args = [], options = {}) {
-  const resolved = resolveCommandForSpawn(command, args, options);
+  const platform = options.platform || process.platform;
+  const env = buildSpawnEnv(options.env, platform);
+  const resolved = resolveCommandForSpawn(command, args, {
+    ...options,
+    env,
+    platform,
+  });
   return spawn(resolved.command, resolved.args, {
     cwd: options.cwd,
-    env: options.env,
+    env,
     stdio: options.stdio,
     detached: options.detached,
     windowsHide: options.windowsHide,
@@ -131,6 +137,16 @@ export function buildWindowsCommandLine(command, args = []) {
     quoteWindowsCommandArg(command),
     ...args.map((arg) => quoteWindowsCommandArg(arg)),
   ].join(' ');
+}
+
+export function buildSpawnEnv(env, platform = process.platform) {
+  if (platform !== 'win32') {
+    return env;
+  }
+
+  const nextEnv = { ...(env || process.env) };
+  appendPathEntry(nextEnv, path.dirname(process.execPath));
+  return nextEnv;
 }
 
 function resolveWindowsExecutable(command, env) {
@@ -180,7 +196,7 @@ function getWindowsExecutableExtensions(command, env) {
     .map((item) => item.trim())
     .filter(Boolean);
 
-  return ['', ...extensions];
+  return [...extensions, ''];
 }
 
 function getPathEntries(env) {
@@ -203,6 +219,38 @@ function getEnvValue(env, key) {
   const lowerKey = key.toLowerCase();
   const match = Object.keys(env).find((candidate) => candidate.toLowerCase() === lowerKey);
   return match ? env[match] : '';
+}
+
+function appendPathEntry(env, entry) {
+  const value = String(entry || '').trim();
+  if (!value) {
+    return;
+  }
+
+  const key = getEnvKey(env, 'PATH') || 'Path';
+  const entries = String(env[key] || '')
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const alreadyPresent = entries.some((item) => item.trimEnd('\\/') === value.trimEnd('\\/'));
+  if (alreadyPresent) {
+    return;
+  }
+
+  env[key] = [...entries, value].join(path.delimiter);
+}
+
+function getEnvKey(env, key) {
+  if (!env || typeof env !== 'object') {
+    return '';
+  }
+
+  if (Object.hasOwn(env, key)) {
+    return key;
+  }
+
+  const lowerKey = key.toLowerCase();
+  return Object.keys(env).find((candidate) => candidate.toLowerCase() === lowerKey) || '';
 }
 
 function isWindowsCommandScript(command) {

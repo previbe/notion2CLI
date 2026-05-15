@@ -29,12 +29,18 @@ import { parseJobRequest } from '../server/core/schemas.mjs';
 function setupFakeClaude(scriptLines) {
   const dir = mkdtempSync(path.join(tmpdir(), 'claude-runtime-'));
   const binDir = path.join(dir, 'bin');
-  const claudePath = path.join(binDir, 'claude');
+  const scriptPath = path.join(binDir, 'claude-fixture.mjs');
+  const claudePath = path.join(binDir, process.platform === 'win32' ? 'claude.cmd' : 'claude');
   const originalPath = process.env.PATH;
   const originalHome = process.env.HOME;
   mkdirSync(binDir, { recursive: true });
-  writeFileSync(claudePath, [...scriptLines, ''].join('\n'));
-  chmodSync(claudePath, 0o755);
+  writeFileSync(scriptPath, [...scriptLines, ''].join('\n'));
+  if (process.platform === 'win32') {
+    writeFileSync(claudePath, `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`);
+  } else {
+    writeFileSync(claudePath, `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`);
+    chmodSync(claudePath, 0o755);
+  }
   process.env.PATH = `${binDir}${path.delimiter}${originalPath || ''}`;
   process.env.HOME = dir;
 
@@ -530,16 +536,16 @@ notion:
 
 test('ClaudeRuntime reports unknown when claude mcp get notion exits non-zero', async () => {
   const fakeClaude = setupFakeClaude([
-    '#!/bin/sh',
-    'if [ "$1" = "--version" ]; then',
-    '  echo "Claude fake 1.0.0"',
-    '  exit 0',
-    'fi',
-    'if [ "$1" = "mcp" ] && [ "$2" = "get" ] && [ "$3" = "notion" ]; then',
-    '  echo "failed to read Claude MCP config" >&2',
-    '  exit 2',
-    'fi',
-    'exit 99',
+    'const args = process.argv.slice(2);',
+    'if (args[0] === "--version") {',
+    '  console.log("Claude fake 1.0.0");',
+    '  process.exit(0);',
+    '}',
+    'if (args[0] === "mcp" && args[1] === "get" && args[2] === "notion") {',
+    '  console.error("failed to read Claude MCP config");',
+    '  process.exit(2);',
+    '}',
+    'process.exit(99);',
   ]);
 
   const runtime = new ClaudeRuntime(() => {}, { cwd: fakeClaude.dir });
@@ -557,12 +563,12 @@ test('ClaudeRuntime reports unknown when claude mcp get notion exits non-zero', 
 
 test('ClaudeRuntime reports unknown without creating watcher when claude is unavailable', async () => {
   const fakeClaude = setupFakeClaude([
-    '#!/bin/sh',
-    'if [ "$1" = "--version" ]; then',
-    '  echo "Claude fake is unavailable" >&2',
-    '  exit 2',
-    'fi',
-    'exit 99',
+    'const args = process.argv.slice(2);',
+    'if (args[0] === "--version") {',
+    '  console.error("Claude fake is unavailable");',
+    '  process.exit(2);',
+    '}',
+    'process.exit(99);',
   ]);
 
   const runtime = new ClaudeRuntime(() => {}, { cwd: fakeClaude.dir });
