@@ -491,6 +491,79 @@ test('bridge app can resolve an approval request through the runtime contract', 
   }
 });
 
+test('bridge app completes provider-backed write-back without runtime dispatch', async () => {
+  const runtime = new FakeRuntime();
+  let runtimeDispatched = false;
+  runtime.dispatchJob = async () => {
+    runtimeDispatched = true;
+  };
+  const provider = {
+    id: 'lark',
+    async writeBack(job) {
+      return {
+        handled: true,
+        replyText: `provider wrote ${job.replyTextToWrite}`,
+        runtimeMeta: {
+          providerWriteBack: {
+            providerId: 'lark',
+            writeMode: job.writeMode,
+          },
+        },
+      };
+    },
+  };
+  const app = new BridgeApp({
+    runtime,
+    log: () => {},
+    documentProviders: {
+      resolve() {
+        return provider;
+      },
+      async getStatus() {
+        return { providers: [] };
+      },
+      async writeBack(job) {
+        return provider.writeBack(job);
+      },
+    },
+  });
+
+  await app.start();
+
+  try {
+    const pair = await app.createPairCode();
+    const confirmed = app.confirmPairCode({
+      code: pair.code,
+      clientLabel: 'Provider Browser',
+    });
+    const created = await app.createJob(confirmed.token, {
+      action: 'write_reply_to_notion',
+      pageUrl: 'https://example.feishu.cn/docx/doc1',
+      pageTitle: 'Feishu/Lark Doc',
+      providerId: 'lark',
+      replyTextToWrite: 'done',
+      writeMode: 'append_markdown_section',
+      source: 'test',
+    });
+
+    let job = null;
+    for (let index = 0; index < 20; index += 1) {
+      job = app.readJob(confirmed.token, created.jobId).job;
+      if (job.status === 'completed') {
+        break;
+      }
+      await sleep(20);
+    }
+
+    assert.equal(job.status, 'completed');
+    assert.equal(job.replyText, 'provider wrote done');
+    assert.equal(job.runtimeMeta.providerWriteBack.providerId, 'lark');
+    assert.equal(runtimeDispatched, false);
+  } finally {
+    await app.stop();
+  }
+});
+
 test('bridge app prefers runtime-backed page bundles for full-page artifact resolution', async () => {
   const imageServer = http.createServer((req, res) => {
     if (req.url === '/diagram.png') {

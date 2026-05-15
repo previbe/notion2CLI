@@ -1,5 +1,6 @@
 import {
   ACTION_FORWARD_FULL_PAGE,
+  ACTION_WRITE_REPLY,
   JOB_STATUS_CANCELLED,
   JOB_STATUS_CANCELLING,
   JOB_STATUS_COMPLETED,
@@ -15,13 +16,13 @@ import { JobStore } from './job-store.mjs';
 import { PairingStore } from './pairing-store.mjs';
 import { ArtifactStore } from './artifact-store.mjs';
 import { createInputBundle } from './input-bundle.mjs';
-import { RuntimeBackedNotionPageBundleProvider } from './page-bundle-provider.mjs';
 import { summarizePageBundle } from './mcp-page-bundle.mjs';
 import { PromptProfileStore } from './prompt-profiles.mjs';
 import { parseApprovalResolution, parseJobRequest, parsePairConfirm, parsePromptProfileMutation } from './schemas.mjs';
+import { createDocumentProviderRouter } from '../providers/provider-router.mjs';
 
 export class BridgeApp {
-  constructor({ runtime, log, promptProfileStore = new PromptProfileStore(), artifactStore = null }) {
+  constructor({ runtime, log, promptProfileStore = new PromptProfileStore(), artifactStore = null, documentProviders = null }) {
     this.runtime = runtime;
     this.log = log;
     this.startedAt = new Date().toISOString();
@@ -29,7 +30,7 @@ export class BridgeApp {
     this.pairingStore = new PairingStore();
     this.artifactStore = artifactStore || new ArtifactStore({ log });
     this.promptProfileStore = promptProfileStore;
-    this.pageBundleProvider = new RuntimeBackedNotionPageBundleProvider({ runtime, log });
+    this.documentProviders = documentProviders || createDocumentProviderRouter({ runtime, artifactStore: this.artifactStore, log });
     this.runtimeContext = this.createRuntimeContext();
   }
 
@@ -49,7 +50,10 @@ export class BridgeApp {
         ? readBearer(req)
         : null;
     const authenticated = this.pairingStore.isAuthenticated(token);
-    const runtimeStatus = await this.runtime.getStatus();
+    const runtimeStatus = await this.runtime.getStatus({ waitForMcpRefresh: false });
+    const documentProviders = typeof this.documentProviders.getStatus === 'function'
+      ? await this.documentProviders.getStatus(runtimeStatus)
+      : null;
 
     return {
       ok: true,
@@ -58,6 +62,7 @@ export class BridgeApp {
       runtime: runtimeStatus.runtime,
       session: runtimeStatus.session || null,
       notionMcp: runtimeStatus.notionMcp,
+      documentProviders,
       ...this.pairingStore.getPublicSnapshot(authenticated),
       pendingJobs: this.jobStore.pendingCount(),
     };
@@ -99,6 +104,7 @@ export class BridgeApp {
       jobId: job.id,
       action: job.action,
       runtime: this.runtime.id,
+      providerId: job.providerId,
       pageTitle: job.pageTitle,
       promptProfileId: job.promptProfileId,
       selectionChars: job.selectionText.length,
@@ -177,6 +183,20 @@ export class BridgeApp {
     }
 
     return await this.runtime.openCodexApp();
+  }
+
+  async connectDocumentProvider(token, providerId, body = {}) {
+    this.assertToken(token);
+    const provider = typeof this.documentProviders.resolve === 'function'
+      ? this.documentProviders.resolve(body.pageUrl || '', providerId)
+      : null;
+    if (!provider || provider.id !== providerId || typeof provider.connect !== 'function') {
+      throw createHttpError(404, `Unknown connectable document provider: ${providerId}`);
+    }
+
+    return provider.connect({
+      pageUrl: body.pageUrl || '',
+    });
   }
 
   readJob(token, jobId) {
@@ -371,6 +391,13 @@ export class BridgeApp {
       throw createHttpError(404, `Unknown job id: ${jobId}`);
     }
 
+    if (job.action === ACTION_WRITE_REPLY) {
+      const writeResult = await this.handleProviderWriteBack(job);
+      if (writeResult?.handled) {
+        return;
+      }
+    }
+
     let pageBundle = null;
     let pageBundleWarnings = [];
     if (job.action === ACTION_FORWARD_FULL_PAGE) {
@@ -378,7 +405,7 @@ export class BridgeApp {
         return;
       }
 
-      const pageBundleResult = await this.pageBundleProvider.fetchPageBundle(job);
+      const pageBundleResult = await this.documentProviders.fetchPageBundle(job);
       if (this.shouldStopProcessing(job.id)) {
         return;
       }
@@ -399,7 +426,7 @@ export class BridgeApp {
 
       this.recordJobEvent(job.id, {
         type: 'page_bundle_prepared',
-        note: 'The bridge prefetched the current page through runtime-backed MCP.',
+        note: 'The bridge prefetched the current page through a document provider.',
         extra: {
           warnings: pageBundleWarnings,
           summary: summarizePageBundle(pageBundle),
@@ -461,6 +488,54 @@ export class BridgeApp {
     }
 
     await this.runtime.dispatchJob(job);
+  }
+
+  async handleProviderWriteBack(job) {
+    if (typeof this.documentProviders.writeBack !== 'function') {
+      return { handled: false };
+    }
+
+    const provider = typeof this.documentProviders.resolve === 'function'
+      ? this.documentProviders.resolve(job.pageUrl, job.providerId)
+      : null;
+    if (!provider || typeof provider.writeBack !== 'function') {
+      return { handled: false };
+    }
+
+    this.recordJobEvent(job.id, {
+      type: 'provider_writeback_dispatched',
+      status: JOB_STATUS_DISPATCHED,
+      note: 'The bridge is preparing provider write-back.',
+    });
+    if (this.shouldStopProcessing(job.id)) {
+      return { handled: true };
+    }
+
+    this.recordJobEvent(job.id, {
+      type: 'provider_writeback_running',
+      status: JOB_STATUS_RUNNING,
+      note: 'The bridge is writing through the resolved document provider.',
+    });
+
+    const result = await this.documentProviders.writeBack(job);
+    if (!result?.handled) {
+      return { handled: false };
+    }
+
+    this.recordJobEvent(job.id, {
+      type: 'provider_writeback_completed',
+      status: JOB_STATUS_COMPLETED,
+      replyText: result.replyText || 'Write-back completed.',
+      note: 'Provider write-back completed.',
+      error: null,
+      runtimeMeta: result.runtimeMeta || {
+        providerWriteBack: {
+          providerId: result.providerId || '',
+        },
+      },
+    });
+
+    return { handled: true };
   }
 
   shouldStopProcessing(jobId) {

@@ -19,7 +19,7 @@ export function buildDedicatedRuntimePrompt(job, _runtimeInfo = {}, options = {}
   const promptProfileLines = buildPromptProfileLines(promptProfile);
   const imageArtifactLines = localImageArtifacts.length
     ? [
-      'Local image artifacts from this Notion page:',
+      'Local image artifacts from this source document:',
       ...localImageArtifacts.map((image, index) => `- [${index + 1}] ${image.cachePath}`),
     ]
     : [];
@@ -55,7 +55,7 @@ export function buildDedicatedRuntimePrompt(job, _runtimeInfo = {}, options = {}
       writeMode: job.writeMode,
     }),
     ...replyLines,
-    'You may decide autonomously whether to use Notion MCP, local files, or terminal tools based on the request. For side-effecting actions such as writing, deleting, overwriting, or running commands, confirm they are necessary to complete the current request and mention them in the final Brief.',
+    'You may decide autonomously whether to use the configured document provider, local files, or terminal tools based on the request. For side-effecting actions such as writing, deleting, overwriting, or running commands, confirm they are necessary to complete the current request and mention them in the final Brief.',
     '',
     ...promptProfileLines,
     '',
@@ -114,6 +114,7 @@ function buildCompactPayload(job, { pageBundle, promptProfile, attachedImageCoun
     action: job.action,
     pageUrl: job.pageUrl,
     pageTitle: job.pageTitle,
+    providerId: job.providerId,
     promptProfile: {
       id: promptProfile.id,
       name: promptProfile.name,
@@ -127,6 +128,8 @@ function buildCompactPayload(job, { pageBundle, promptProfile, attachedImageCoun
   if (job.action === ACTION_FORWARD_FULL_PAGE && pageBundle) {
     payload.pageBundle = compactObject({
       provider: pageBundle.provider,
+      providerId: pageBundle.providerId,
+      sourceProvider: pageBundle.sourceProvider,
       runtimeId: pageBundle.runtimeId,
       truncated: pageBundle.truncated === true ? true : undefined,
       warnings: pageBundle.warnings,
@@ -137,6 +140,7 @@ function buildCompactPayload(job, { pageBundle, promptProfile, attachedImageCoun
   if (job.action === ACTION_WRITE_REPLY) {
     Object.assign(payload, compactObject({
       selectionText: job.selectionText,
+      selectionContext: job.selectionContext,
       replyTextToWrite: job.replyTextToWrite,
       writeMode: job.writeMode,
       writeSectionTitle: job.writeSectionTitle,

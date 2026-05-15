@@ -11,9 +11,13 @@ const PROMPT_EDITOR_NEW = '__new__';
 const ACTION_FORWARD_SELECTION = 'forward_selection_text';
 const ACTION_FORWARD_FULL_PAGE = 'forward_full_page_via_mcp';
 const ACTION_WRITE_REPLY = 'write_reply_to_notion';
+const ACTION_SELECTION_CACHE_MS = 1000;
+const EXTENSION_MESSAGE_TIMEOUT_MS = 65000;
+const PAGE_PROVIDER = detectPageProvider(window.location.href);
 
 const state = {
   bridgeReady: false,
+  pageProvider: PAGE_PROVIDER,
   bridgeMessage: 'Checking connection',
   expanded: false,
   currentJobId: null,
@@ -63,13 +67,19 @@ const state = {
   panelPosition: null,
   panelClampFrame: null,
   suppressFabClick: false,
+  lastSelectionText: '',
+  lastSelectionCapturedAt: 0,
+  pendingActionSelectionText: '',
+  pendingActionSelectionCapturedAt: 0,
   writeMode: WRITE_MODE_APPEND_SECTION,
   manualWritebackVisible: false,
   lastSubmission: {
     action: '',
     pageUrl: '',
     pageTitle: '',
+    providerId: '',
     selectionText: '',
+    selectionContext: null,
   },
   session: null,
   runtime: {
@@ -85,6 +95,9 @@ const state = {
   notionMcp: {
     status: 'unknown',
     detail: '',
+  },
+  documentProviders: {
+    providers: [],
   },
   notifiedJobEvents: new Set(),
 };
@@ -155,7 +168,7 @@ root.innerHTML = `
               </svg>
             </button>
             <div class="n2c-footer-right">
-              <button class="n2c-writeback" type="button" data-write-back disabled>Write to Notion</button>
+              <button class="n2c-writeback" type="button" data-write-back disabled>Write back</button>
               <button class="n2c-open-app" type="button" data-open-app disabled>Open session</button>
             </div>
           </div>
@@ -299,8 +312,13 @@ function bindEvents() {
   });
   approveButton.addEventListener('click', () => submitApproval('accept'));
   declineButton.addEventListener('click', () => submitApproval('decline'));
+  promptListNode.addEventListener('pointerdown', captureActionSelectionFromPointer, true);
+  promptListNode.addEventListener('mousedown', preserveSelectionForActionControl, true);
+  writeBackButton.addEventListener('pointerdown', captureActionSelectionFromPointer, true);
+  writeBackButton.addEventListener('mousedown', preserveSelectionForActionControl, true);
 
   document.addEventListener('selectionchange', () => {
+    rememberLiveSelection();
     updateActionCopy();
     updateControls();
   });
@@ -351,7 +369,9 @@ function bindEvents() {
     }, 1400);
   });
 
-  writeBackButton.addEventListener('click', () => startManualWriteBack());
+  writeBackButton.addEventListener('click', () => startManualWriteBack({
+    selectionText: consumeActionSelectionText(),
+  }));
 }
 
 function setExpanded(nextExpanded) {
@@ -562,11 +582,13 @@ async function persistPanelPosition(position) {
 }
 
 async function refreshBridgeStatus() {
+  state.pageProvider = detectPageProvider(window.location.href);
   try {
     const response = await sendMessage({ type: 'getBridgeStatus' });
     state.runtime = response.runtime || state.runtime;
     state.session = response.session || null;
     state.notionMcp = response.notionMcp || state.notionMcp;
+    state.documentProviders = response.documentProviders || state.documentProviders;
     state.bridgeReady = Boolean(response.paired) && Boolean(state.runtime.ready);
     state.bridgeMessage = formatBridgeMessage(response);
     syncLatestReplyFromSession(response.session || null);
@@ -610,20 +632,38 @@ async function refreshPromptProfiles() {
 }
 
 function renderPromptButtons() {
-  promptListNode.replaceChildren();
   const disabled = state.busy || !state.bridgeReady || !canStartAction(getSelectionText());
+  const existingButtons = new Map(
+    [...promptListNode.querySelectorAll('[data-prompt-profile-id]')]
+      .map((button) => [button.dataset.promptProfileId, button]),
+  );
+  const activeProfileIds = new Set();
 
-  for (const profile of state.promptProfiles) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'n2c-task-button';
+  state.promptProfiles.forEach((profile, index) => {
+    let button = existingButtons.get(profile.id);
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'n2c-task-button';
+      button.dataset.promptProfileId = profile.id;
+      button.addEventListener('click', () => handlePromptButtonClick(profile.id));
+    }
+
     button.textContent = profile.name;
     button.title = profile.name;
-    button.dataset.promptProfileId = profile.id;
     button.disabled = disabled;
     button.classList.toggle('active', profile.id === state.promptProfileId);
-    button.addEventListener('click', () => handlePromptButtonClick(profile.id));
-    promptListNode.appendChild(button);
+    activeProfileIds.add(profile.id);
+
+    if (promptListNode.children[index] !== button) {
+      promptListNode.insertBefore(button, promptListNode.children[index] || null);
+    }
+  });
+
+  for (const [profileId, button] of existingButtons.entries()) {
+    if (!activeProfileIds.has(profileId)) {
+      button.remove();
+    }
   }
 }
 
@@ -637,7 +677,9 @@ function handlePromptButtonClick(profileId) {
     return;
   }
 
-  startAction(task.id);
+  startAction(task.id, {
+    selectionText: consumeActionSelectionText(),
+  });
 }
 
 function updateActionCopy() {
@@ -672,7 +714,7 @@ function updateActionCopy() {
   }
 
   if (!canAttemptFullPageDelivery()) {
-    sendHintNode.textContent = 'Full-page runs require Notion page access. Enable Notion MCP in the extension popup first.';
+    sendHintNode.textContent = 'Full-page runs require document access. Enable the required provider setup in the extension popup first.';
     renderPromptButtons();
     return;
   }
@@ -690,8 +732,9 @@ function buildSubmittedText({ target, runtimeLabel, task }) {
   return `${target} was submitted as "${task.name}" input to ${runtimeLabel} and is waiting for the result.`;
 }
 
-async function startAction(profileId = state.promptProfileId) {
-  const selectionText = getSelectionText();
+async function startAction(profileId = state.promptProfileId, options = {}) {
+  const selectionText = normalizeSelectionText(options.selectionText) || getSelectionText();
+  const selectionContext = buildSelectionContext(selectionText);
   const action = selectionText ? ACTION_FORWARD_SELECTION : ACTION_FORWARD_FULL_PAGE;
   const runtimeLabel = getRuntimeLabel();
   const task = resolvePromptProfile(profileId);
@@ -707,12 +750,15 @@ async function startAction(profileId = state.promptProfileId) {
   state.currentAction = action;
   state.currentJobId = null;
   state.notifiedJobEvents = new Set();
+  clearLatestReplyForNewRun();
   requestClearJobBadge();
   state.lastSubmission = {
     action,
     pageUrl: window.location.href,
     pageTitle: getPageTitle(),
+    providerId: getProviderId(),
     selectionText,
+    selectionContext,
     promptProfileId: task.id,
   };
 
@@ -732,7 +778,9 @@ async function startAction(profileId = state.promptProfileId) {
         action,
         pageUrl: state.lastSubmission.pageUrl,
         pageTitle: state.lastSubmission.pageTitle,
+        providerId: state.lastSubmission.providerId,
         selectionText,
+        selectionContext,
         promptProfileId: task.id,
         source: 'chrome-extension',
       },
@@ -759,13 +807,13 @@ async function startAction(profileId = state.promptProfileId) {
   }
 }
 
-async function startManualWriteBack() {
+async function startManualWriteBack(options = {}) {
   if (!state.manualWritebackVisible) {
     return;
   }
 
   const writeMode = normalizeWriteMode(state.writeMode);
-  const selectionText = getSelectionText();
+  const selectionText = normalizeSelectionText(options.selectionText) || getSelectionText();
   const replyText = String(state.latestReply || '').trim();
 
   if (!replyText) {
@@ -782,7 +830,7 @@ async function startManualWriteBack() {
     state.busy = false;
     renderJobState({
       status: 'failed',
-      text: 'The current write-back mode replaces the selected content. Select the target text before clicking Write to Notion.',
+      text: `The current write-back mode replaces the selected content. Select the target text before clicking Write to ${getProviderLabel()}.`,
       jobId: '',
       action: ACTION_WRITE_REPLY,
     });
@@ -809,7 +857,9 @@ async function startManualWriteBack() {
         action: ACTION_WRITE_REPLY,
         pageUrl: window.location.href,
         pageTitle: getPageTitle(),
+        providerId: getProviderId(),
         selectionText,
+        selectionContext: buildSelectionContext(selectionText),
         replyTextToWrite: replyText,
         writeMode,
         writeSectionTitle: 'notion2CLI',
@@ -1146,7 +1196,7 @@ function statusLabel(status, action) {
     case 'sending':
       return action === ACTION_WRITE_REPLY ? 'Preparing write-back' : 'Submitting';
     case 'completed':
-      return action === ACTION_WRITE_REPLY ? 'Written to Notion' : 'Completed';
+      return action === ACTION_WRITE_REPLY ? 'Written back' : 'Completed';
     case 'failed':
       return action === ACTION_WRITE_REPLY ? 'Write-back failed' : 'Run failed';
     default:
@@ -1159,11 +1209,161 @@ function isTerminalJobStatus(status) {
 }
 
 function getSelectionText() {
-  return window.getSelection()?.toString().trim() || '';
+  return normalizeSelectionText(window.getSelection()?.toString());
+}
+
+function normalizeSelectionText(value) {
+  return String(value || '').trim();
+}
+
+function rememberLiveSelection() {
+  const selectionText = getSelectionText();
+  if (!selectionText) {
+    return;
+  }
+
+  state.lastSelectionText = selectionText;
+  state.lastSelectionCapturedAt = Date.now();
+}
+
+function captureActionSelectionSnapshot() {
+  const selectionText = getSelectionText() || getRecentSelectionText();
+  if (!selectionText) {
+    return '';
+  }
+
+  state.pendingActionSelectionText = selectionText;
+  state.pendingActionSelectionCapturedAt = Date.now();
+  return selectionText;
+}
+
+function captureActionSelectionFromPointer(event) {
+  if (event?.isPrimary === false || (event?.pointerType === 'mouse' && event.button !== 0)) {
+    return;
+  }
+
+  captureActionSelectionSnapshot();
+}
+
+function preserveSelectionForActionControl(event) {
+  if (event?.button !== 0) {
+    return;
+  }
+
+  captureActionSelectionSnapshot();
+  event.preventDefault();
+}
+
+function consumeActionSelectionText() {
+  const selectionText = getSelectionText() || getPendingActionSelectionText();
+  state.pendingActionSelectionText = '';
+  state.pendingActionSelectionCapturedAt = 0;
+  return selectionText;
+}
+
+function getPendingActionSelectionText() {
+  if (
+    state.pendingActionSelectionText
+    && Date.now() - state.pendingActionSelectionCapturedAt <= ACTION_SELECTION_CACHE_MS
+  ) {
+    return state.pendingActionSelectionText;
+  }
+
+  return '';
+}
+
+function getRecentSelectionText() {
+  if (
+    state.lastSelectionText
+    && Date.now() - state.lastSelectionCapturedAt <= ACTION_SELECTION_CACHE_MS
+  ) {
+    return state.lastSelectionText;
+  }
+
+  return '';
 }
 
 function getPageTitle() {
-  return document.title.replace(/\s+\|\s+Notion$/, '').trim() || 'Untitled Notion Page';
+  return document.title
+    .replace(/\s+\|\s+Notion$/, '')
+    .replace(/\s+[-|]\s+(Feishu|Lark|Lark Docs|Feishu Docs).*$/i, '')
+    .trim() || `Untitled ${getProviderLabel()} Page`;
+}
+
+function detectPageProvider(pageUrl) {
+  let url;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return {
+      id: 'notion',
+      label: 'Notion',
+    };
+  }
+
+  if (/(^|\.)notion\.so$/i.test(url.hostname)) {
+    return {
+      id: 'notion',
+      label: 'Notion',
+    };
+  }
+
+  if (/(^|\.)((feishu\.cn)|(larksuite\.com)|(larkoffice\.com))$/i.test(url.hostname)) {
+    return {
+      id: 'lark',
+      label: url.hostname.includes('larksuite') || url.hostname.includes('larkoffice') ? 'Lark' : 'Feishu',
+    };
+  }
+
+  return {
+    id: '',
+    label: 'Document',
+  };
+}
+
+function getProviderId() {
+  return state.pageProvider?.id || detectPageProvider(window.location.href).id || '';
+}
+
+function getProviderLabel() {
+  return state.pageProvider?.label || detectPageProvider(window.location.href).label || 'Document';
+}
+
+function providerUsesRuntimeMcp() {
+  return getProviderId() === 'notion';
+}
+
+function getCurrentProviderStatus() {
+  const providerId = getProviderId();
+  const providers = state.documentProviders?.providers;
+  if (!providerId || !Array.isArray(providers)) {
+    return null;
+  }
+  return providers.find((provider) => provider.providerId === providerId) || null;
+}
+
+function buildSelectionContext(selectionText) {
+  const selected = String(selectionText || '').trim();
+  if (!selected) {
+    return null;
+  }
+
+  const bodyText = String(document.body?.innerText || '');
+  const index = bodyText.indexOf(selected);
+  return {
+    beforeText: index === -1 ? '' : bodyText.slice(Math.max(0, index - 500), index),
+    afterText: index === -1 ? '' : bodyText.slice(index + selected.length, index + selected.length + 500),
+    selectionHash: hashString(selected),
+  };
+}
+
+function hashString(value) {
+  let hash = 5381;
+  const text = String(value || '');
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16);
 }
 
 function getRuntimeLabel() {
@@ -1419,6 +1619,7 @@ function updateControls() {
   managePromptsButton.disabled = state.promptEditorBusy || !state.bridgeReady;
   openAppButton.disabled = state.openAppBusy || !canOpenRuntimeView();
   copyButton.disabled = !(state.latestBrief || state.latestReply);
+  writeBackButton.textContent = `Write to ${getProviderLabel()}`;
   writeBackButton.classList.toggle('n2c-hidden', !state.manualWritebackVisible);
   writeBackButton.disabled = !state.manualWritebackVisible || state.busy || !canWriteBack(selectionText);
   stopButton.classList.toggle('n2c-hidden', !canShowStopButton());
@@ -1517,10 +1718,20 @@ function formatBridgeMessage(response) {
 }
 
 function canAttemptFullPageDelivery() {
+  if (!providerUsesRuntimeMcp()) {
+    const provider = getCurrentProviderStatus();
+    return getProviderId() !== 'lark' || provider?.status === 'configured';
+  }
+
   return ['configured', 'unknown', 'unauthenticated'].includes(state.notionMcp.status);
 }
 
 function canAttemptWriteBack() {
+  if (!providerUsesRuntimeMcp()) {
+    const provider = getCurrentProviderStatus();
+    return getProviderId() !== 'lark' || provider?.status === 'configured';
+  }
+
   return !['missing', 'unavailable'].includes(state.notionMcp.status);
 }
 
@@ -1545,6 +1756,10 @@ function canWriteBack(selectionText) {
 }
 
 function syncLatestReplyFromSession(session) {
+  if (state.busy) {
+    return;
+  }
+
   const latestReply = String(session?.latestSharableAssistantMessage || '').trim();
   if (!latestReply || latestReply === state.latestReply) {
     return;
@@ -1552,6 +1767,14 @@ function syncLatestReplyFromSession(session) {
 
   state.latestReply = latestReply;
   state.latestBrief = extractBrief(latestReply);
+  state.latestReplyJobId = String(session?.latestAssistantJobId || '').trim() || state.latestReplyJobId;
+  renderBrief();
+}
+
+function clearLatestReplyForNewRun() {
+  state.latestReply = '';
+  state.latestBrief = '';
+  state.latestReplyJobId = null;
   renderBrief();
 }
 
@@ -1577,9 +1800,15 @@ function renderSessionState() {
     : '';
 }
 
-function sendMessage(message) {
+function sendMessage(message, options = {}) {
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : EXTENSION_MESSAGE_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('The extension background worker did not respond. Reload the extension and try again.'));
+    }, timeoutMs);
+
     chrome.runtime.sendMessage(message, (response) => {
+      clearTimeout(timeout);
       const runtimeError = chrome.runtime.lastError;
       if (runtimeError) {
         reject(new Error(runtimeError.message));

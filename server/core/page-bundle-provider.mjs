@@ -61,6 +61,8 @@ export class RuntimeBackedNotionPageBundleProvider {
         markdown: parsed.markdown,
         warnings: parsed.warnings,
         provider: 'runtime-backed-notion-mcp',
+        providerId: 'notion',
+        sourceProvider: 'notion',
         runtimeId: this.runtime.id,
         truncated: parsed.truncated,
       });

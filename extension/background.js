@@ -1,6 +1,10 @@
 const BRIDGE_ORIGIN = 'http://127.0.0.1:43821';
 const STORAGE_KEY = 'notion2cli.bridge.token';
 const LABEL_KEY = 'notion2cli.bridge.label';
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+const STATUS_REQUEST_TIMEOUT_MS = 5000;
+const JOB_REQUEST_TIMEOUT_MS = 20000;
+const CONNECT_REQUEST_TIMEOUT_MS = 45000;
 
 const BADGE_BG = {
   completed: '#16a34a',
@@ -56,6 +60,8 @@ async function handleMessage(message, sender) {
       return resolveJobApproval(message.jobId, message.resolution);
     case 'openCodexApp':
       return openCodexApp();
+    case 'connectLarkProvider':
+      return connectLarkProvider();
     case 'notifyJobEvent':
       return notifyJobEvent(message, sender);
     case 'clearJobBadge':
@@ -69,6 +75,7 @@ async function getBridgeStatus() {
   const token = await getStoredToken();
   const response = await fetchJson('/api/status', {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    timeoutMs: STATUS_REQUEST_TIMEOUT_MS,
   });
 
   return {
@@ -194,6 +201,7 @@ async function submitNotionAction(payload) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
+    timeoutMs: JOB_REQUEST_TIMEOUT_MS,
   });
 }
 
@@ -251,6 +259,26 @@ async function openCodexApp() {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+async function connectLarkProvider() {
+  const token = await getStoredToken();
+  if (!token) {
+    throw new Error('The browser is not paired with the local bridge');
+  }
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return fetchJson('/api/document-providers/lark/connect', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      pageUrl: tab?.url || '',
+    }),
+    timeoutMs: CONNECT_REQUEST_TIMEOUT_MS,
   });
 }
 
@@ -369,11 +397,24 @@ async function getStoredToken() {
 
 async function fetchJson(pathname, options = {}) {
   let response;
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
 
   try {
-    response = await fetch(`${BRIDGE_ORIGIN}${pathname}`, options);
-  } catch {
+    response = await fetch(`${BRIDGE_ORIGIN}${pathname}`, {
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`The local bridge did not respond within ${Math.ceil(timeoutMs / 1000)}s. Restart the notion2CLI bridge and try again.`);
+    }
     throw new Error('Unable to connect to the local bridge. Make sure the notion2CLI bridge is running.');
+  } finally {
+    clearTimeout(timeout);
   }
 
   let payload;

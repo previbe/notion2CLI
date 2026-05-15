@@ -119,6 +119,7 @@ export class JobStore {
       updatedAt: job.updatedAt,
       pageUrl: job.pageUrl,
       pageTitle: job.pageTitle,
+      providerId: job.providerId || '',
       promptProfileId: job.promptProfileId,
       promptProfile: job.promptProfile
         ? {

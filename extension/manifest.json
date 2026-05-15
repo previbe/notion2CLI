@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "notion2CLI",
-  "version": "0.1.2",
-  "description": "Trigger a local Claude Code or Codex workflow directly from a Notion page.",
+  "version": "0.1.3",
+  "description": "Trigger local Claude Code or Codex workflows from Notion and Feishu/Lark documents.",
   "homepage_url": "https://github.com/previbe/notion2CLI",
   "icons": {
     "16": "icons/icon-16.png",
@@ -19,6 +19,9 @@
   "host_permissions": [
     "https://www.notion.so/*",
     "https://notion.so/*",
+    "https://*.feishu.cn/*",
+    "https://*.larksuite.com/*",
+    "https://*.larkoffice.com/*",
     "http://127.0.0.1:43821/*"
   ],
   "background": {
@@ -39,7 +42,13 @@
     {
       "matches": [
         "https://www.notion.so/*",
-        "https://notion.so/*"
+        "https://notion.so/*",
+        "https://*.feishu.cn/docx/*",
+        "https://*.feishu.cn/wiki/*",
+        "https://*.larksuite.com/docx/*",
+        "https://*.larksuite.com/wiki/*",
+        "https://*.larkoffice.com/docx/*",
+        "https://*.larkoffice.com/wiki/*"
       ],
       "js": [
         "content-script.js"

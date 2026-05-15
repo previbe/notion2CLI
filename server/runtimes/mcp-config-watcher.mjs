@@ -44,13 +44,27 @@ export class MCPConfigWatcher {
     this.watchers.clear();
   }
 
-  async getStatus() {
-    if (this.activeProbe) {
+  async getStatus(options = {}) {
+    const waitForActive = options.waitForActive !== false;
+    if (waitForActive && this.activeProbe) {
       try {
         await this.activeProbe;
       } catch {}
     }
-    return this.cached;
+
+    if (this.cached) {
+      return this.activeProbe && !waitForActive
+        ? { ...this.cached, refreshing: true }
+        : this.cached;
+    }
+
+    return {
+      status: 'unknown',
+      detail: this.activeProbe
+        ? 'MCP status check is still running.'
+        : 'MCP status has not been checked yet.',
+      refreshing: Boolean(this.activeProbe),
+    };
   }
 
   invalidate() {

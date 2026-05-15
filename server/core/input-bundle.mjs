@@ -16,7 +16,9 @@ export async function createInputBundle(job, options = {}) {
     pageContext: {
       pageUrl: job.pageUrl,
       pageTitle: job.pageTitle,
+      providerId: job.providerId,
       selectionText: job.selectionText,
+      selectionContext: job.selectionContext,
       source: job.source,
     },
     request: {

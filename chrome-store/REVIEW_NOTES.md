@@ -4,7 +4,7 @@ These notes are for Chrome Web Store reviewers.
 
 ## What notion2CLI Does
 
-notion2CLI lets a user send selected text or a full page from Notion to a local Codex CLI or Claude Code session.
+notion2CLI lets a user send selected text or a full page from Notion or Feishu/Lark documents to a local Codex CLI or Claude Code session.
 
 The Chrome extension is only one part of the system. It requires a local CLI bridge running on the user's machine.
 
@@ -20,7 +20,7 @@ This is a local bridge started by the user. notion2CLI does not operate a cloud 
 
 ## Fast Smoke Test Without Codex or Claude
 
-This standalone path verifies the extension, pairing, panel UI, and local bridge without requiring Codex CLI, Claude Code, or Notion MCP.
+This standalone path verifies the extension, pairing, panel UI, and local bridge without requiring Codex CLI, Claude Code, Notion MCP, or Feishu/Lark authorization.
 
 1. Install Node.js 22.15+.
 2. Install the CLI:
@@ -52,9 +52,9 @@ This standalone path verifies the extension, pairing, panel UI, and local bridge
    ```
 
 6. Open the extension popup and enter the 6-digit pairing code.
-7. Open a Notion page.
+7. Open a Notion or supported Feishu/Lark document page.
 8. Select any text and run `Raw` from the Activity panel.
-9. Expected result: the Activity panel shows a simulated response. Standalone mode does not call Notion MCP and does not modify Notion.
+9. Expected result: the Activity panel shows a simulated response. Standalone mode does not call document providers and does not modify the page.
 
 ## Full Test With Codex
 
@@ -78,6 +78,18 @@ This path verifies the real Codex runtime flow.
 5. Open a Notion page.
 6. Select text and run `Raw`.
 7. Run the page without a selection to test full-page MCP reading.
+
+## Full Test With Feishu/Lark
+
+This path verifies the official local `lark-cli` provider flow.
+
+1. Start the bridge with Codex or Claude.
+2. Pair the extension.
+3. Open a supported Feishu/Lark `/docx/` or `/wiki/` page.
+4. Open the extension popup and choose `Connect Feishu/Lark`.
+5. Complete the browser authorization link. If the popup asks again, choose `Connect Feishu/Lark` a second time to authorize document scopes.
+6. Return to the document page and run selected text.
+7. Run the page without a selection to test full-page reading through `lark-cli`.
 
 ## Full Test With Claude Code
 
@@ -105,6 +117,7 @@ This path verifies the Claude Code channel flow.
 
 - `storage`: local settings and pairing token.
 - `https://www.notion.so/*`, `https://notion.so/*`: Activity panel on Notion pages and current page metadata/selection.
+- `https://*.feishu.cn/*`, `https://*.larksuite.com/*`, `https://*.larkoffice.com/*`: Activity panel on supported Feishu/Lark document pages and current page metadata/selection.
 - `http://127.0.0.1:43821/*`: local bridge communication.
 
 ## Data Notes

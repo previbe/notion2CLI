@@ -214,7 +214,8 @@ export class ClaudeRuntime {
     };
   }
 
-  async getStatus() {
+  async getStatus(options = {}) {
+    const waitForMcpRefresh = options.waitForMcpRefresh !== false;
     return {
       runtime: {
         id: this.id,
@@ -228,18 +229,18 @@ export class ClaudeRuntime {
         launchCommand: buildClaudeLaunchCommand(this.permissionMode),
         statusMessage: this.statusMessage,
       },
-      notionMcp: await this.getNotionMcpStatus(),
+      notionMcp: await this.getNotionMcpStatus({ waitForActive: waitForMcpRefresh }),
     };
   }
 
-  async getNotionMcpStatus() {
+  async getNotionMcpStatus(options = {}) {
     if (!this.mcpConfigWatcher) {
       return {
         status: 'unknown',
         detail: this.statusMessage || 'Claude Code is not ready.',
       };
     }
-    return this.mcpConfigWatcher.getStatus();
+    return this.mcpConfigWatcher.getStatus(options);
   }
 
   async installNotionMcp(job) {
@@ -436,23 +437,36 @@ export function parseClaudeMcpList(output) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
-  const notionLine = lines.find((line) => /^notion:/i.test(line) || /notion\.com\/mcp/i.test(line));
+  const joined = lines.join('\n');
 
-  if (!notionLine) {
+  if (/no .*mcp server.*notion|notion.*not found|not found.*notion/i.test(joined)) {
     return {
       status: 'missing',
       detail: 'Claude Code Notion MCP configuration was not detected.',
     };
   }
 
-  if (/Needs authentication/i.test(notionLine)) {
+  const notionIndex = lines.findIndex((line) => /^notion:/i.test(line) || /notion\.com\/mcp/i.test(line));
+
+  if (notionIndex < 0) {
+    return {
+      status: 'missing',
+      detail: 'Claude Code Notion MCP configuration was not detected.',
+    };
+  }
+
+  const notionBlock = lines
+    .slice(notionIndex, notionIndex + 8)
+    .join('\n');
+
+  if (/Needs authentication/i.test(notionBlock)) {
     return {
       status: 'unauthenticated',
       detail: 'Claude Code Notion MCP configuration was detected, but authorization is not complete.',
     };
   }
 
-  if (/✓ Connected/i.test(notionLine)) {
+  if (/✓ Connected|Status:\s*Connected/i.test(notionBlock)) {
     return {
       status: 'configured',
       detail: 'Claude Code is configured and can use Notion MCP.',
@@ -461,26 +475,30 @@ export function parseClaudeMcpList(output) {
 
   return {
     status: 'unknown',
-    detail: notionLine,
+    detail: notionBlock,
   };
 }
 
 async function probeNotionMcpStatusViaCli({ cwd, log }) {
   try {
-    const result = await runCommand('claude', ['mcp', 'list'], {
+    const result = await runCommand('claude', ['mcp', 'get', 'notion'], {
       cwd: cwd || os.homedir(),
       timeoutMs: 12000,
     });
+    const output = compactCommandOutput(result);
     if (result.code !== 0) {
-      const output = compactCommandOutput(result);
+      if (/no .*mcp server.*notion|notion.*not found|not found.*notion/i.test(output)) {
+        return parseClaudeMcpList(output);
+      }
+
       return {
         status: 'unknown',
-        detail: output || `claude mcp list exited with code ${result.code ?? 'unknown'}${result.signal ? ` (${result.signal})` : ''}`,
+        detail: output || `claude mcp get notion exited with code ${result.code ?? 'unknown'}${result.signal ? ` (${result.signal})` : ''}`,
       };
     }
-    return parseClaudeMcpList(`${result.stdout}\n${result.stderr}`);
+    return parseClaudeMcpList(output);
   } catch (error) {
-    log?.('claude mcp list failed', { message: error?.message });
+    log?.('claude mcp get notion failed', { message: error?.message });
     return {
       status: 'unknown',
       detail: error?.message || 'Unable to check Claude Code Notion MCP status.',

@@ -12,6 +12,18 @@ export function runCommand(command, args, options = {}) {
     let stderr = '';
     let settled = false;
     let timer = null;
+    let killTimer = null;
+
+    const clearTimers = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (killTimer) {
+        clearTimeout(killTimer);
+        killTimer = null;
+      }
+    };
 
     if (options.timeoutMs) {
       timer = setTimeout(() => {
@@ -21,8 +33,15 @@ export function runCommand(command, args, options = {}) {
 
         settled = true;
         child.kill('SIGTERM');
+        killTimer = setTimeout(() => {
+          if (child.exitCode == null) {
+            child.kill('SIGKILL');
+          }
+        }, options.killAfterMs || 1000);
+        killTimer.unref?.();
         reject(new Error(`Command timed out after ${options.timeoutMs}ms`));
       }, options.timeoutMs);
+      timer.unref?.();
     }
 
     child.stdout.on('data', (chunk) => {
@@ -34,9 +53,7 @@ export function runCommand(command, args, options = {}) {
     });
 
     child.on('error', (error) => {
-      if (timer) {
-        clearTimeout(timer);
-      }
+      clearTimers();
 
       if (!settled) {
         settled = true;
@@ -45,9 +62,7 @@ export function runCommand(command, args, options = {}) {
     });
 
     child.on('close', (code, signal) => {
-      if (timer) {
-        clearTimeout(timer);
-      }
+      clearTimers();
 
       if (settled) {
         return;
@@ -64,4 +79,3 @@ export function runCommand(command, args, options = {}) {
     child.stdin.end();
   });
 }
-
