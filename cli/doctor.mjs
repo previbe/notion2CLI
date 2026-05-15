@@ -8,17 +8,25 @@ import { getAppPaths } from './paths.mjs';
 const NOTION_MCP_URL = 'https://mcp.notion.com/mcp';
 
 export async function runDoctor() {
-  const [claude, codex, daemon, claudeMcp, codexMcp] = await Promise.all([
+  const [claude, codex, daemon, claudeMcp, codexMcp, windows] = await Promise.all([
     probeBinary('claude', ['--version']),
     probeBinary('codex', ['--version']),
     inspectDaemon(),
     probeClaudeNotionMcp(),
     probeCodexNotionMcp(),
+    probeWindowsEnvironment(),
   ]);
 
   return {
     ok: true,
     appHome: getAppPaths().root,
+    platform: {
+      os: os.platform(),
+      release: os.release(),
+      arch: os.arch(),
+      nativeWindows: os.platform() === 'win32',
+    },
+    windows,
     bridge: summarizeDaemon(daemon),
     runtimes: {
       claude,
@@ -114,16 +122,49 @@ function summarizeDaemon(inspection) {
 
 export function formatDoctorReport(report) {
   return [
+    `platform: ${report.platform.os} ${report.platform.arch} (${report.platform.release})`,
     `notion2cli home: ${report.appHome}`,
     `bridge: ${report.bridge.detail}`,
     `Claude Code: ${formatBinaryLine(report.runtimes.claude)}`,
     `Codex CLI: ${formatBinaryLine(report.runtimes.codex)}`,
     `Claude Notion MCP: ${report.notionMcp.claude.detail}`,
     `Codex Notion MCP: ${report.notionMcp.codex.detail}`,
+    ...formatWindowsLines(report.windows),
     `Official Notion MCP URL: ${NOTION_MCP_URL}`,
   ].join('\n');
 }
 
 function formatBinaryLine(binary) {
   return binary.installed ? `installed (${binary.detail})` : `not installed (${binary.detail})`;
+}
+
+async function probeWindowsEnvironment() {
+  if (os.platform() !== 'win32') {
+    return null;
+  }
+
+  const [powershell, bash] = await Promise.all([
+    probeBinary('powershell.exe', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()']),
+    probeBinary('bash', ['--version']),
+  ]);
+
+  return {
+    comspec: process.env.ComSpec || process.env.COMSPEC || '',
+    powershell,
+    bash,
+    note: 'Native Windows mode is supported for the local bridge, document providers, and CLI runtimes. Use WSL2 when your project or agent tooling depends on Linux-specific behavior.',
+  };
+}
+
+function formatWindowsLines(windows) {
+  if (!windows) {
+    return [];
+  }
+
+  return [
+    `Windows command shell: ${windows.comspec || 'not detected'}`,
+    `Windows PowerShell: ${formatBinaryLine(windows.powershell)}`,
+    `Windows bash/Git Bash: ${formatBinaryLine(windows.bash)}`,
+    `Windows note: ${windows.note}`,
+  ];
 }

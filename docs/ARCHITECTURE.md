@@ -174,12 +174,14 @@ Responsible for:
 - supporting approval callbacks
 - naming the thread `notion2CLI - <project name>`
 - verifying after each turn that the same session is visible in Codex App through `thread/read` and `thread/list`
+- resolving Windows npm `.cmd` shims through the shared runtime process launcher when running natively on Windows
 
 Related files:
 
 - [server/runtimes/codex-runtime.mjs](../server/runtimes/codex-runtime.mjs)
 - [server/runtimes/codex-live-session.mjs](../server/runtimes/codex-live-session.mjs)
 - [server/runtimes/codex-app-server-session.mjs](../server/runtimes/codex-app-server-session.mjs)
+- [server/runtimes/exec-utils.mjs](../server/runtimes/exec-utils.mjs)
 
 ### Claude channel runtime
 
@@ -215,6 +217,7 @@ Notion provider behavior:
 Feishu/Lark provider behavior:
 
 - setup and user authorization are delegated to the official local `lark-cli`
+- `lark-cli` process launches use the shared runtime process launcher, including Windows npm `.cmd` shim resolution
 - wiki URLs are resolved with `GET /open-apis/wiki/v2/spaces/get_node`
 - docx content is read with Docx v1 raw-content and block APIs
 - media tokens are downloaded through `lark-cli docs +media-download`
@@ -311,6 +314,8 @@ When debugging, check:
 
 - Codex uses a Codex App session.
 - Claude uses Claude Code Channels and does not support Claude Desktop input injection.
+- Native Windows is supported as a beta path for the local bridge, document providers, and CLI runtime process model. WSL2 remains the recommended fallback when a project depends on Linux-only tooling.
+- Automatic Codex App opening is implemented only for macOS. Windows users can inspect the thread from the CLI and open Codex App manually.
 - Notion full-page reads still depend on the runtime's Notion MCP tools.
 - Feishu/Lark support is limited to docx pages and wiki nodes whose underlying object is a docx document.
 - Images come from media references discovered in Docx block payloads.

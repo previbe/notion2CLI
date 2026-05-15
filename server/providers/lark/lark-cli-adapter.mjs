@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import process from 'node:process';
+import { spawnCommand } from '../../runtimes/exec-utils.mjs';
 
 const DEFAULT_TIMEOUT_MS = 60000;
 const FLOW_URL_TIMEOUT_MS = 30000;
@@ -12,7 +12,7 @@ export class LarkCliAdapter {
   constructor({
     command = '',
     baseArgs = null,
-    spawnImpl = spawn,
+    spawnImpl = spawnCommand,
     env = process.env,
     cwd = process.cwd(),
     log = () => {},

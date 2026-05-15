@@ -74,11 +74,11 @@ export async function startBridgeServer(options = {}) {
 function createRuntime(id, logger, options = {}) {
   switch (id) {
     case 'claude-channel':
-      return new ClaudeChannelRuntime(logger, { cwd: options.cwd });
+      return new ClaudeChannelRuntime(logger, { cwd: options.cwd, permissionMode: options.permissionMode });
     case 'claude':
-      return new ClaudeRuntime(logger, { cwd: options.cwd });
+      return new ClaudeRuntime(logger, { cwd: options.cwd, permissionMode: options.permissionMode });
     case 'codex':
-      return new CodexRuntime(logger, { cwd: options.cwd });
+      return new CodexRuntime(logger, { cwd: options.cwd, permissionMode: options.permissionMode });
     case 'standalone':
       return new StandaloneRuntime(logger);
     default:

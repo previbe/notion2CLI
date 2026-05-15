@@ -290,7 +290,14 @@ export class CodexRuntime {
     if (process.platform !== 'darwin') {
       return {
         ok: false,
-        message: 'Opening Codex App automatically is currently supported only on macOS. Open Codex App manually and check the notion2CLI session.',
+        supported: false,
+        message: [
+          process.platform === 'win32'
+            ? 'Automatic Codex App opening is not available in native Windows mode yet.'
+            : 'Automatic Codex App opening is not available on this platform yet.',
+          'Open Codex App manually and check recent sessions for the notion2CLI session.',
+        ].join(' '),
+        session: this.liveSession?.getSnapshot() || null,
       };
     }
 

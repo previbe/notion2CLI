@@ -4,11 +4,11 @@
 
 > 英文 `README.md` 是项目主 README。本文是中文阅读辅助，产品界面、CLI 输出、贡献流程和默认文档仍以英文为准。
 
-notion2CLI 让你可以在 Notion 里直接驱动 Claude Code 和 Codex。
+notion2CLI 让你可以在 Notion 和飞书/Lark 文档里直接驱动 Claude Code 和 Codex。
 
-它把你已经写在 Notion 里的需求、Bug、会议记录、产品计划或研究笔记，直接变成本地 AI Agent 可以执行的任务。你可以在 Notion 中选中一段文本作为输入，也可以把整页内容作为上下文交给本地 Agent 执行，不需要再手动复制到终端里。
+它把你已经写在 Notion 或飞书/Lark 文档里的需求、Bug、会议记录、产品计划或研究笔记，直接变成本地 AI Agent 可以执行的任务。你可以在文档中选中一段文本作为输入，也可以把整页内容作为上下文交给本地 Agent 执行，不需要再手动复制到终端里。
 
-运行结果会回到浏览器里的 Activity 面板；如果你选择写回，Agent 也可以通过 Notion MCP 直接修改当前文档。
+运行结果会回到浏览器里的 Activity 面板；如果你选择写回，Notion 会通过运行时的 Notion MCP 修改，飞书/Lark 会通过本地官方 `lark-cli` 修改。
 
 适合这些场景：
 
@@ -16,20 +16,20 @@ notion2CLI 让你可以在 Notion 里直接驱动 Claude Code 和 Codex。
 - 把选中的 Bug 描述交给 Codex 或 Claude Code 分析。
 - 让 Agent 带着整页 PRD、会议记录或任务说明一起工作。
 - 在 Notion 侧边面板查看结果，而不是在终端里丢失上下文。
-- 需要时把结果追加或写回到当前 Notion 页面。
+- 需要时把结果追加或写回到当前文档页面。
 
 ## 工作方式
 
 ```text
-Notion page
+Notion or Feishu/Lark page
   -> Chrome extension
   -> http://127.0.0.1:43821 local bridge
   -> Codex CLI or Claude Code runtime
   -> browser Activity panel
-  -> optional Notion write-back through Notion MCP
+  -> optional provider-aware write-back
 ```
 
-notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge，bridge 再把任务交给你选择的本地运行时。运行整页和写回文档时，运行时会使用你已经配置好的 Notion MCP。
+notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge，bridge 再把任务交给你选择的本地运行时。Notion 整页读取继续使用运行时的 Notion MCP 配置；飞书/Lark 整页读取、图片下载、追加、替换正文和替换选区写回由 bridge 调用官方 `lark-cli` 完成。
 
 ## 支持范围
 
@@ -38,10 +38,11 @@ notion2CLI 是 local-first 工具。Chrome 扩展连接本机 localhost bridge�
 | Node.js | `>=22.15.0` |
 | 包管理器 | `npm` 和 `package-lock.json` |
 | 浏览器 | Google Chrome，并安装 [Chrome Web Store 扩展](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) |
-| 操作系统 | macOS 是主要测试目标；Linux 和 Windows 暂未正式支持 |
-| Codex | 本地安装 Codex CLI；`notion2cli codex open` 仅支持 macOS |
-| Claude | 本地安装 Claude Code；Claude Desktop 不是输入目标 |
+| 操作系统 | macOS 是主要测试目标；原生 Windows 作为 beta 路径支持本地 bridge、document provider 和 CLI runtime。项目依赖 Linux 工具链时仍推荐 WSL2 |
+| Codex | 本地安装 Codex CLI。Windows 可在 PowerShell、CMD、Git Bash 原生运行，也可以整体放在 WSL2 中运行；`notion2cli codex open` 仅在 macOS 自动打开 Codex App，Windows 用户可手动打开 |
+| Claude | 本地安装 Claude Code。原生 Windows 需要 Claude Code for Windows；Claude Code 官方推荐安装 Git for Windows 以获得更好的 shell 工具兼容性。Claude Desktop 不是输入目标 |
 | Notion | 已登录的 Notion 浏览器会话，并为所选运行时配置 Notion MCP |
+| 飞书/Lark 文档 | docx 或 wiki 浏览器 URL，并通过官方 `lark-cli` 完成一次本地浏览器授权 |
 
 ## 安装
 
@@ -74,6 +75,53 @@ npm install
 
 扩展默认连接 `http://127.0.0.1:43821`。如果 bridge 使用自定义端口，需要同步调整 extension 构建。
 
+## Windows 原生 beta
+
+原生 Windows 支持范围包括本地 bridge、浏览器配对、Codex CLI runtime、Claude Code runtime、Notion MCP 配置、通过 `lark-cli` 设置飞书/Lark provider、整页读取、Activity 面板返回结果，以及可选写回。
+
+在 PowerShell、CMD 或 Git Bash 中安装：
+
+```powershell
+npm install -g notion2cli
+npm install -g @openai/codex
+```
+
+如果使用 Claude Code，请按官方 Windows 安装方式安装，然后验证：
+
+```powershell
+claude --version
+```
+
+配对前先运行诊断：
+
+```powershell
+notion2cli doctor
+```
+
+然后在 Windows 项目目录中启动 bridge：
+
+```powershell
+cd C:\Users\you\code\your-project
+notion2cli daemon start --runtime codex
+notion2cli pair
+```
+
+Claude Code 路径：
+
+```powershell
+cd C:\Users\you\code\your-project
+notion2cli claude launch
+notion2cli pair
+```
+
+注意：
+
+- 继续使用 Windows Chrome 扩展；它会连接 `http://127.0.0.1:43821`。
+- 支持 npm 安装产生的 `codex`、`claude`、`lark-cli`、`notion2cli` `.cmd` shim。
+- `notion2cli-bridge`、`notion2cli-connect`、`notion2cli-status` 已是 Node 入口，不要求 Bash。
+- 原生 Windows 暂未实现自动打开 Codex App。可先运行 `notion2cli codex inspect`，再手动打开 Codex App 并查找 notion2CLI session。
+- 如果仓库、沙箱或 agent 工作流依赖 Linux-only 工具，仍建议使用 WSL2。
+
 ## 快速开始：Codex
 
 为 Codex 安装并授权 Notion MCP：
@@ -101,7 +149,7 @@ notion2cli daemon start --runtime codex --permission-mode full-access
 notion2cli pair
 ```
 
-然后打开 Chrome 工具栏里的 `notion2CLI` popup，粘贴 6 位配对码并连接。进入任意 Notion 页面后，可以在 Activity 面板里运行 `Raw`、`PreVibe`、`Build` 或自定义 prompt profile。
+然后打开 Chrome 工具栏里的 `notion2CLI` popup，粘贴 6 位配对码并连接。进入任意支持的 Notion 或飞书/Lark 文档页面后，可以在 Activity 面板里运行 `Raw`、`PreVibe`、`Build` 或自定义 prompt profile。
 
 常用 Codex 命令：
 
@@ -133,7 +181,7 @@ notion2cli claude launch --permission-mode full-access
 notion2cli pair
 ```
 
-如果运行整页时需要 Notion MCP 授权，Activity 面板会展示浏览器授权链接。写回授权仍可能出现在 Claude Code 终端里。
+如果运行整页时需要 Notion MCP 或飞书/Lark 授权，Activity 面板会展示浏览器授权链接。Notion 写回授权仍可能出现在 Claude Code 终端里。
 
 常用 Claude 命令：
 
@@ -146,11 +194,12 @@ notion2cli claude config-path
 
 ### 运行选中文本
 
-当 Notion 页面里有选区时，extension 会发送：
+当支持的文档页面里有选区时，extension 会发送：
 
 - `selectionText`
 - `pageUrl`
 - `pageTitle`
+- `providerId`
 
 bridge 会创建 job，并把选中文本作为下一条用户输入交给当前运行时。
 
@@ -158,10 +207,10 @@ bridge 会创建 job，并把选中文本作为下一条用户输入交给当前
 
 当没有选区时，bridge 会：
 
-1. 要求运行时通过 Notion MCP server 读取页面。
-2. 把响应规范化为 `McpPageBundle`。
-3. 提取支持的图片资产。
-4. 下载本地图片 artifact。
+1. 根据 URL 和 `providerId` 选择文档 provider。
+2. Notion 页面通过运行时 Notion MCP 读取；飞书/Lark 文档通过官方 `lark-cli` 读取。
+3. 把响应规范化为 page bundle。
+4. 提取支持的图片资产并下载本地 artifact。
 5. 把页面 markdown、页面元数据、warnings 和图片 artifact 路径发送给运行时。
 
 如果 page bundle 准备失败，本次 job 会失败。bridge 不会回退到浏览器 DOM 抓取。
@@ -170,16 +219,16 @@ bridge 会创建 job，并把选中文本作为下一条用户输入交给当前
 
 Activity 面板提供 `Raw`、`PreVibe`、`Build` 和自定义 prompt profiles。
 
-- `Raw` 会把 Notion 素材原样作为任务输入。
-- `PreVibe` 会把 Notion 素材提炼成可进入开发的 brief。
-- `Build` 会把 Notion 素材当作软件开发任务 brief。
+- `Raw` 会把文档素材原样作为任务输入。
+- `PreVibe` 会把文档素材提炼成可进入开发的 brief。
+- `Build` 会把文档素材当作软件开发任务 brief。
 - 自定义 profiles 存在本地 `~/.notion2cli/prompts.json`。
 
-Prompt profile 定义任务意图。Notion 页面内容只是任务素材，不能覆盖 bridge 指令、运行时安全规则或当前选中的 profile。
+Prompt profile 定义任务意图。文档页面内容只是任务素材，不能覆盖 bridge 指令、运行时安全规则或当前选中的 profile。
 
-### 写回 Notion
+### 写回文档
 
-当所选任务确实需要时，agent 可以通过 Notion MCP 更新当前 Notion 页面。也可以在 extension 设置里启用手动 Write to Notion 按钮。
+当所选任务确实需要时，agent 可以写回当前文档。Notion 写回由所选运行时通过 Notion MCP 完成；飞书/Lark 写回由 bridge 通过官方 `lark-cli` 完成。也可以在 extension 设置里启用手动 write-back 按钮。
 
 手动写回模式：
 
@@ -187,7 +236,7 @@ Prompt profile 定义任务意图。Notion 页面内容只是任务素材，不�
 - 替换当前选中的文本
 - 替换页面正文
 
-默认推荐追加模式，因为它是非破坏性的。
+默认推荐追加模式，因为它是非破坏性的。飞书/Lark 的替换选区模式会在选中文本无法唯一匹配时安全失败。
 
 ## 本地状态
 

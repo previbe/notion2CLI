@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import {
   buildCodexAuxiliaryThreadPermissionParams,
   buildCodexTurnPermissionParams,
   normalizePermissionMode,
 } from '../core/permission-mode.mjs';
+import { spawnCommand } from './exec-utils.mjs';
 
 const CLIENT_INFO = {
   name: 'notion2cli',
@@ -60,7 +60,7 @@ export class CodexAppServerSession {
       profile: this.profile,
       extraArgs: this.extraArgs,
     });
-    this.child = spawn('codex', args, {
+    this.child = spawnCommand('codex', args, {
       cwd: this.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
     });

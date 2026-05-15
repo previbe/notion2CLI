@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
 import readline from 'node:readline';
+import { spawnCommand } from './exec-utils.mjs';
 
 export class ClaudeCliSession {
   constructor({
@@ -49,7 +49,7 @@ export class ClaudeCliSession {
       extraArgs: this.extraArgs,
       addDirs: this.addDirs,
     });
-    this.child = spawn('claude', args, {
+    this.child = spawnCommand('claude', args, {
       cwd: this.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
     });

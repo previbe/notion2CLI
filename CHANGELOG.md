@@ -6,6 +6,15 @@ This project follows the spirit of [Keep a Changelog](https://keepachangelog.com
 
 ## Unreleased
 
+### Added
+
+- Native Windows beta path for the local bridge, document providers, and CLI runtimes, including Windows diagnostics in `notion2cli doctor`.
+
+### Changed
+
+- Runtime command launching now resolves Windows npm `.cmd` shims for Codex, Claude Code, Lark CLI, and helper entrypoints.
+- Helper binaries `notion2cli-bridge`, `notion2cli-connect`, and `notion2cli-status` now use Node entrypoints instead of Bash scripts.
+
 ## 0.2.0 - 2026-05-16
 
 ### Added

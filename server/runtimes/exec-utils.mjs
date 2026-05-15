@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawnCommand(command, args, {
       cwd: options.cwd,
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -78,4 +80,144 @@ export function runCommand(command, args, options = {}) {
 
     child.stdin.end();
   });
+}
+
+export function spawnCommand(command, args = [], options = {}) {
+  const resolved = resolveCommandForSpawn(command, args, options);
+  return spawn(resolved.command, resolved.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: options.stdio,
+    detached: options.detached,
+    windowsHide: options.windowsHide,
+  });
+}
+
+export function resolveCommandForSpawn(command, args = [], options = {}) {
+  const platform = options.platform || process.platform;
+  const normalizedArgs = Array.isArray(args) ? args : [];
+
+  if (platform !== 'win32') {
+    return {
+      command,
+      args: normalizedArgs,
+      resolvedCommand: command,
+      viaShell: false,
+    };
+  }
+
+  const env = options.env || process.env;
+  const resolvedCommand = resolveWindowsExecutable(command, env) || command;
+  if (isWindowsCommandScript(resolvedCommand)) {
+    const comspec = getEnvValue(env, 'ComSpec') || 'cmd.exe';
+    return {
+      command: comspec,
+      args: ['/d', '/s', '/c', buildWindowsCommandLine(resolvedCommand, normalizedArgs)],
+      resolvedCommand,
+      viaShell: true,
+    };
+  }
+
+  return {
+    command: resolvedCommand,
+    args: normalizedArgs,
+    resolvedCommand,
+    viaShell: false,
+  };
+}
+
+export function buildWindowsCommandLine(command, args = []) {
+  return [
+    quoteWindowsCommandArg(command),
+    ...args.map((arg) => quoteWindowsCommandArg(arg)),
+  ].join(' ');
+}
+
+function resolveWindowsExecutable(command, env) {
+  const value = String(command || '').trim();
+  if (!value) {
+    return command;
+  }
+
+  const hasPathSeparator = /[\\/]/.test(value);
+  const extensions = getWindowsExecutableExtensions(value, env);
+
+  if (hasPathSeparator) {
+    return findExistingWindowsCandidate(value, extensions);
+  }
+
+  for (const dir of getPathEntries(env)) {
+    const candidate = findExistingWindowsCandidate(path.join(dir, value), extensions);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function findExistingWindowsCandidate(basePath, extensions) {
+  for (const extension of extensions) {
+    const candidate = extension ? `${basePath}${extension}` : basePath;
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+function getWindowsExecutableExtensions(command, env) {
+  if (path.extname(command)) {
+    return [''];
+  }
+
+  const pathext = getEnvValue(env, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD';
+  const extensions = pathext
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return ['', ...extensions];
+}
+
+function getPathEntries(env) {
+  const rawPath = getEnvValue(env, 'PATH') || '';
+  return rawPath
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getEnvValue(env, key) {
+  if (!env || typeof env !== 'object') {
+    return '';
+  }
+
+  if (Object.hasOwn(env, key)) {
+    return env[key];
+  }
+
+  const lowerKey = key.toLowerCase();
+  const match = Object.keys(env).find((candidate) => candidate.toLowerCase() === lowerKey);
+  return match ? env[match] : '';
+}
+
+function isWindowsCommandScript(command) {
+  return /\.(bat|cmd)$/i.test(String(command || ''));
+}
+
+function quoteWindowsCommandArg(value) {
+  const text = String(value ?? '');
+  if (!text) {
+    return '""';
+  }
+
+  if (!/[\s"&|<>^()%!]/.test(text)) {
+    return text;
+  }
+
+  return `"${text.replace(/(["&|<>^()%!])/g, '^$1')}"`;
 }

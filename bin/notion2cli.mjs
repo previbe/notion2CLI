@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,7 +26,7 @@ import {
 import { parseClaudeMcpList } from '../server/runtimes/claude-runtime.mjs';
 import { buildClaudeChannelName } from '../server/runtimes/claude-channel-runtime.mjs';
 import { parseNotionMcpList } from '../server/runtimes/codex-runtime.mjs';
-import { runCommand } from '../server/runtimes/exec-utils.mjs';
+import { runCommand, spawnCommand } from '../server/runtimes/exec-utils.mjs';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -374,7 +373,14 @@ async function handleCodexOpen(argv) {
   }
 
   if (process.platform !== 'darwin') {
-    throw new Error('Opening Codex App automatically is currently supported only on macOS. Open Codex App manually and check the notion2CLI session.');
+    const response = buildCodexOpenUnsupportedResponse(status.session || null);
+    if (options.json) {
+      printJson(response);
+      return;
+    }
+
+    process.stdout.write(`${response.message}\n`);
+    return;
   }
 
   const result = await runCommand('open', ['-b', 'com.openai.codex'], {
@@ -939,7 +945,7 @@ function quoteShellArg(value) {
 
 function runInteractiveCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawnCommand(command, args, {
       cwd: options.cwd,
       env: options.env || process.env,
       stdio: 'inherit',
@@ -950,4 +956,19 @@ function runInteractiveCommand(command, args, options = {}) {
       resolve({ code, signal });
     });
   });
+}
+
+function buildCodexOpenUnsupportedResponse(session = null) {
+  return {
+    ok: false,
+    supported: false,
+    session,
+    message: [
+      process.platform === 'win32'
+        ? 'Automatic Codex App opening is not available in native Windows mode yet.'
+        : 'Automatic Codex App opening is not available on this platform yet.',
+      session?.threadName ? `Open Codex App manually and look for: ${session.threadName}.` : 'Open Codex App manually and check recent sessions for the notion2CLI session.',
+      session?.threadId ? `Thread ID: ${session.threadId}` : null,
+    ].filter(Boolean).join(' '),
+  };
 }

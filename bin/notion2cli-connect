@@ -1,5 +1,25 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env node
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec node "$ROOT_DIR/bin/notion2cli.mjs" pair "$@"
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const cliPath = path.join(rootDir, 'bin', 'notion2cli.mjs');
+const child = spawn(process.execPath, [cliPath, 'pair', ...process.argv.slice(2)], {
+  stdio: 'inherit',
+});
+
+child.on('error', (error) => {
+  process.stderr.write(`Error: ${error.message}\n`);
+  process.exit(1);
+});
+
+child.on('close', (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+
+  process.exit(code ?? 0);
+});

@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -8,6 +7,7 @@ import {
   buildCodexTurnPermissionParams,
   normalizePermissionMode,
 } from '../core/permission-mode.mjs';
+import { spawnCommand } from './exec-utils.mjs';
 
 const CLIENT_INFO = {
   name: 'notion2cli',
@@ -70,7 +70,7 @@ export class CodexLiveSession {
       extraArgs: this.extraArgs,
     });
 
-    this.child = spawn('codex', args, {
+    this.child = spawnCommand('codex', args, {
       cwd: this.cwd,
       stdio: ['ignore', 'ignore', 'pipe'],
     });

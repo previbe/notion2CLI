@@ -37,9 +37,9 @@ notion2CLI is local-first. The Chrome extension talks to a localhost bridge, and
 | Node.js | `>=22.15.0` |
 | Package manager | `npm` with `package-lock.json` |
 | Browser | Google Chrome with the [Chrome Web Store extension](https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamefghio) |
-| Operating systems | macOS is the primary tested target. Linux and Windows are not formally supported yet. |
-| Codex | Codex CLI installed locally. `notion2cli codex open` is macOS-only. |
-| Claude | Claude Code installed locally. Claude Desktop is not an input target. |
+| Operating systems | macOS is the primary tested target. Native Windows is supported as a beta path for the local bridge, document providers, and CLI runtimes. WSL2 remains recommended when your project depends on Linux tooling. |
+| Codex | Codex CLI installed locally. On Windows, run Codex natively in PowerShell/CMD/Git Bash, or run everything inside WSL2. `notion2cli codex open` auto-opens Codex App only on macOS; Windows users can open Codex App manually. |
+| Claude | Claude Code installed locally. Native Windows requires Claude Code for Windows; Git for Windows is recommended by Claude Code for shell tool compatibility. Claude Desktop is not an input target. |
 | Notion | A logged-in Notion browser session plus Notion MCP configured for the selected runtime. |
 | Feishu/Lark Docs | A docx or wiki browser URL plus one-time browser authorization through the official `lark-cli`. |
 
@@ -73,6 +73,53 @@ Then load the development extension:
 4. Select this repository's `extension` directory.
 
 The extension talks to `http://127.0.0.1:43821`. If you run the bridge on a custom port, you must also adjust the extension build.
+
+## Windows Native Beta
+
+Native Windows support covers the local bridge, pairing flow, Codex CLI runtime, Claude Code runtime, Notion MCP setup, Feishu/Lark provider setup through `lark-cli`, full-page reads, Activity panel replies, and optional write-back.
+
+Install prerequisites in PowerShell, CMD, or Git Bash:
+
+```powershell
+npm install -g notion2cli
+npm install -g @openai/codex
+```
+
+For Claude Code, use the official Windows installer or package manager, then verify:
+
+```powershell
+claude --version
+```
+
+Run the diagnostic before pairing:
+
+```powershell
+notion2cli doctor
+```
+
+Then start the bridge from the Windows project directory:
+
+```powershell
+cd C:\Users\you\code\your-project
+notion2cli daemon start --runtime codex
+notion2cli pair
+```
+
+For Claude Code:
+
+```powershell
+cd C:\Users\you\code\your-project
+notion2cli claude launch
+notion2cli pair
+```
+
+Notes:
+
+- Keep using the Windows Chrome extension; it connects to `http://127.0.0.1:43821`.
+- npm-installed `.cmd` shims for `codex`, `claude`, `lark-cli`, and `notion2cli` are supported.
+- `notion2cli-bridge`, `notion2cli-connect`, and `notion2cli-status` are Node entrypoints and do not require Bash.
+- Codex App automatic opening is not implemented for native Windows yet. Use `notion2cli codex inspect`, then open Codex App manually and look for the notion2CLI session.
+- Use WSL2 instead when the repository, sandbox, or agent workflow depends on Linux-only tools.
 
 ## Quick Start: Codex
 

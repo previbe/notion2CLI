@@ -1,20 +1,35 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env node
 
-runtime="${1:-standalone}"
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-case "$runtime" in
-  codex|standalone|claude)
-    ;;
-  *)
-    echo "Usage: notion2cli-bridge [codex|claude|standalone]" >&2
-    exit 1
-    ;;
-esac
+const runtime = process.argv[2] || 'standalone';
+if (!['codex', 'standalone', 'claude'].includes(runtime)) {
+  process.stderr.write('Usage: notion2cli-bridge [codex|claude|standalone]\n');
+  process.exit(1);
+}
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ "$runtime" == "claude" ]]; then
-  exec node "$ROOT_DIR/bin/notion2cli.mjs" claude launch
-fi
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const cliPath = path.join(rootDir, 'bin', 'notion2cli.mjs');
+const args = runtime === 'claude'
+  ? [cliPath, 'claude', 'launch', ...process.argv.slice(3)]
+  : [cliPath, 'daemon', 'start', '--runtime', runtime, '--foreground', ...process.argv.slice(3)];
 
-exec node "$ROOT_DIR/bin/notion2cli.mjs" daemon start --runtime "$runtime" --foreground
+const child = spawn(process.execPath, args, {
+  stdio: 'inherit',
+});
+
+child.on('error', (error) => {
+  process.stderr.write(`Error: ${error.message}\n`);
+  process.exit(1);
+});
+
+child.on('close', (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+
+  process.exit(code ?? 0);
+});
