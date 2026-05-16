@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,6 +23,36 @@ test('claude launch rejects explicit permission mode plus passthrough permission
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Use either `--permission-mode` or passthrough Claude permission flags/);
+});
+
+test('claude launch writes strict stdio MCP config for channel bridge', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'notion2cli-home-'));
+  try {
+    const result = await runNode([
+      getCliEntrypointPath(),
+      'claude',
+      'launch',
+      '--json',
+    ], {
+      env: {
+        ...process.env,
+        NOTION2CLI_HOME: home,
+      },
+    });
+
+    assert.equal(result.status, 0);
+    const channelConfig = JSON.parse(await readFile(path.join(home, 'claude-channel.mcp.json'), 'utf8'));
+    const workerConfig = JSON.parse(await readFile(path.join(home, 'claude-worker.mcp.json'), 'utf8'));
+
+    assert.equal(channelConfig.mcpServers.notion2cli_bridge.type, 'stdio');
+    assert.equal(typeof channelConfig.mcpServers.notion2cli_bridge.command, 'string');
+    assert.deepEqual(workerConfig.mcpServers.notion, {
+      type: 'http',
+      url: 'https://mcp.notion.com/mcp',
+    });
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 test('daemon start refuses to reuse a running daemon with a different permission mode', async () => {

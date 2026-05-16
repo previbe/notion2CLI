@@ -96,6 +96,7 @@ export function spawnCommand(command, args = [], options = {}) {
     stdio: options.stdio,
     detached: options.detached,
     windowsHide: options.windowsHide,
+    windowsVerbatimArguments: resolved.windowsVerbatimArguments || options.windowsVerbatimArguments,
   });
 }
 
@@ -118,9 +119,10 @@ export function resolveCommandForSpawn(command, args = [], options = {}) {
     const comspec = getEnvValue(env, 'ComSpec') || 'cmd.exe';
     return {
       command: comspec,
-      args: ['/d', '/s', '/c', buildWindowsCommandLine(resolvedCommand, normalizedArgs)],
+      args: ['/d', '/s', '/c', `"${buildWindowsCommandLine(resolvedCommand, normalizedArgs)}"`],
       resolvedCommand,
       viaShell: true,
+      windowsVerbatimArguments: true,
     };
   }
 
@@ -267,5 +269,7 @@ function quoteWindowsCommandArg(value) {
     return text;
   }
 
-  return `"${text.replace(/(["&|<>^()%!])/g, '^$1')}"`;
+  return `"${text
+    .replace(/"/g, '\\"')
+    .replace(/([&|<>^()%!])/g, '^$1')}"`;
 }
