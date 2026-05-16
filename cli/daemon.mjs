@@ -226,6 +226,7 @@ async function startDetachedDaemon({ runtime, cwd, host, port, permissionMode })
         NOTION2CLI_PERMISSION_MODE: permissionMode,
       },
       stdio: ['ignore', stdoutHandle.fd, stderrHandle.fd],
+      windowsHide: process.platform === 'win32',
     },
   );
 

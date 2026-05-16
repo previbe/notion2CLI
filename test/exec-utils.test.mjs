@@ -8,6 +8,7 @@ import {
   buildWindowsCommandLine,
   resolveCommandForSpawn,
   runCommand,
+  spawnCommand,
 } from '../server/runtimes/exec-utils.mjs';
 
 test('Windows command resolver runs npm .cmd shims through cmd.exe', () => {
@@ -104,6 +105,19 @@ test('Windows spawn env appends the current Node directory without changing comm
 
   assert.match(env.Path, /^C:\\Tools/i);
   assert.equal(env.Path.split(path.delimiter).at(-1), path.dirname(process.execPath));
+});
+
+test('Windows child processes are hidden by default', { skip: process.platform !== 'win32' }, async () => {
+  const child = spawnCommand(process.execPath, ['-e', ''], {
+    stdio: 'ignore',
+  });
+
+  await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+
+  assert.equal(child.spawnfile.toLowerCase(), process.execPath.toLowerCase());
 });
 
 test('Windows command resolver launches native .exe binaries directly', () => {

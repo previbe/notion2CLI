@@ -95,7 +95,7 @@ export function spawnCommand(command, args = [], options = {}) {
     env,
     stdio: options.stdio,
     detached: options.detached,
-    windowsHide: options.windowsHide,
+    windowsHide: options.windowsHide ?? platform === 'win32',
     windowsVerbatimArguments: resolved.windowsVerbatimArguments || options.windowsVerbatimArguments,
   });
 }
