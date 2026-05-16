@@ -63,7 +63,10 @@ For local development, you can still load the extension from source:
 git clone https://github.com/previbe/notion2CLI.git
 cd notion2CLI
 npm install
+npm install -g .
 ```
+
+The final command links this checkout as the `notion2cli` command. If you do not want a global link, run the local entrypoint with `node ./bin/notion2cli.mjs ...` or use the npm scripts in this repository.
 
 Then load the development extension:
 
@@ -81,6 +84,8 @@ Native Windows support covers the local bridge, pairing flow, Codex CLI runtime,
 Install prerequisites in PowerShell, CMD, or Git Bash:
 
 ```powershell
+node --version
+npm --version
 npm install -g notion2cli
 npm install -g @openai/codex
 ```
