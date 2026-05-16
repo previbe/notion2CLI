@@ -4,15 +4,20 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  buildSpawnEnv,
   buildWindowsCommandLine,
   resolveCommandForSpawn,
+  runCommand,
+  spawnCommand,
 } from '../server/runtimes/exec-utils.mjs';
 
 test('Windows command resolver runs npm .cmd shims through cmd.exe', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'notion2cli-win-cmd-'));
   const binDir = path.join(dir, 'bin with space');
   const commandPath = path.join(binDir, 'codex.CMD');
+  const posixShimPath = path.join(binDir, 'codex');
   mkdirp(binDir);
+  writeFileSync(posixShimPath, '#!/bin/sh\n');
   writeFileSync(commandPath, '@echo off\r\n');
 
   try {
@@ -30,10 +35,89 @@ test('Windows command resolver runs npm .cmd shims through cmd.exe', () => {
     assert.equal(result.resolvedCommand.toLowerCase(), commandPath.toLowerCase());
     assert.deepEqual(result.args.slice(0, 3), ['/d', '/s', '/c']);
     assert.match(result.args[3], /"[^"]*codex\.cmd"/i);
-    assert.match(result.args[3], /app-server --listen stdio:\/\/$/);
+    assert.match(result.args[3], /app-server --listen stdio:\/\/"?$/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('Windows command scripts can find the current Node executable', { skip: process.platform !== 'win32' }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'notion2cli-win-node-path-'));
+  const commandPath = path.join(dir, 'needs-node.cmd');
+  mkdirp(dir);
+  writeFileSync(commandPath, '@echo off\r\nnode -e "process.stdout.write(process.version)"\r\n');
+
+  try {
+    const result = await runCommand('needs-node', [], {
+      env: {
+        Path: dir,
+        PATHEXT: '.CMD;.EXE',
+        ComSpec: process.env.ComSpec || process.env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe',
+        SystemRoot: process.env.SystemRoot || 'C:\\Windows',
+      },
+      timeoutMs: 5000,
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trim(), process.version);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Windows command scripts preserve JSON arguments through cmd.exe', { skip: process.platform !== 'win32' }, async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'notion2cli-win-json-'));
+  const commandPath = path.join(dir, 'echoargs.cmd');
+  const scriptPath = path.join(dir, 'echoargs.mjs');
+  const payload = {
+    type: 'stdio',
+    command: 'C:\\Program Files\\nodejs\\node.exe',
+    env: {
+      SAMPLE: 'value with spaces',
+    },
+  };
+  mkdirp(dir);
+  writeFileSync(commandPath, `@echo off\r\nnode "${scriptPath}" %*\r\n`);
+  writeFileSync(scriptPath, 'console.log(JSON.stringify(process.argv.slice(2)))\n');
+
+  try {
+    const result = await runCommand('echoargs', ['mcp', 'add-json', 'name', JSON.stringify(payload)], {
+      env: {
+        Path: dir,
+        PATHEXT: '.CMD;.EXE',
+        ComSpec: process.env.ComSpec || process.env.COMSPEC || 'C:\\Windows\\System32\\cmd.exe',
+        SystemRoot: process.env.SystemRoot || 'C:\\Windows',
+      },
+      timeoutMs: 5000,
+    });
+
+    assert.equal(result.code, 0);
+    assert.deepEqual(JSON.parse(result.stdout), ['mcp', 'add-json', 'name', JSON.stringify(payload)]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Windows spawn env appends the current Node directory without changing command priority', () => {
+  const env = buildSpawnEnv({
+    Path: 'C:\\Tools',
+  }, 'win32');
+
+  assert.match(env.Path, /^C:\\Tools/i);
+  assert.equal(env.Path.split(path.delimiter).at(-1), path.dirname(process.execPath));
+});
+
+test('Windows child processes are hidden by default', { skip: process.platform !== 'win32' }, async () => {
+  const child = spawnCommand(process.execPath, ['-e', ''], {
+    stdio: 'ignore',
+  });
+
+  await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+
+  assert.equal(child.spawnfile.toLowerCase(), process.execPath.toLowerCase());
 });
 
 test('Windows command resolver launches native .exe binaries directly', () => {

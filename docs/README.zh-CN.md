@@ -64,7 +64,10 @@ https://chromewebstore.google.com/detail/notion2cli/poadenkneikinepacildoepjamef
 git clone https://github.com/previbe/notion2CLI.git
 cd notion2CLI
 npm install
+npm install -g .
 ```
+
+最后一条命令会把当前源码目录链接成 `notion2cli` 命令。如果不想创建全局链接，也可以使用 `node ./bin/notion2cli.mjs ...` 或本仓库的 npm scripts。
 
 加载开发版 Chrome 扩展：
 
@@ -82,6 +85,8 @@ npm install
 在 PowerShell、CMD 或 Git Bash 中安装：
 
 ```powershell
+node --version
+npm --version
 npm install -g notion2cli
 npm install -g @openai/codex
 ```

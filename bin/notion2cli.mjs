@@ -893,6 +893,7 @@ async function ensureClaudeBridgeMcpRegistration({ cwd, host, port, permissionMo
 
 function buildClaudeBridgeMcpConfig({ cwd, host, port, permissionMode = 'default', workerConfigPath }) {
   return {
+    type: 'stdio',
     command: process.execPath,
     args: [getClaudeChannelServerPath()],
     cwd,
